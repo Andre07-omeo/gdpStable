@@ -1,8 +1,10 @@
 // src/app/api/user/me/route.ts
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { verifyToken } from '@/lib/auth'; // adapte selon ton auth
-import db from '@/lib/db'; // ton pool mysql2
+import { verifyToken } from '@/lib/auth';
+import db from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
