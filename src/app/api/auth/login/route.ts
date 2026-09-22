@@ -56,18 +56,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ Mettre à jour la dernière connexion (déjà présent — conservé)
+    // ✅ Mettre à jour la dernière connexion
     await query(
       'UPDATE user SET derniere_connexion = NOW() WHERE id_user = ?',
       [user.id_user]
     );
 
-    // ✅ Créer le token — AVEC LES DEUX CLÉS pour compatibilité totale
+    // ✅ Créer le token
     const token = jwt.sign(
       {
-        // ⬇️ Double compatibilité : les 2 routes fonctionneront
-        userId: user.id_user,        // utilisé par verifyAuth
-        id_user: user.id_user,       // utilisé par tes 4 routes API (/api/user/*)
+        userId: user.id_user,
+        id_user: user.id_user,
         email: user.email,
         profil: user.profil_code || 'VISITEUR',
         profilLibelle: user.profil_libelle || 'Visiteur',
@@ -91,16 +90,22 @@ export async function POST(request: NextRequest) {
         profilLibelle: user.profil_libelle || 'Visiteur',
         id_profil: user.id_profil,
         telephone: user.telephone || '',
-        derniere_connexion: new Date().toISOString(), // ⬅️ nouveau
+        derniere_connexion: new Date().toISOString(),
       },
     });
 
-    // ✅ Poser le cookie via NextResponse (méthode fiable Next.js 15)
+    // 🔥 DÉTECTION HTTPS : on ne met "secure: true" que si on est vraiment en HTTPS
+    const isHttps =
+      process.env.NEXT_PUBLIC_APP_URL?.startsWith('https://') ||
+      process.env.COOLIFY_URL?.startsWith('https://') ||
+      request.headers.get('x-forwarded-proto') === 'https';
+
+    // ✅ Poser le cookie
     response.cookies.set('auth_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: !!isHttps,               // 👈 LA LIGNE QUI CHANGE TOUT
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7, // 7 jours
+      maxAge: 60 * 60 * 24 * 7,
       path: '/',
     });
 
