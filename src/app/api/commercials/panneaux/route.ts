@@ -1,29 +1,48 @@
 // src/app/api/commercials/panneaux/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
-export const dynamic = 'force-dynamic';
 
-// Configuration de la connexion MySQL
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+// ============================================
+// ✅ CONNEXION MySQL — variables Coolify en priorité
+// ============================================
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'your_database',
+  host: process.env.MYSQL_HOST || process.env.DB_HOST || 'localhost',
+  user: process.env.MYSQL_USER || process.env.DB_USER || 'root',
+  password: process.env.MYSQL_PASSWORD || process.env.DB_PASSWORD || '',
+  database: process.env.MYSQL_DATABASE || process.env.DB_NAME || 'default',
+  port: Number(process.env.MYSQL_PORT || process.env.DB_PORT || 3306),
 };
+
+// ✅ Log de debug au démarrage (une seule fois)
+console.log('🔍 [panneaux] Config DB:', {
+  host: dbConfig.host,
+  port: dbConfig.port,
+  user: dbConfig.user,
+  database: dbConfig.database,
+  passwordSet: !!dbConfig.password,
+});
 
 export async function GET(request: NextRequest) {
   let connection: mysql.Connection | null = null;
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const commercialId = searchParams.get('commercialId');
     const statut = searchParams.get('statut');
     const search = searchParams.get('search');
 
+    console.log('🔍 [panneaux] Paramètres:', { commercialId, statut, search });
+
     // Établir la connexion
     connection = await mysql.createConnection(dbConfig);
+    console.log('✅ [panneaux] Connexion MySQL établie');
 
-    // Construction de la requête SQL avec des paramètres sécurisés
+    // ============================================
+    // Requête principale
+    // ============================================
     let sql = `
       SELECT 
         p.id_panneau as id,
@@ -145,11 +164,15 @@ export async function GET(request: NextRequest) {
 
     sql += ` ORDER BY p.nom ASC`;
 
-    // Exécution de la requête avec paramètres préparés
+    // Exécution
     const [rows] = await connection.execute(sql, params);
     const panneaux = rows as any[];
 
-    // Formatage des données
+    console.log(`✅ [panneaux] ${panneaux.length} panneaux récupérés`);
+
+    // ============================================
+    // Formatage
+    // ============================================
     const formattedPanneaux = panneaux.map((panneau: any) => {
       let faces: any[] = [];
       try {
@@ -157,11 +180,10 @@ export async function GET(request: NextRequest) {
           faces = JSON.parse(panneau.faces);
         }
       } catch (e) {
-        console.warn(`Erreur de parsing JSON pour le panneau ${panneau.id}:`, e);
+        console.warn(`Erreur parsing JSON panneau ${panneau.id}:`, e);
         faces = [];
       }
 
-      // Détermination du type du panneau
       let panneauType = 'Standard';
       if (faces.length > 0 && faces[0].type_face) {
         panneauType = faces[0].type_face;
@@ -185,30 +207,29 @@ export async function GET(request: NextRequest) {
               reservations = JSON.parse(face.reservations);
             }
           } catch (e) {
-            console.warn(`Erreur de parsing JSON pour la face ${face.id_face}:`, e);
+            console.warn(`Erreur parsing JSON face ${face.id_face}:`, e);
             reservations = [];
           }
 
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          
-          // Filtrage des réservations
+
           const activeReservation = reservations.find((r: any) => {
             if (!r.date_debut_campagne || !r.date_fin_campagne) return false;
             const debut = new Date(r.date_debut_campagne);
             const fin = new Date(r.date_fin_campagne);
             debut.setHours(0, 0, 0, 0);
             fin.setHours(0, 0, 0, 0);
-            return today >= debut && today <= fin && 
-                   r.statut !== 'Expirée' && r.statut !== 'Annulée';
+            return today >= debut && today <= fin &&
+              r.statut !== 'Expirée' && r.statut !== 'Annulée';
           });
 
           const futureReservation = reservations.find((r: any) => {
             if (!r.date_debut_campagne) return false;
             const debut = new Date(r.date_debut_campagne);
             debut.setHours(0, 0, 0, 0);
-            return debut > today && 
-                   r.statut !== 'Expirée' && r.statut !== 'Annulée';
+            return debut > today &&
+              r.statut !== 'Expirée' && r.statut !== 'Annulée';
           });
 
           const pendingReservation = reservations.find((r: any) => {
@@ -217,9 +238,8 @@ export async function GET(request: NextRequest) {
 
           const reservation = activeReservation || futureReservation || pendingReservation;
 
-          // Détermination du statut
           let status: 'Libre' | 'Occupé' | 'Réservé' | 'En attente' | 'Problème' = 'Libre';
-          
+
           if (face.a_probleme === 1) {
             status = 'Problème';
           } else if (reservation) {
@@ -234,7 +254,6 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          // Calcul des dimensions
           const hauteur = face.hauteur_cm || 0;
           const largeur = face.largeur_cm || 0;
           let dimensionM2 = 'N/A';
@@ -245,33 +264,32 @@ export async function GET(request: NextRequest) {
 
           const hasProblem = face.a_probleme === 1;
 
-          // Calcul du temps restant pour les réservations en attente
           let remainingTime = null;
           if (pendingReservation && pendingReservation.date_expiration) {
             const now = new Date();
             const expiration = new Date(pendingReservation.date_expiration);
             const diffMs = expiration.getTime() - now.getTime();
-            
+
             if (diffMs <= 0) {
               remainingTime = { expired: true, label: '⏰ Expirée', hours: 0, minutes: 0 };
             } else {
               const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
               const diffMin = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-              
+
               if (diffHrs > 24) {
                 const diffDays = Math.floor(diffHrs / 24);
-                remainingTime = { 
-                  expired: false, 
-                  label: `${diffDays}j ${diffHrs % 24}h restants`, 
-                  hours: diffHrs, 
-                  minutes: diffMin 
+                remainingTime = {
+                  expired: false,
+                  label: `${diffDays}j ${diffHrs % 24}h restants`,
+                  hours: diffHrs,
+                  minutes: diffMin,
                 };
               } else {
-                remainingTime = { 
-                  expired: false, 
-                  label: `${diffHrs}h ${diffMin}min restants`, 
-                  hours: diffHrs, 
-                  minutes: diffMin 
+                remainingTime = {
+                  expired: false,
+                  label: `${diffHrs}h ${diffMin}min restants`,
+                  hours: diffHrs,
+                  minutes: diffMin,
                 };
               }
             }
@@ -303,9 +321,9 @@ export async function GET(request: NextRequest) {
             commercial_prenom: hasProblem ? null : (reservation?.commercial_prenom || null),
             date_debut: hasProblem ? null : (reservation?.date_debut_campagne || null),
             date_fin: hasProblem ? null : (reservation?.date_fin_campagne || null),
-            remaining_time: remainingTime
+            remaining_time: remainingTime,
           };
-        })
+        }),
       };
     });
 
@@ -313,22 +331,57 @@ export async function GET(request: NextRequest) {
       success: true,
       data: formattedPanneaux,
       total: formattedPanneaux.length,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error('❌ [panneaux] Erreur complète:', {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+      sqlState: error.sqlState,
+      sqlMessage: error.sqlMessage,
+      stack: error.stack,
     });
 
-  } catch (error) {
-    console.error('❌ Erreur lors de la récupération des panneaux commerciaux:', error);
+    // Erreur de connexion DB
+    if (error.code === 'ECONNREFUSED') {
+      return NextResponse.json(
+        {
+          error: 'Base de données inaccessible',
+          details: `Impossible de joindre ${process.env.MYSQL_HOST || 'localhost'}:${process.env.MYSQL_PORT || '3306'}`,
+          hint: 'Vérifiez les variables MYSQL_* dans Coolify (Runtime)',
+        },
+        { status: 503 }
+      );
+    }
+
+    // Erreur SQL
+    if (error.code?.startsWith('ER_')) {
+      return NextResponse.json(
+        {
+          error: 'Erreur SQL',
+          code: error.code,
+          details: error.sqlMessage,
+        },
+        { status: 500 }
+      );
+    }
+
+    // Erreur générique
     return NextResponse.json(
-      { 
+      {
         error: 'Erreur lors de la récupération des données',
-        details: error instanceof Error ? error.message : 'Erreur inconnue'
+        details: error.message || 'Erreur inconnue',
       },
       { status: 500 }
     );
   } finally {
-    // Fermer la connexion
     if (connection) {
-      await connection.end();
+      try {
+        await connection.end();
+      } catch (e) {
+        // ignore
+      }
     }
   }
 }
