@@ -1,0 +1,230 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Pays {
+  id_pays    Int        @id @default(autoincrement())
+  code       String     @unique @db.VarChar(10)
+  nom        String     @db.VarChar(100)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+  provinces  Province[]
+
+  @@map("pays")
+}
+
+model Province {
+  id_province Int      @id @default(autoincrement())
+  pays_id     Int
+  code        String   @unique @db.VarChar(10)
+  nom         String   @db.VarChar(100)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  pays        Pays     @relation(fields: [pays_id], references: [id_pays])
+  users       User[]
+  villes      Ville[]
+
+  @@index([pays_id], map: "province_pays_id_fkey")
+  @@map("province")
+}
+
+model Ville {
+  id_ville    Int       @id @default(autoincrement())
+  province_id Int
+  code        String    @unique @db.VarChar(10)
+  nom         String    @db.VarChar(100)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  communes    Commune[]
+  users       User[]
+  province    Province  @relation(fields: [province_id], references: [id_province])
+
+  @@index([province_id], map: "ville_province_id_fkey")
+  @@map("ville")
+}
+
+model Commune {
+  id_commune Int      @id @default(autoincrement())
+  ville_id   Int
+  code       String   @unique @db.VarChar(10)
+  nom        String   @db.VarChar(100)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  ville      Ville    @relation(fields: [ville_id], references: [id_ville])
+  users      User[]
+
+  @@index([ville_id], map: "commune_ville_id_fkey")
+  @@map("commune")
+}
+
+model Profil {
+  id_profil          Int      @id @default(autoincrement())
+  code               String   @unique @db.VarChar(20)
+  libelle            String   @db.VarChar(50)
+  permissions        String?  @db.LongText
+  created_at         DateTime @default(now())
+  niveauHierarchique Int      @default(0)
+  users              User[]
+
+  @@map("profil")
+}
+
+model User {
+  id_user                 Int           @id @default(autoincrement())
+  id_profil               Int
+  id_manager              Int?          @map("id_manager")
+  nom                     String        @db.VarChar(50)
+  prenom                  String        @db.VarChar(50)
+  sexe                    String        @db.VarChar(10)
+  adresse                 String        @db.VarChar(255)
+  code_postal             String        @db.VarChar(10)
+  telephone               String        @db.VarChar(20)
+  departement             String        @db.VarChar(50)
+  fonction                String        @db.VarChar(50)
+  email                   String        @unique(map: "USER_email_key") @db.VarChar(100)
+  mot_de_passe_hash       String        @db.VarChar(255)
+  actif                   Boolean       @default(true)
+  derniere_connexion      DateTime?
+  created_at              DateTime      @default(now())
+  updated_at              DateTime      @updatedAt
+  commune_id              Int?
+  province_id             Int?
+  ville_id                Int?
+  zone_niveau             String        @default("National") @db.VarChar(20)
+  zone_travail            String?       @db.VarChar(255)
+  ville_nom               String?       @db.VarChar(50)
+  chef_reservations       Reservation[] @relation("ChefReservations")
+  commercial_reservations Reservation[] @relation("CommercialReservations")
+  commune                 Commune?      @relation(fields: [commune_id], references: [id_commune])
+  manager                 User?         @relation("UserManager", fields: [id_manager], references: [id_user])
+  managed_users           User[]        @relation("UserManager")
+  profil                  Profil        @relation(fields: [id_profil], references: [id_profil])
+  province                Province?     @relation(fields: [province_id], references: [id_province])
+  ville                   Ville?        @relation(fields: [ville_id], references: [id_ville])
+
+  @@index([id_manager], map: "idx_manager")
+  @@index([commune_id], map: "user_commune_id_fkey")
+  @@index([id_profil], map: "user_id_profil_fkey")
+  @@index([province_id], map: "user_province_id_fkey")
+  @@index([ville_id], map: "user_ville_id_fkey")
+  @@map("user")
+}
+
+model Client {
+  id_client         Int           @id @default(autoincrement())
+  raison_sociale    String        @db.VarChar(100)
+  siret             String?       @unique @db.VarChar(14)
+  adresse           String        @db.VarChar(255)
+  code_postal       String        @db.VarChar(10)
+  ville             String        @db.VarChar(50)
+  telephone         String        @db.VarChar(20)
+  email_facturation String        @db.VarChar(100)
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+  province          String        @db.VarChar(50)
+  reservations      Reservation[]
+
+  @@map("client")
+}
+
+model Panneau {
+  id_panneau      Int       @id @default(autoincrement())
+  nom             String    @db.VarChar(100)
+  adresse         String    @db.VarChar(255)
+  latitude        Decimal   @db.Decimal(10, 8)
+  longitude       Decimal   @db.Decimal(11, 8)
+  etat            String    @default("Actif") @db.VarChar(20)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  commune         String?   @db.VarChar(50)
+  province        String    @db.VarChar(50)
+  ville           String    @db.VarChar(50)
+  date_probleme   DateTime?
+  raison_probleme String?
+  faces           Face[]
+
+  @@map("panneau")
+}
+
+model TypeFace {
+  id_type_face Int      @id @default(autoincrement())
+  libelle      String   @unique @db.VarChar(50)
+  hauteur_cm   Int
+  largeur_cm   Int
+  est_scroller Boolean  @default(false)
+  created_at   DateTime @default(now())
+  faces        Face[]
+
+  @@map("type_face")
+}
+
+model Face {
+  id_face           Int                @id @default(autoincrement())
+  id_panneau        Int
+  id_type_face      Int
+  orientation       String             @db.VarChar(20)
+  est_active        Boolean            @default(true)
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @updatedAt
+  a_probleme        Boolean?           @default(false)
+  date_probleme     DateTime?
+  raison_probleme   String?
+  panneau           Panneau            @relation(fields: [id_panneau], references: [id_panneau], onDelete: Cascade)
+  typeFace          TypeFace           @relation(fields: [id_type_face], references: [id_type_face])
+  ligneReservations LigneReservation[]
+
+  @@index([id_type_face], map: "face_id_type_face_fkey")
+  @@index([id_panneau], map: "idx_panneau")
+  @@map("face")
+}
+
+model Reservation {
+  id_reservation      Int                @id @default(autoincrement())
+  id_client           Int
+  id_commercial       Int
+  id_chef_validation  Int?
+  numero_commande     String             @unique @db.VarChar(50)
+  date_creation       DateTime           @default(now())
+  date_debut_campagne DateTime
+  date_fin_campagne   DateTime
+  statut              String             @db.VarChar(20)
+  est_verrouille      Boolean            @default(false)
+  date_verrouillage   DateTime?
+  notes               String?            @db.Text
+  photoCampagneUrl    String?            @db.VarChar(255)  // ← AJOUTER ICI
+  date_expiration     DateTime?          @db.DateTime      // ← AUSSI CE CHAMP
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
+  ligneReservations   LigneReservation[]
+  chefValidation      User?              @relation("ChefReservations", fields: [id_chef_validation], references: [id_user])
+  client              Client             @relation(fields: [id_client], references: [id_client])
+  commercial          User               @relation("CommercialReservations", fields: [id_commercial], references: [id_user])
+
+  @@index([id_client], map: "idx_client")
+  @@index([id_commercial], map: "idx_commercial")
+  @@index([id_chef_validation], map: "reservation_id_chef_validation_fkey")
+  @@map("reservation")
+}
+
+model LigneReservation {
+  id_ligne         Int         @id @default(autoincrement())
+  id_reservation   Int
+  id_face          Int
+  date_debut       DateTime
+  date_fin         DateTime
+  prix_vente_net   Decimal     @db.Decimal(10, 2)
+  statut_diffusion String      @db.VarChar(20)
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
+  face             Face        @relation(fields: [id_face], references: [id_face])
+  reservation      Reservation @relation(fields: [id_reservation], references: [id_reservation], onDelete: Cascade)
+
+  @@index([id_face], map: "idx_face")
+  @@index([id_reservation], map: "idx_reservation")
+  @@map("ligne_reservation")
+}
