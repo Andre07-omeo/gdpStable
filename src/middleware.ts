@@ -3,13 +3,18 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// ✅ Routes publiques
+// ✅ Routes publiques (accessibles sans être connecté)
 const publicRoutes = [
   '/login',
   '/register',
+  '/reset-password',
   '/api/auth/login',
   '/api/auth/register',
+  '/api/auth/logout',
   '/api/auth/me',
+  '/api/auth/reset-password',
+  '/api/auth/verify-reset-token',
+  '/api/user/request-password-reset',
   '/api/panneaux',
   '/api/locations',
 ];
@@ -39,9 +44,12 @@ function getUserRole(token: string): string | null {
     const base64Url = token.split('.')[1];
     if (!base64Url) return null;
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
     const data = JSON.parse(jsonPayload);
     return data.profil || data.role || null;
   } catch {
@@ -51,16 +59,16 @@ function getUserRole(token: string): string | null {
 
 function getDashboardPath(role: string): string {
   const roleMap: Record<string, string> = {
-    'SUPER_ADMIN': '/dashboard/admin',
-    'ADMIN': '/dashboard/admin',
-    'ADMIN_SYSTEM': '/dashboard/admin-system',
-    'DG': '/dashboard/dg',
-    'PDG': '/dashboard/pdg',
-    'CHEF_COMMERCIAL': '/dashboard/commercial',
-    'COMMERCIAL': '/dashboard/commercial',
-    'SUPERVISEUR': '/dashboard/superviseur',
-    'CAISSIER': '/dashboard/caissier',
-    'COMPTABLE': '/dashboard/comptable/factures',
+    SUPER_ADMIN: '/dashboard/admin',
+    ADMIN: '/dashboard/admin',
+    ADMIN_SYSTEM: '/dashboard/admin-system',
+    DG: '/dashboard/dg',
+    PDG: '/dashboard/pdg',
+    CHEF_COMMERCIAL: '/dashboard/commercial',
+    COMMERCIAL: '/dashboard/commercial',
+    SUPERVISEUR: '/dashboard/superviseur',
+    CAISSIER: '/dashboard/caissier',
+    COMPTABLE: '/dashboard/comptable/factures',
   };
   return roleMap[role] || '/dashboard';
 }
@@ -72,105 +80,126 @@ async function declencherNettoyageAutomatique() {
   const maintenant = Date.now();
 
   if (maintenant - dernierNettoyage < DELAI_MINIMUM) {
-    console.log(`⏳ Nettoyage déjà effectué récemment (${Math.round((maintenant - dernierNettoyage) / 60000)} min)`);
     return;
   }
 
   dernierNettoyage = maintenant;
 
   try {
-    console.log('🧹 Déclenchement du nettoyage automatique...');
-
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
     const response = await fetch(`${baseUrl}/api/reservations/clean`, {
       method: 'POST',
       headers: {
-        'X-Cleanup-Token': process.env.CLEANUP_API_TOKEN || 'mon-token-securise-123456',
-        'Content-Type': 'application/json'
+        'X-Cleanup-Token':
+          process.env.CLEANUP_API_TOKEN || 'mon-token-securise-123456',
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ batch: 50 })
+      body: JSON.stringify({ batch: 50 }),
     });
 
     if (response.ok) {
       const result = await response.json();
-      console.log('✅ Nettoyage automatique effectué !');
-      console.log(`📊 Terminées: ${result.data?.terminees || 0}, Expirées: ${result.data?.expirees || 0}`);
+      console.log(
+        `✅ Nettoyage auto: ${result.data?.terminees || 0} terminées, ${result.data?.expirees || 0} expirées`
+      );
     } else {
-      console.error('❌ Erreur lors du nettoyage:', response.status);
+      console.error('❌ Nettoyage auto échoué:', response.status);
     }
   } catch (error) {
-    console.error('❌ Erreur nettoyage automatique:', error);
+    console.error('❌ Nettoyage auto erreur:', error);
   }
 }
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // ═══════════════════════════════════════════════════════
+  // ✅ 1. LAISSER PASSER LES FICHIERS STATIQUES ET PWA
+  // ═══════════════════════════════════════════════════════
+  // (le matcher le fait déjà, mais on double-sécurise)
+  if (
+    pathname === '/manifest.json' ||
+    pathname === '/sw.js' ||
+    pathname === '/service-worker.js' ||
+    pathname === '/favicon.ico' ||
+    pathname === '/robots.txt' ||
+    pathname === '/sitemap.xml' ||
+    pathname.startsWith('/icons/') ||
+    pathname.startsWith('/images/') ||
+    pathname.startsWith('/_next/')
+  ) {
+    return NextResponse.next();
+  }
+
   const token = request.cookies.get('auth_token')?.value;
 
   // ═══════════════════════════════════════════════════════
-  // ✅ REDIRECTION AUTOMATIQUE DEPUIS LA RACINE
+  // ✅ 2. REDIRECTION AUTOMATIQUE DEPUIS LA RACINE
   // ═══════════════════════════════════════════════════════
   if (pathname === '/') {
     if (token) {
       const role = getUserRole(token);
       if (role) {
-        // ✅ Connecté → rediriger vers son dashboard
-        return NextResponse.redirect(new URL(getDashboardPath(role), request.url));
+        return NextResponse.redirect(
+          new URL(getDashboardPath(role), request.url)
+        );
       }
     }
-    // ❌ Non connecté → rediriger vers /login
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // ✅ Routes publiques - autoriser toutes
-  const isPublicRoute = publicRoutes.some(route =>
-    pathname === route || pathname.startsWith(`${route}/`)
+  // ═══════════════════════════════════════════════════════
+  // ✅ 3. ROUTES PUBLIQUES — LAISSER PASSER
+  // ═══════════════════════════════════════════════════════
+  const isPublicRoute = publicRoutes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
   if (isPublicRoute) {
     return NextResponse.next();
   }
 
-  // ✅ Si pas de token, rediriger
+  // ═══════════════════════════════════════════════════════
+  // ✅ 4. SI PAS DE TOKEN → REDIRIGER
+  // ═══════════════════════════════════════════════════════
   if (!token) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { error: 'Non authentifié' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // ✅ Vérifier le token
+  // ═══════════════════════════════════════════════════════
+  // ✅ 5. VÉRIFIER LE TOKEN
+  // ═══════════════════════════════════════════════════════
   const role = getUserRole(token);
   if (!role) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { error: 'Token invalide' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Token invalide' }, { status: 401 });
     }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // ✅ Vérifier les autorisations pour les routes dashboard
+  // ═══════════════════════════════════════════════════════
+  // ✅ 6. AUTORISATIONS PAR ROUTE DASHBOARD
+  // ═══════════════════════════════════════════════════════
   if (pathname.startsWith('/dashboard/')) {
-    // ✅ Règle spéciale pour le comptable : toutes les sous-routes sont autorisées
+    // Règle spéciale comptable
     if (pathname.startsWith('/dashboard/comptable/')) {
       if (role !== 'COMPTABLE' && role !== 'SUPER_ADMIN') {
-        const dashboardPath = getDashboardPath(role);
-        return NextResponse.redirect(new URL(dashboardPath, request.url));
+        return NextResponse.redirect(
+          new URL(getDashboardPath(role), request.url)
+        );
       }
-      // ✅ Si le comptable va vers /dashboard/comptable, rediriger vers /dashboard/comptable/factures
       if (role === 'COMPTABLE' && pathname === '/dashboard/comptable') {
-        return NextResponse.redirect(new URL('/dashboard/comptable/factures', request.url));
+        return NextResponse.redirect(
+          new URL('/dashboard/comptable/factures', request.url)
+        );
       }
-      // ✅ Sinon, autoriser l'accès
       return NextResponse.next();
     }
 
-    // ✅ Pour les autres routes dashboard
+    // Autres routes dashboard
     let matchedRoute = '';
     for (const route of Object.keys(routeRoles)) {
       if (pathname.startsWith(route)) {
@@ -180,26 +209,37 @@ export function middleware(request: NextRequest) {
     }
 
     if (matchedRoute && !routeRoles[matchedRoute].includes(role)) {
-      const dashboardPath = getDashboardPath(role);
-      return NextResponse.redirect(new URL(dashboardPath, request.url));
+      return NextResponse.redirect(
+        new URL(getDashboardPath(role), request.url)
+      );
     }
   }
 
-  // ✅ Déclencher le nettoyage automatique
+  // ═══════════════════════════════════════════════════════
+  // ✅ 7. NETTOYAGE AUTOMATIQUE (fire & forget)
+  // ═══════════════════════════════════════════════════════
   if (pathname.startsWith('/dashboard/') || pathname === '/dashboard') {
     declencherNettoyageAutomatique().catch(console.error);
   }
 
-  // ✅ Redirection dashboard
+  // ═══════════════════════════════════════════════════════
+  // ✅ 8. REDIRECTION /dashboard
+  // ═══════════════════════════════════════════════════════
   if (pathname === '/dashboard') {
     return NextResponse.redirect(new URL(getDashboardPath(role), request.url));
   }
 
-  // ✅ Si c'est une API, vérifier le token
+  // ═══════════════════════════════════════════════════════
+  // ✅ 9. PROTECTION API PAR RÔLE
+  // ═══════════════════════════════════════════════════════
   if (pathname.startsWith('/api/')) {
-    // Les API de facture sont accessibles aux commerciaux et comptables
     if (pathname.startsWith('/api/facture')) {
-      const allowedRoles = ['SUPER_ADMIN', 'COMMERCIAL', 'CHEF_COMMERCIAL', 'COMPTABLE'];
+      const allowedRoles = [
+        'SUPER_ADMIN',
+        'COMMERCIAL',
+        'CHEF_COMMERCIAL',
+        'COMPTABLE',
+      ];
       if (!allowedRoles.includes(role)) {
         return NextResponse.json(
           { error: 'Accès non autorisé' },
@@ -208,8 +248,10 @@ export function middleware(request: NextRequest) {
       }
     }
 
-    // API de validation des factures (comptable uniquement)
-    if (pathname.startsWith('/api/facture/validate') || pathname.startsWith('/api/facture/check-duplicate')) {
+    if (
+      pathname.startsWith('/api/facture/validate') ||
+      pathname.startsWith('/api/facture/check-duplicate')
+    ) {
       const allowedRoles = ['SUPER_ADMIN', 'COMPTABLE'];
       if (!allowedRoles.includes(role)) {
         return NextResponse.json(
@@ -219,7 +261,6 @@ export function middleware(request: NextRequest) {
       }
     }
 
-    // API de suppression des factures (comptable uniquement)
     if (pathname.startsWith('/api/facture/') && pathname.includes('/delete')) {
       const allowedRoles = ['SUPER_ADMIN', 'COMPTABLE'];
       if (!allowedRoles.includes(role)) {
@@ -234,8 +275,18 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
+// ═══════════════════════════════════════════════════════
+// ✅ MATCHER CORRIGÉ — exclut tous les fichiers statiques/PWA
+// ═══════════════════════════════════════════════════════
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|public|images|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)',
+    /*
+     * Exclut :
+     * - _next/static, _next/image (fichiers Next.js)
+     * - favicon.ico
+     * - manifest.json, sw.js, service-worker.js, robots.txt, sitemap.xml
+     * - tout fichier avec extension (images, css, js, etc.)
+     */
+    '/((?!_next/static|_next/image|favicon\\.ico|manifest\\.json|sw\\.js|service-worker\\.js|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf|eot|map)$).*)',
   ],
 };
