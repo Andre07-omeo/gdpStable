@@ -7,25 +7,34 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const token = request.cookies.get('auth_token')?.value;
-    console.log('🔍 Token reçu:', token ? '✅ Présent' : '❌ Absent');
+    console.log('🔍 /api/auth/me — Token reçu:', token ? `✅ Présent (${token.slice(0, 20)}...)` : '❌ Absent');
+    console.log('🍪 Tous les cookies:', request.cookies.getAll().map(c => c.name));
 
     if (!token) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      console.error('❌ JWT_SECRET non défini en variable d\'environnement !');
+      return NextResponse.json(
+        { error: 'Configuration serveur invalide' },
+        { status: 500 }
+      );
+    }
+
     let decoded: any;
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || 'default_secret');
+      decoded = jwt.verify(token, JWT_SECRET);
       console.log('👤 Token décodé:', decoded);
-    } catch (jwtError) {
-      console.error('❌ Erreur JWT:', jwtError);
+    } catch (jwtError: any) {
+      console.error('❌ Erreur JWT:', jwtError.message);
       return NextResponse.json(
         { error: 'Token invalide ou expiré' },
         { status: 401 }
       );
     }
 
-    // ✅ CORRECTION : accepter les 3 formats possibles
     const userId = decoded.id_user ?? decoded.userId ?? decoded.id;
 
     if (!userId) {
@@ -57,7 +66,7 @@ export async function GET(request: NextRequest) {
     const user = (users as any[])[0];
 
     if (!user) {
-      console.error('❌ Utilisateur non trouvé:', userId);
+      console.error('❌ Utilisateur non trouvé en DB:', userId);
       return NextResponse.json(
         { error: 'Utilisateur non trouvé' },
         { status: 401 }
