@@ -4,7 +4,7 @@ export { PanneauxTable } from './PanneauxTable';
 export { CommercialFilters } from './CommercialFilters';
 export { CommercialHeader } from './CommercialHeader';
 export { FaceDetailModal } from './FaceDetailModal';
-export { NotificationModal } from './NotificationModal';
+export { default as NotificationModal } from './NotificationModal';  // ✅ CORRIGÉ
 export { CartPanel } from './CartPanel';
 export { StatsPanel } from './StatsPanel';
 export { AdminModal } from './AdminModal';
