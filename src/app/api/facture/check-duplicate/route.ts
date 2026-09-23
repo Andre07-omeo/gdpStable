@@ -1,4 +1,5 @@
 // src/app/api/facture/check-duplicate/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
 export const dynamic = 'force-dynamic';
@@ -10,33 +11,35 @@ const pool = mysql.createPool({
   database: process.env.MYSQL_DATABASE || 'gestion_panneaux_pro',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
 });
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const reservations = searchParams.get('reservations');
-    
+
     if (!reservations) {
-      return NextResponse.json({ 
-        isDuplicate: false, 
-        message: 'Aucune réservation spécifiée' 
+      return NextResponse.json({
+        isDuplicate: false,
+        message: 'Aucune réservation spécifiée',
       });
     }
 
-    const reservationIds = reservations.split(',').map(id => parseInt(id.trim()));
-    
+    const reservationIds = reservations
+      .split(',')
+      .map((id) => parseInt(id.trim()))
+      .filter((id) => !isNaN(id));
+
     if (reservationIds.length === 0) {
-      return NextResponse.json({ 
-        isDuplicate: false, 
-        message: 'Aucune réservation valide' 
+      return NextResponse.json({
+        isDuplicate: false,
+        message: 'Aucune réservation valide',
       });
     }
 
     const connection = await pool.getConnection();
 
-    // Vérifier si une facture existe déjà pour ces réservations
     const placeholders = reservationIds.map(() => '?').join(',');
     const [rows] = await connection.query(
       `SELECT DISTINCT f.id_facture, f.numero_facture, f.statut, f.created_at
@@ -54,15 +57,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         isDuplicate: true,
         message: `Une facture existe déjà (N°: ${facture.numero_facture}, Statut: ${facture.statut}, Date: ${new Date(facture.created_at).toLocaleDateString('fr-FR')})`,
-        facture: facture
+        facture: facture,
       });
     }
 
     return NextResponse.json({
       isDuplicate: false,
-      message: 'Aucune facture existante pour ces réservations'
+      message: 'Aucune facture existante pour ces réservations',
     });
-
   } catch (error) {
     console.error('Erreur vérification doublon:', error);
     return NextResponse.json(
