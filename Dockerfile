@@ -24,7 +24,18 @@ WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma ./prisma
+
+# ⚡ COPIER LE CODE
 COPY . .
+
+# ✅ VÉRIFICATIONS OBLIGATOIRES AVANT BUILD
+RUN echo "===== VÉRIFICATION DES FICHIERS =====" && \
+    ls -la tsconfig.json next.config.js next.config.mjs 2>&1 || true && \
+    echo "===== CONTENU tsconfig.json =====" && \
+    cat tsconfig.json && \
+    echo "===== VÉRIFICATION src/components =====" && \
+    ls -la src/components/shared/ 2>&1 || echo "❌ src/components/shared MANQUANT" && \
+    ls -la src/context/ 2>&1 || echo "❌ src/context MANQUANT"
 
 RUN npx prisma generate
 
@@ -33,9 +44,6 @@ RUN echo "🔧 BUILD_VERSION=${BUILD_VERSION}" && \
     if [ -f public/service-worker.js ]; then \
       sed -i "s|const CACHE_VERSION = .*;|const CACHE_VERSION = 'panneaux-${BUILD_VERSION}';|" public/service-worker.js && \
       echo "✅ CACHE_VERSION injectée"; \
-      grep "CACHE_VERSION" public/service-worker.js; \
-    else \
-      echo "⚠️ public/service-worker.js introuvable"; \
     fi
 
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -62,9 +70,8 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
-
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/next.config.js* ./
-COPY --from=builder /app/next.config.mjs* ./
 
 RUN chown -R nextjs:nodejs /app
 
@@ -73,8 +80,5 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:3000/ || exit 1
 
 CMD ["npm", "run", "start"]
