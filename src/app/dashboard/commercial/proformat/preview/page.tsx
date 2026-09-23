@@ -1,12 +1,11 @@
 // src/app/dashboard/commercial/proformat/preview/page.tsx
 
 'use client';
-export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { Printer, ArrowLeft, FileText, Save, CheckCircle, Loader2, AlertCircle, Eye, XCircle } from 'lucide-react';
+import { Printer, ArrowLeft, FileText, Save, CheckCircle, Loader2, AlertCircle, XCircle } from 'lucide-react';
 
 interface LigneProformat {
   id_ligne: number;
@@ -17,11 +16,7 @@ interface LigneProformat {
   statut_diffusion: string;
   date_debut: string;
   date_fin: string;
-  panneau: {
-    id: number;
-    nom: string;
-    adresse: string;
-  };
+  panneau: { id: number; nom: string; adresse: string };
 }
 
 interface ReservationProformat {
@@ -43,6 +38,7 @@ interface ReservationProformat {
 export default function ProformatPreviewPage() {
   const router = useRouter();
   const { getUserName, getUserEmail, user } = useAuth();
+
   const [reservations, setReservations] = useState<ReservationProformat[]>([]);
   const [clientNom, setClientNom] = useState('');
   const [clientId, setClientId] = useState<number | null>(null);
@@ -57,19 +53,22 @@ export default function ProformatPreviewPage() {
     nom: '',
     prenom: '',
     email: '',
-    nomComplet: ''
+    nomComplet: '',
   });
   const [zoom, setZoom] = useState(1);
   const [error, setError] = useState<string | null>(null);
-  const [numeroFacture, setNumeroFacture] = useState<string>('');
+  const [numeroFacture, setNumeroFacture] = useState('');
   const [idFacture, setIdFacture] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [conditions, setConditions] = useState('Paiement à 30 jours');
   const [showValidationModal, setShowValidationModal] = useState(false);
 
-  // ✅ Ref pour éviter les doubles impressions
+  // ✅ Pour éviter les doubles impressions
   const hasPrintedRef = useRef(false);
 
+  // ============================================
+  // ZOOM responsive
+  // ============================================
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 850) {
@@ -83,17 +82,28 @@ export default function ProformatPreviewPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ============================================
+  // CHARGEMENT DU localStorage
+  // ============================================
   useEffect(() => {
     const date = new Date();
     const year = date.getFullYear();
     const random = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
     setNumeroFacture(`PRO-${year}-${random}`);
 
-    const data = typeof window !== "undefined" ? localStorage.getItem('proformat_selected_reservations') : null;
-    const client = typeof window !== "undefined" ? localStorage.getItem('proformat_client_nom') : null;
+    const data =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('proformat_selected_reservations')
+        : null;
+    const client =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('proformat_client_nom')
+        : null;
 
     if (!data || !client) {
-      setError('Aucune donnée trouvée. Veuillez sélectionner des réservations.');
+      setError(
+        'Aucune donnée trouvée. Veuillez sélectionner des réservations depuis la page commerciale.'
+      );
       setLoading(false);
       return;
     }
@@ -101,7 +111,7 @@ export default function ProformatPreviewPage() {
     try {
       const parsed = JSON.parse(data);
 
-      if (parsed.length === 0) {
+      if (!Array.isArray(parsed) || parsed.length === 0) {
         setError('Aucune réservation sélectionnée.');
         setLoading(false);
         return;
@@ -111,7 +121,9 @@ export default function ProformatPreviewPage() {
       const nomCommercial = first.commercial_nom || '';
       const prenomCommercial = first.commercial_prenom || '';
       const emailCommercial = first.commercial_email || '';
-      const nomComplet = first.commercial_nom_complet || `${prenomCommercial} ${nomCommercial}`.trim();
+      const nomComplet =
+        first.commercial_nom_complet ||
+        `${prenomCommercial} ${nomCommercial}`.trim();
 
       const finalNomComplet = getUserName() || nomComplet;
       const finalEmail = getUserEmail() || emailCommercial;
@@ -123,14 +135,14 @@ export default function ProformatPreviewPage() {
         nom: nomCommercial,
         prenom: prenomCommercial,
         email: finalEmail,
-        nomComplet: finalNomComplet
+        nomComplet: finalNomComplet,
       });
 
-      const total = parsed.reduce((sum: number, r: ReservationProformat) => {
-        return sum + (r.prix_saisi || 0);
-      }, 0);
+      const total = parsed.reduce(
+        (sum: number, r: ReservationProformat) => sum + (r.prix_saisi || 0),
+        0
+      );
       setTotalGeneral(total);
-
     } catch (e) {
       console.error('Erreur de chargement:', e);
       setError('Erreur lors du chargement des données.');
@@ -138,7 +150,9 @@ export default function ProformatPreviewPage() {
     setLoading(false);
   }, [getUserName, getUserEmail]);
 
-  // ✅ Fonction de validation complète avant enregistrement
+  // ============================================
+  // VALIDATION
+  // ============================================
   const validateProformat = (): { isValid: boolean; errors: string[] } => {
     const errors: string[] = [];
 
@@ -147,36 +161,50 @@ export default function ProformatPreviewPage() {
     }
 
     const commercialNom = commercialInfo.nomComplet || getUserName();
-    if (!commercialNom || commercialNom === 'Commercial' || commercialNom.trim() === '') {
-      errors.push('❌ Le nom du commercial est requis. Veuillez vous reconnecter.');
+    if (
+      !commercialNom ||
+      commercialNom === 'Commercial' ||
+      commercialNom.trim() === ''
+    ) {
+      errors.push(
+        '❌ Le nom du commercial est requis. Veuillez vous reconnecter.'
+      );
     }
 
     const commercialEmail = commercialInfo.email || getUserEmail();
     if (!commercialEmail || commercialEmail.trim() === '') {
-      errors.push('❌ L\'email du commercial est requis. Veuillez vous reconnecter.');
+      errors.push(
+        "❌ L'email du commercial est requis. Veuillez vous reconnecter."
+      );
     }
 
     if (!reservations || reservations.length === 0) {
       errors.push('❌ Aucune réservation sélectionnée');
     } else {
-      const reservationsSansPrix = reservations.filter(r => !r.prix_saisi || r.prix_saisi <= 0);
-      if (reservationsSansPrix.length > 0) {
-        errors.push(`❌ ${reservationsSansPrix.length} réservation(s) sans prix valide`);
+      const sansPrix = reservations.filter(
+        (r) => !r.prix_saisi || r.prix_saisi <= 0
+      );
+      if (sansPrix.length > 0) {
+        errors.push(`❌ ${sansPrix.length} réservation(s) sans prix valide`);
       }
 
-      const reservationsSansId = reservations.filter(r => !r.id_reservation);
-      if (reservationsSansId.length > 0) {
-        errors.push(`❌ ${reservationsSansId.length} réservation(s) sans ID`);
+      const sansId = reservations.filter((r) => !r.id_reservation);
+      if (sansId.length > 0) {
+        errors.push(`❌ ${sansId.length} réservation(s) sans ID`);
       }
 
-      const reservationsSansLignes = reservations.filter(r => !r.lignes || r.lignes.length === 0);
-      if (reservationsSansLignes.length > 0) {
-        errors.push(`❌ ${reservationsSansLignes.length} réservation(s) sans lignes`);
+      const sansLignes = reservations.filter(
+        (r) => !r.lignes || r.lignes.length === 0
+      );
+      if (sansLignes.length > 0) {
+        errors.push(`❌ ${sansLignes.length} réservation(s) sans lignes`);
       }
 
-      const clientNames = [...new Set(reservations.map(r => r.client_nom))];
+      const clientNames = [...new Set(reservations.map((r) => r.client_nom))];
       if (clientNames.length > 1) {
-        errors.push(`❌ Plusieurs clients différents sélectionnés: ${clientNames.join(', ')}`);
+        errors.push(
+          `❌ Plusieurs clients différents sélectionnés: ${clientNames.join(', ')}`
+        );
       }
     }
 
@@ -184,12 +212,14 @@ export default function ProformatPreviewPage() {
       errors.push('❌ Le total doit être supérieur à 0');
     }
 
-    for (const reservation of reservations) {
-      if (reservation.date_debut_campagne && reservation.date_fin_campagne) {
-        const debut = new Date(reservation.date_debut_campagne);
-        const fin = new Date(reservation.date_fin_campagne);
+    for (const r of reservations) {
+      if (r.date_debut_campagne && r.date_fin_campagne) {
+        const debut = new Date(r.date_debut_campagne);
+        const fin = new Date(r.date_fin_campagne);
         if (debut > fin) {
-          errors.push(`❌ La date de début (${reservation.date_debut_campagne}) est après la date de fin (${reservation.date_fin_campagne})`);
+          errors.push(
+            `❌ La date de début (${r.date_debut_campagne}) est après la date de fin (${r.date_fin_campagne})`
+          );
         }
       }
     }
@@ -197,50 +227,63 @@ export default function ProformatPreviewPage() {
     return { isValid: errors.length === 0, errors };
   };
 
-  // ✅ Fonction pour vérifier les doublons en base de données
-  const checkDuplicate = async (): Promise<{ isDuplicate: boolean; message?: string }> => {
+  // ============================================
+  // DOUBLON
+  // ============================================
+  const checkDuplicate = async (): Promise<{
+    isDuplicate: boolean;
+    message?: string;
+  }> => {
     try {
-      const reservationIds = reservations.map(r => r.id_reservation).join(',');
-
-      const response = await fetch(`/api/facture/check-duplicate?reservations=${reservationIds}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const result = await response.json();
-      return result;
+      const ids = reservations.map((r) => r.id_reservation).join(',');
+      const response = await fetch(
+        `/api/facture/check-duplicate?reservations=${ids}`,
+        { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+      );
+      return await response.json();
     } catch (error) {
       console.error('Erreur vérification doublon:', error);
       return { isDuplicate: false };
     }
   };
 
-  // ✅ Fonction unique : Enregistrer puis imprimer (avec logs détaillés)
-  const handleSaveAndPrint = async () => {
-    console.log('🟢 [1] handleSaveAndPrint appelé, saved =', saved);
-
-    // Si déjà enregistré, imprimer directement
-    if (saved) {
-      console.log('🟢 [2] Déjà enregistré, impression directe');
+  // ============================================
+  // IMPRESSION ROBUSTE
+  // ============================================
+  const triggerPrint = (delay = 300) => {
+    setTimeout(() => {
       try {
+        console.log('🖨️ window.print() appelé');
         window.print();
       } catch (e) {
         console.error('❌ Erreur window.print():', e);
+        alert(
+          "⚠️ Impossible de lancer l'impression. Vérifiez les paramètres de votre navigateur."
+        );
       }
+    }, delay);
+  };
+
+  // ============================================
+  // ENREGISTRER + IMPRIMER
+  // ============================================
+  const handleSaveAndPrint = async () => {
+    console.log('🟢 [1] handleSaveAndPrint, saved =', saved);
+
+    if (saved) {
+      console.log('🟢 [2] Déjà enregistré, impression directe');
+      triggerPrint(200);
       return;
     }
 
     if (saving) {
-      console.log('⏸️ [3] Déjà en cours, on ignore');
+      console.log('⏸️ [3] Déjà en cours');
       return;
     }
 
-    // ✅ Étape 1: Valider les données
-    console.log('🟢 [4] Validation en cours...');
+    console.log('🟢 [4] Validation...');
     const validation = validateProformat();
-    console.log('🟢 [5] Résultat validation:', validation);
+    console.log('🟢 [5] Résultat:', validation);
 
     if (!validation.isValid) {
       console.error('❌ [6] Validation échouée:', validation.errors);
@@ -249,24 +292,23 @@ export default function ProformatPreviewPage() {
       return;
     }
 
-    // ✅ Étape 2: Vérifier les doublons
-    console.log('🟢 [7] Validation OK, vérification doublon...');
+    console.log('🟢 [7] Vérification doublon...');
     setSaving(true);
     setSaveError(null);
     setSaveSuccess(null);
 
     try {
       const duplicateCheck = await checkDuplicate();
-      console.log('🟢 [8] Résultat checkDuplicate:', duplicateCheck);
+      console.log('🟢 [8] Doublon:', duplicateCheck);
 
       if (duplicateCheck.isDuplicate) {
-        console.error('❌ [9] Doublon détecté');
-        setSaveError(`⚠️ ${duplicateCheck.message || 'Une facture existe déjà pour ces réservations'}`);
+        setSaveError(
+          `⚠️ ${duplicateCheck.message || 'Une facture existe déjà pour ces réservations'}`
+        );
         setSaving(false);
         return;
       }
 
-      // ✅ Étape 3: Préparer les données pour l'API
       const commercialNom = commercialInfo.nomComplet || getUserName();
       const commercialEmail = commercialInfo.email || getUserEmail();
 
@@ -276,7 +318,7 @@ export default function ProformatPreviewPage() {
         commercial_nom: commercialNom,
         commercial_email: commercialEmail,
         commercial_id: user?.id || null,
-        reservations: reservations.map(r => ({
+        reservations: reservations.map((r) => ({
           id_reservation: r.id_reservation,
           numero_commande: r.numero_commande,
           id_face: r.lignes[0]?.id_face || null,
@@ -288,50 +330,45 @@ export default function ProformatPreviewPage() {
           type_face: r.lignes[0]?.type_face || '',
           date_debut: r.date_debut_campagne,
           date_fin: r.date_fin_campagne,
-          currency: 'CDF'
+          currency: 'CDF',
         })),
         total: totalGeneral,
         currency: 'CDF',
-        notes: notes,
-        conditions_paiement: conditions
+        notes,
+        conditions_paiement: conditions,
       };
 
-      console.log('🟢 [10] Envoi POST /api/facture:', factureData);
+      console.log('🟢 [10] Envoi POST /api/facture');
 
       const response = await fetch('/api/facture', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(factureData),
       });
 
-      console.log('🟢 [11] Réponse status:', response.status);
+      console.log('🟢 [11] Status:', response.status);
       const result = await response.json();
-      console.log('🟢 [12] Réponse body:', result);
+      console.log('🟢 [12] Body:', result);
 
       if (response.ok && result.success) {
         setSaved(true);
-        setSaveSuccess(`✅ Proformat enregistré avec succès ! N°: ${result.data.numero_facture}`);
+        setSaveSuccess(
+          `✅ Proformat enregistré avec succès ! N°: ${result.data.numero_facture}`
+        );
         setNumeroFacture(result.data.numero_facture);
         setIdFacture(result.data.id_facture);
 
         localStorage.setItem('last_facture_id', result.data.id_facture);
         localStorage.setItem('last_facture_numero', result.data.numero_facture);
 
-        // ✅ Attendre le re-render React PUIS imprimer
-        console.log('🟢 [13] Programmation impression dans 1200ms');
-        setTimeout(() => {
-          try {
-            console.log('🟢 [14] Appel window.print() maintenant');
-            window.print();
-          } catch (e) {
-            console.error('❌ [14-bis] Erreur window.print():', e);
-          }
-        }, 1200);
-
+        // ✅ Impression auto APRÈS re-render
+        console.log('🟢 [13] Impression programmée');
+        triggerPrint(1200);
       } else {
-        setSaveError(result.message || '❌ Erreur lors de l\'enregistrement du proformat');
+        setSaveError(
+          result.message || "❌ Erreur lors de l'enregistrement du proformat"
+        );
         console.error('❌ [13-bis] Erreur API:', result);
       }
     } catch (error: any) {
@@ -342,14 +379,12 @@ export default function ProformatPreviewPage() {
     }
   };
 
-  // ✅ Fallback : force l'impression même si l'auto-print échoue
+  // ============================================
+  // IMPRESSION MANUELLE
+  // ============================================
   const handleManualPrint = () => {
-    console.log('🖨️ Impression manuelle demandée');
-    try {
-      window.print();
-    } catch (e) {
-      console.error('❌ Erreur impression manuelle:', e);
-    }
+    console.log('🖨️ Impression manuelle');
+    triggerPrint(100);
   };
 
   const handleRetour = () => {
@@ -362,13 +397,16 @@ export default function ProformatPreviewPage() {
       return new Date(dateStr).toLocaleDateString('fr-FR', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric'
+        year: 'numeric',
       });
     } catch {
       return dateStr;
     }
   };
 
+  // ============================================
+  // AFFICHAGES D'ERREUR / CHARGEMENT
+  // ============================================
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -415,21 +453,30 @@ export default function ProformatPreviewPage() {
     );
   }
 
+  // ============================================
+  // RENDU PRINCIPAL
+  // ============================================
   return (
     <div className="page-container">
-      {/* ✅ Modal de validation */}
+      {/* Modal validation */}
       {showValidationModal && (
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="modal-header">
               <XCircle size={24} className="text-red-500" />
-              <h2 className="text-xl font-bold text-red-600">Validation échouée</h2>
+              <h2 className="text-xl font-bold text-red-600">
+                Validation échouée
+              </h2>
             </div>
             <div className="modal-body">
-              <p className="text-gray-600 mb-3">Veuillez corriger les erreurs suivantes :</p>
+              <p className="text-gray-600 mb-3">
+                Veuillez corriger les erreurs suivantes :
+              </p>
               <ul className="error-list">
                 {validationErrors.map((err, idx) => (
-                  <li key={idx} className="error-item">{err}</li>
+                  <li key={idx} className="error-item">
+                    {err}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -445,14 +492,13 @@ export default function ProformatPreviewPage() {
         </div>
       )}
 
-      {/* ✅ Barre d'actions */}
+      {/* Barre d'actions */}
       <div className="no-print mobile-actions">
         <button className="btn-back" onClick={handleRetour}>
           <ArrowLeft size={16} className="mr-2" />
           RETOUR
         </button>
 
-        {/* ✅ Bouton principal : Enregistrer & Imprimer */}
         <button
           className={`btn-action ${saved ? 'btn-print-mode' : 'btn-save-mode'}`}
           onClick={handleSaveAndPrint}
@@ -476,7 +522,6 @@ export default function ProformatPreviewPage() {
           )}
         </button>
 
-        {/* ✅ Bouton fallback : impression manuelle (toujours visible si enregistré) */}
         {saved && (
           <button
             className="btn-manual-print"
@@ -496,7 +541,7 @@ export default function ProformatPreviewPage() {
         )}
       </div>
 
-      {/* ✅ Messages */}
+      {/* Messages */}
       {saveSuccess && (
         <div className="no-print success-message">
           <CheckCircle size={18} className="mr-2" />
@@ -507,49 +552,80 @@ export default function ProformatPreviewPage() {
         <div className="no-print error-message">
           <AlertCircle size={18} className="mr-2" />
           {saveError}
-          <button onClick={() => setSaveError(null)} className="ml-4 text-white underline">Fermer</button>
+          <button
+            onClick={() => setSaveError(null)}
+            className="ml-4 text-white underline"
+          >
+            Fermer
+          </button>
         </div>
       )}
 
-      <div className="zoom-wrapper" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
+      {/* ✅ Feuille A4 */}
+      <div
+        className="zoom-wrapper"
+        style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
+      >
         <div className="sheet">
-          {/* 📅 DATE */}
-          <div style={{
-            position: 'absolute',
-            top: '66mm',
-            left: '155mm',
-            fontSize: '17px',
-            fontFamily: "'Courier New', Courier, monospace"
-          }}>
+          {/* DATE */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '66mm',
+              left: '155mm',
+              fontSize: '17px',
+              fontFamily: "'Courier New', Courier, monospace",
+            }}
+          >
             {new Date().toLocaleDateString('fr-FR')}
           </div>
 
-          {/* 🏢 NUMÉRO PROFORMAT */}
-          <div style={{
-            position: 'absolute',
-            top: '76mm',
-            left: '50mm',
-            fontSize: '18px',
-            fontWeight: 'bold',
-            color: saved ? '#003366' : '#000',
-            fontFamily: "'Courier New', Courier, monospace"
-          }}>
-            {saved ? numeroFacture : `PRO-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`}
+          {/* NUMÉRO PROFORMAT */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '76mm',
+              left: '50mm',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              color: saved ? '#003366' : '#000',
+              fontFamily: "'Courier New', Courier, monospace",
+            }}
+          >
+            {saved
+              ? numeroFacture
+              : `PRO-${new Date().getFullYear()}-${String(
+                  Math.floor(Math.random() * 10000)
+                ).padStart(4, '0')}`}
           </div>
 
-          {/* 👤 INFOS CLIENT */}
-          <div style={{
-            position: 'absolute',
-            top: '75mm',
-            left: '135mm',
-            width: '60mm',
-            lineHeight: '1.5',
-            fontFamily: "'Courier New', Courier, monospace"
-          }}>
-            <div style={{ fontWeight: 'bold', fontSize: '14px', textTransform: 'uppercase' }}>
+          {/* INFOS CLIENT */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '75mm',
+              left: '135mm',
+              width: '60mm',
+              lineHeight: '1.5',
+              fontFamily: "'Courier New', Courier, monospace",
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 'bold',
+                fontSize: '14px',
+                textTransform: 'uppercase',
+              }}
+            >
               {clientNom}
             </div>
-            <div style={{ marginTop: '3mm', fontSize: '10px', textTransform: 'uppercase' }}>
+            <div
+              style={{
+                marginTop: '3mm',
+                fontSize: '10px',
+                textTransform: 'uppercase',
+              }}
+            >
               Établi par : {commercialInfo.nomComplet}
             </div>
             <div style={{ fontSize: '10px', color: '#333' }}>
@@ -557,59 +633,112 @@ export default function ProformatPreviewPage() {
             </div>
           </div>
 
-          {/* 📋 TABLEAU DES LIGNES */}
-          <div style={{
-            position: 'absolute',
-            top: '110mm',
-            left: '10mm',
-            width: '180mm',
-            fontFamily: "'Courier New', Courier, monospace",
-            maxHeight: '130mm',
-            overflow: 'hidden'
-          }}>
+          {/* TABLEAU */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '110mm',
+              left: '10mm',
+              width: '180mm',
+              fontFamily: "'Courier New', Courier, monospace",
+              maxHeight: '130mm',
+              overflow: 'hidden',
+            }}
+          >
             {reservations.map((reservation, idx) => (
               <div key={idx} style={{ marginBottom: '2mm' }}>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '1mm 0',
-                  borderBottom: '1px dashed #ccc',
-                  fontSize: '9px',
-                  fontWeight: 'bold',
-                  height: '6mm',
-                  alignItems: 'center'
-                }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '1mm 0',
+                    borderBottom: '1px dashed #ccc',
+                    fontSize: '9px',
+                    fontWeight: 'bold',
+                    height: '6mm',
+                    alignItems: 'center',
+                  }}
+                >
                   <span>{reservation.numero_commande}</span>
-                  <span>{reservation.prix_saisi?.toLocaleString()} FCFA/mois</span>
+                  <span>
+                    {reservation.prix_saisi?.toLocaleString()} FCFA/mois
+                  </span>
                 </div>
 
                 {reservation.lignes.map((ligne, lIdx) => (
-                  <div key={lIdx} style={{
-                    display: 'flex',
-                    height: '10mm',
-                    alignItems: 'flex-start',
-                    fontSize: '9px',
-                    paddingLeft: '5mm',
-                    borderBottom: lIdx === reservation.lignes.length - 1 ? 'none' : '1px solid #f0f0f0'
-                  }}>
-                    <div style={{ width: '22mm', textAlign: 'center', paddingTop: '2mm' }}>
+                  <div
+                    key={lIdx}
+                    style={{
+                      display: 'flex',
+                      height: '10mm',
+                      alignItems: 'flex-start',
+                      fontSize: '9px',
+                      paddingLeft: '5mm',
+                      borderBottom:
+                        lIdx === reservation.lignes.length - 1
+                          ? 'none'
+                          : '1px solid #f0f0f0',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '22mm',
+                        textAlign: 'center',
+                        paddingTop: '2mm',
+                      }}
+                    >
                       1
                     </div>
-                    <div style={{ width: '105mm', paddingLeft: '3mm', paddingTop: '2mm', lineHeight: '1.2' }}>
-                      <div style={{ fontWeight: 'bold', textTransform: 'uppercase', fontSize: '8px' }}>
-                        {ligne.panneau?.nom || 'Panneau'} - Face {ligne.orientation || 'N/A'}
+                    <div
+                      style={{
+                        width: '105mm',
+                        paddingLeft: '3mm',
+                        paddingTop: '2mm',
+                        lineHeight: '1.2',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 'bold',
+                          textTransform: 'uppercase',
+                          fontSize: '8px',
+                        }}
+                      >
+                        {ligne.panneau?.nom || 'Panneau'} - Face{' '}
+                        {ligne.orientation || 'N/A'}
                       </div>
                       <div style={{ fontSize: '8px', color: '#111' }}>
                         {ligne.panneau?.adresse || ''}
                       </div>
-                      <div style={{ fontSize: '7px', fontStyle: 'italic', color: '#666' }}>
-                        Type: {ligne.type_face || 'Vinyle'} | {formatDate(ligne.date_debut)} → {formatDate(ligne.date_fin)}
+                      <div
+                        style={{
+                          fontSize: '7px',
+                          fontStyle: 'italic',
+                          color: '#666',
+                        }}
+                      >
+                        Type: {ligne.type_face || 'Vinyle'} |{' '}
+                        {formatDate(ligne.date_debut)} →{' '}
+                        {formatDate(ligne.date_fin)}
                       </div>
                     </div>
-                    <div style={{ width: '25mm', textAlign: 'right', paddingRight: '3mm', paddingTop: '2mm' }}>
+                    <div
+                      style={{
+                        width: '25mm',
+                        textAlign: 'right',
+                        paddingRight: '3mm',
+                        paddingTop: '2mm',
+                      }}
+                    >
                       {reservation.prix_saisi?.toLocaleString()}
                     </div>
-                    <div style={{ width: '28mm', textAlign: 'right', paddingTop: '2mm' }}>
+                    <div
+                      style={{
+                        width: '28mm',
+                        textAlign: 'right',
+                        paddingTop: '2mm',
+                      }}
+                    >
                       {reservation.prix_saisi?.toLocaleString()}
                     </div>
                   </div>
@@ -618,31 +747,35 @@ export default function ProformatPreviewPage() {
             ))}
           </div>
 
-          {/* 💰 TOTAL À PAYER */}
-          <div style={{
-            position: 'absolute',
-            top: '250mm',
-            left: '160mm',
-            width: '30mm',
-            textAlign: 'right',
-            fontWeight: 'bold',
-            fontSize: '16px',
-            fontFamily: "'Courier New', Courier, monospace",
-            color: saved ? '#003366' : '#000'
-          }}>
+          {/* TOTAL */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '250mm',
+              left: '160mm',
+              width: '30mm',
+              textAlign: 'right',
+              fontWeight: 'bold',
+              fontSize: '16px',
+              fontFamily: "'Courier New', Courier, monospace",
+              color: saved ? '#003366' : '#000',
+            }}
+          >
             {totalGeneral.toLocaleString()} FCFA
           </div>
 
-          {/* 📝 CONDITIONS ET NOTES */}
-          <div style={{
-            position: 'absolute',
-            top: '260mm',
-            left: '10mm',
-            width: '180mm',
-            fontSize: '7px',
-            color: '#666',
-            fontFamily: "'Courier New', Courier, monospace"
-          }}>
+          {/* CONDITIONS / NOTES */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '260mm',
+              left: '10mm',
+              width: '180mm',
+              fontSize: '7px',
+              color: '#666',
+              fontFamily: "'Courier New', Courier, monospace",
+            }}
+          >
             <div className="no-print" style={{ marginBottom: '2mm' }}>
               <textarea
                 value={notes}
@@ -656,7 +789,7 @@ export default function ProformatPreviewPage() {
                   fontSize: '8px',
                   fontFamily: 'inherit',
                   resize: 'vertical',
-                  minHeight: '15mm'
+                  minHeight: '15mm',
                 }}
               />
               <input
@@ -671,30 +804,57 @@ export default function ProformatPreviewPage() {
                   borderRadius: '2px',
                   fontSize: '8px',
                   fontFamily: 'inherit',
-                  marginTop: '1mm'
+                  marginTop: '1mm',
                 }}
               />
             </div>
             <div className="print-only">
-              <p style={{ margin: '0.5mm 0' }}>{conditions || 'Paiement à 30 jours'}</p>
-              {notes && <p style={{ margin: '0.5mm 0', fontStyle: 'italic' }}>{notes}</p>}
+              <p style={{ margin: '0.5mm 0' }}>
+                {conditions || 'Paiement à 30 jours'}
+              </p>
+              {notes && (
+                <p style={{ margin: '0.5mm 0', fontStyle: 'italic' }}>
+                  {notes}
+                </p>
+              )}
             </div>
           </div>
 
-          {/* ✍️ SIGNATURES */}
-          <div style={{
-            position: 'absolute',
-            top: '280mm',
-            left: '10mm',
-            width: '180mm',
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontFamily: "'Courier New', Courier, monospace"
-          }}>
+          {/* SIGNATURES */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '280mm',
+              left: '10mm',
+              width: '180mm',
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontFamily: "'Courier New', Courier, monospace",
+            }}
+          >
             <div style={{ width: '80mm' }}>
-              <p style={{ fontSize: '7px', color: '#666', marginBottom: '2mm' }}>Signature du commercial</p>
-              <div style={{ borderBottom: '1px solid #999', height: '10mm' }}></div>
-              <p style={{ fontSize: '8px', fontWeight: 'bold', marginTop: '1mm' }}>
+              <p
+                style={{
+                  fontSize: '7px',
+                  color: '#666',
+                  marginBottom: '2mm',
+                }}
+              >
+                Signature du commercial
+              </p>
+              <div
+                style={{
+                  borderBottom: '1px solid #999',
+                  height: '10mm',
+                }}
+              ></div>
+              <p
+                style={{
+                  fontSize: '8px',
+                  fontWeight: 'bold',
+                  marginTop: '1mm',
+                }}
+              >
                 {commercialInfo.nomComplet}
               </p>
               <p style={{ fontSize: '7px', color: '#666' }}>
@@ -702,32 +862,56 @@ export default function ProformatPreviewPage() {
               </p>
             </div>
             <div style={{ width: '80mm' }}>
-              <p style={{ fontSize: '7px', color: '#666', marginBottom: '2mm' }}>Signature du client</p>
-              <div style={{ borderBottom: '1px solid #999', height: '10mm' }}></div>
-              <p style={{ fontSize: '8px', fontWeight: 'bold', marginTop: '1mm' }}>Bon pour accord</p>
+              <p
+                style={{
+                  fontSize: '7px',
+                  color: '#666',
+                  marginBottom: '2mm',
+                }}
+              >
+                Signature du client
+              </p>
+              <div
+                style={{
+                  borderBottom: '1px solid #999',
+                  height: '10mm',
+                }}
+              ></div>
+              <p
+                style={{
+                  fontSize: '8px',
+                  fontWeight: 'bold',
+                  marginTop: '1mm',
+                }}
+              >
+                Bon pour accord
+              </p>
               <p style={{ fontSize: '7px', color: '#666' }}>{clientNom}</p>
             </div>
           </div>
 
           {/* Pied de page */}
-          <div style={{
-            position: 'absolute',
-            bottom: '5mm',
-            left: '10mm',
-            width: '190mm',
-            textAlign: 'center',
-            fontSize: '5px',
-            color: '#999',
-            fontFamily: "'Courier New', Courier, monospace",
-            borderTop: '1px solid #eee',
-            paddingTop: '1mm'
-          }}>
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '5mm',
+              left: '10mm',
+              width: '190mm',
+              textAlign: 'center',
+              fontSize: '5px',
+              color: '#999',
+              fontFamily: "'Courier New', Courier, monospace",
+              borderTop: '1px solid #eee',
+              paddingTop: '1mm',
+            }}
+          >
             {saved ? `✅ Enregistré sous N° ${numeroFacture} - ` : ''}
             Document généré automatiquement - {new Date().toLocaleString()}
           </div>
         </div>
       </div>
 
+      {/* STYLES */}
       <style jsx>{`
         .page-container {
           background-color: #525659;
@@ -746,7 +930,7 @@ export default function ProformatPreviewPage() {
           width: 210mm;
           height: 297mm;
           position: relative;
-          box-shadow: 0 0 15px rgba(0,0,0,0.5);
+          box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
           color: black;
           font-family: 'Courier New', Courier, monospace;
           overflow: hidden;
@@ -763,7 +947,7 @@ export default function ProformatPreviewPage() {
           justify-content: center;
           align-items: center;
           gap: 15px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
           flex-wrap: wrap;
         }
         .btn-back {
@@ -874,10 +1058,7 @@ export default function ProformatPreviewPage() {
         }
         .modal-overlay {
           position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
+          inset: 0;
           background: rgba(0, 0, 0, 0.6);
           z-index: 1000;
           display: flex;
@@ -909,9 +1090,6 @@ export default function ProformatPreviewPage() {
         .modal-body {
           padding: 20px 24px;
         }
-        .modal-body p {
-          margin-top: 0;
-        }
         .error-list {
           list-style: none;
           padding: 0;
@@ -940,12 +1118,7 @@ export default function ProformatPreviewPage() {
           border-radius: 8px;
           font-weight: bold;
           cursor: pointer;
-          transition: background 0.2s;
         }
-        .btn-modal-close:hover {
-          background: #2563eb;
-        }
-
         @keyframes slideUp {
           from {
             opacity: 0;
@@ -957,10 +1130,13 @@ export default function ProformatPreviewPage() {
           }
         }
         @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
         }
-
         @keyframes slideDown {
           from {
             opacity: 0;
@@ -972,18 +1148,49 @@ export default function ProformatPreviewPage() {
           }
         }
         @media print {
-          .page-container { background: none; padding: 0; display: block; }
-          .zoom-wrapper { transform: none !important; margin: 0 !important; }
-          .sheet { box-shadow: none; margin: 0; width: 100%; height: 100vh; }
-          .no-print { display: none !important; }
-          .print-only { display: block !important; }
+          .page-container {
+            background: none;
+            padding: 0;
+            display: block;
+          }
+          .zoom-wrapper {
+            transform: none !important;
+            margin: 0 !important;
+          }
+          .sheet {
+            box-shadow: none;
+            margin: 0;
+            width: 100%;
+            height: 100vh;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .print-only {
+            display: block !important;
+          }
         }
-        .print-only { display: none; }
+        .print-only {
+          display: none;
+        }
         @media (max-width: 600px) {
-          .btn-back, .btn-action { padding: 8px 12px; font-size: 12px; min-width: 140px; }
-          .mobile-actions { flex-wrap: wrap; gap: 8px; }
-          .status-badge { font-size: 10px; padding: 4px 10px; }
-          .modal-content { max-width: 95%; }
+          .btn-back,
+          .btn-action {
+            padding: 8px 12px;
+            font-size: 12px;
+            min-width: 140px;
+          }
+          .mobile-actions {
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+          .status-badge {
+            font-size: 10px;
+            padding: 4px 10px;
+          }
+          .modal-content {
+            max-width: 95%;
+          }
         }
       `}</style>
     </div>

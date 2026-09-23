@@ -1,97 +1,152 @@
-const CACHE_NAME = 'panneaux-v2'; // ⬆️ On incrémente pour forcer la mise à jour
-const urlsToCache = ['/', '/index.html', '/manifest.json'];
+// public/service-worker.js
+// ============================================
+// SERVICE WORKER — FORCE LA MISE À JOUR
+// ⚠️ IMPORTANT : change CACHE_VERSION à CHAQUE déploiement
+// ============================================
 
-// ─────────────────────────────────────────────────────────
-// INSTALLATION : on met en cache uniquement les fichiers statiques
-// ─────────────────────────────────────────────────────────
+const CACHE_VERSION = 'panneaux-v4-2025-01-16';  // ← CHANGE à chaque déploiement !
+const CACHE_NAME = CACHE_VERSION;
+
+const STATIC_ASSETS = ['/', '/manifest.json', '/favicon.ico'];
+
+// ============================================
+// INSTALL — Active immédiatement
+// ============================================
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
-  );
+  console.log(`🔧 [SW] Installation ${CACHE_VERSION}`);
+  // ⚡ Ne pas attendre la fermeture des onglets
   self.skipWaiting();
-});
 
-// ─────────────────────────────────────────────────────────
-// ACTIVATION : on supprime les anciens caches (v1, etc.)
-// ─────────────────────────────────────────────────────────
-self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((key) => key !== CACHE_NAME)
-          .map((key) => caches.delete(key))
-      )
-    ).then(() => self.clients.claim())
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(STATIC_ASSETS).catch((err) => {
+        console.warn('⚠️ [SW] Pré-cache partiel:', err);
+      })
+    )
   );
 });
 
-// ─────────────────────────────────────────────────────────
-// FETCH : on filtre les requêtes à intercepter
-// ─────────────────────────────────────────────────────────
+// ============================================
+// ACTIVATE — Nettoie TOUS les anciens caches
+// ============================================
+self.addEventListener('activate', (event) => {
+  console.log(`🚀 [SW] Activation ${CACHE_VERSION}`);
+
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => {
+              console.log(`🗑️ [SW] Suppression cache obsolète: ${key}`);
+              return caches.delete(key);
+            })
+        )
+      )
+      .then(() => {
+        // ⚡ Prend le contrôle de TOUS les onglets ouverts
+        return self.clients.claim();
+      })
+      .then(() => {
+        // 📢 Prévenir tous les onglets qu'une nouvelle version est active
+        return self.clients.matchAll({ type: 'window' }).then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({
+              type: 'SW_UPDATED',
+              version: CACHE_VERSION,
+            });
+          });
+        });
+      })
+  );
+});
+
+// ============================================
+// FETCH — Ne jamais cacher les pages dynamiques
+// ============================================
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // 1️⃣ Ignorer tout ce qui n'est pas GET (POST, PUT, DELETE…)
   if (request.method !== 'GET') return;
-
-  // 2️⃣ Ignorer les autres origines (CDN, API externe, etc.)
   if (url.origin !== self.location.origin) return;
-
-  // 3️⃣ ⛔ NE JAMAIS intercepter les routes d'authentification
   if (
-    url.pathname.startsWith('/login') ||
-    url.pathname.startsWith('/auth/') ||
-    url.pathname.startsWith('/api/')
+    url.protocol === 'chrome-extension:' ||
+    url.protocol === 'moz-extension:'
   ) {
-    return; // laisse le navigateur gérer normalement
-  }
-
-  // 4️⃣ Ignorer les extensions navigateur / devtools
-  if (url.protocol === 'chrome-extension:' || url.protocol === 'moz-extension:') {
     return;
   }
 
-  // 5️⃣ Stratégie "network-first" pour le HTML (toujours frais),
-  //    "cache-first" pour le reste (JS, CSS, images…)
+  const NEVER_CACHE = [
+    '/api/',
+    '/auth/',
+    '/login',
+    '/reset-password',
+    '/dashboard/',
+    '/proformat/',
+    '/facture/',
+    '/notifications/',
+    '/_next/data/',
+    '/sw.js',
+    '/service-worker.js',
+  ];
+
+  if (NEVER_CACHE.some((path) => url.pathname.startsWith(path))) {
+    return; // réseau uniquement
+  }
+
   const isHTML = request.headers.get('accept')?.includes('text/html');
 
   if (isHTML) {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // On met à jour le cache avec la version fraîche
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        })
-        .catch(() => caches.match(request)) // fallback hors-ligne
-    );
-  } else {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request)
-          .then((response) => {
-            // On ne met en cache que les réponses valides
-            if (!response || response.status !== 200 || response.type === 'opaqueredirect') {
-              return response;
-            }
+          if (response && response.status === 200) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-            return response;
-          })
-          .catch(() => {
-            // En dernier recours, on ne peut rien renvoyer
-            // (évite l'Uncaught TypeError: Failed to fetch)
-            return new Response('Hors ligne', {
-              status: 503,
-              statusText: 'Service Unavailable',
-              headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-            });
-          });
-      })
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(request).then((c) => c || caches.match('/'))
+        )
     );
+    return;
+  }
+
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        if (
+          response &&
+          response.status === 200 &&
+          response.type === 'basic'
+        ) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      })
+      .catch(() =>
+        caches.match(request).then((cached) => {
+          if (cached) return cached;
+          return new Response('Hors ligne', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          });
+        })
+      )
+  );
+});
+
+// ============================================
+// MESSAGE — Force la mise à jour
+// ============================================
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
   }
 });
