@@ -3,9 +3,8 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Eye, MapPin, Calendar, Building2, ChevronDown, ChevronRight,
-  User, Clock, Ruler, AlertTriangle, AlertCircle, ShieldAlert, XCircle, Timer,
-  Layout, LayoutGrid, Grid, Layers, Box, ShoppingCart, CheckCircle
+  Eye, Calendar, Building2, User, AlertTriangle, AlertCircle, XCircle, Timer,
+  Layout, LayoutGrid, Grid, Layers, Box, ShoppingCart, CheckCircle, ChevronDown, MapPin
 } from 'lucide-react';
 import { CommercialPanneau, CommercialFace } from '../types/commercial.types';
 import { useCart } from '@/context/CartContext';
@@ -24,9 +23,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
   const { addItem, removeItem, isInCart, items } = useCart();
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000);
+    const interval = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -36,13 +33,9 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
 
   const togglePanneau = (id: string) => {
     setExpandedPanneaux((prev) => {
-      const newExpanded = new Set(prev);
-      if (newExpanded.has(id)) {
-        newExpanded.delete(id);
-      } else {
-        newExpanded.add(id);
-      }
-      return newExpanded;
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
     });
   };
 
@@ -80,91 +73,54 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
   };
 
   const getTypeFaceIcon = (type: string) => {
-    const typeLower = type?.toLowerCase() || '';
-    if (typeLower.includes('classique') || typeLower.includes('standard')) {
-      return <Layout size={16} className="text-gray-500" />;
-    }
-    if (typeLower.includes('scroller') || typeLower.includes('défileur')) {
-      return <LayoutGrid size={16} className="text-blue-500" />;
-    }
-    if (typeLower.includes('digital') || typeLower.includes('led') || typeLower.includes('lcd')) {
-      return <Grid size={16} className="text-purple-500" />;
-    }
-    if (typeLower.includes('panoramique')) {
-      return <Layers size={16} className="text-green-500" />;
-    }
-    if (typeLower.includes('lumineux')) {
-      return <Grid size={16} className="text-orange-500" />;
-    }
-    if (typeLower.includes('bâche') || typeLower.includes('bache')) {
-      return <Layout size={16} className="text-teal-500" />;
-    }
-    if (typeLower.includes('trivision')) {
-      return <Layers size={16} className="text-indigo-500" />;
-    }
+    const t = type?.toLowerCase() || '';
+    if (t.includes('classique') || t.includes('standard')) return <Layout size={16} className="text-gray-500" />;
+    if (t.includes('scroller') || t.includes('défileur')) return <LayoutGrid size={16} className="text-blue-500" />;
+    if (t.includes('digital') || t.includes('led') || t.includes('lcd')) return <Grid size={16} className="text-purple-500" />;
+    if (t.includes('panoramique')) return <Layers size={16} className="text-green-500" />;
+    if (t.includes('lumineux')) return <Grid size={16} className="text-orange-500" />;
+    if (t.includes('bâche') || t.includes('bache')) return <Layout size={16} className="text-teal-500" />;
+    if (t.includes('trivision')) return <Layers size={16} className="text-indigo-500" />;
     return <Box size={16} className="text-gray-400" />;
   };
 
   const getDimensionM2 = (face: CommercialFace): string => {
-    if ((face as any).dimension_m2) {
-      return (face as any).dimension_m2;
-    }
-    const hauteur = (face as any).hauteur_cm || 0;
-    const largeur = (face as any).largeur_cm || 0;
-    if (hauteur > 0 && largeur > 0) {
-      const m2 = (hauteur * largeur) / 10000;
-      return m2.toFixed(2) + ' m²';
-    }
+    if ((face as any).dimension_m2) return (face as any).dimension_m2;
+    const h = (face as any).hauteur_cm || 0;
+    const l = (face as any).largeur_cm || 0;
+    if (h > 0 && l > 0) return ((h * l) / 10000).toFixed(2) + ' m²';
     return 'N/A';
   };
 
-  const isReservationPending = (reservation: any): boolean => {
-    if (!reservation) return false;
-    const statut = reservation.statut || '';
-    return statut === 'En attente' || statut === 'En attente de validation';
+  const isReservationPending = (r: any): boolean => {
+    if (!r) return false;
+    return r.statut === 'En attente' || r.statut === 'En attente de validation';
   };
 
-  const hasProblem = (face: CommercialFace): boolean => {
-    return face.a_probleme === 1;
-  };
+  const hasProblem = (face: CommercialFace): boolean => face.a_probleme === 1;
 
   const getClientFullName = (face: CommercialFace): string => {
-    if (face.client_prenom && face.client_nom) {
-      return `${face.client_prenom} ${face.client_nom}`;
-    }
+    if (face.client_prenom && face.client_nom) return `${face.client_prenom} ${face.client_nom}`;
     return face.client_nom || 'N/A';
   };
 
   const getCommercialFullName = (face: CommercialFace): string => {
-    if (face.commercial_prenom && face.commercial_nom) {
-      return `${face.commercial_prenom} ${face.commercial_nom}`;
-    }
+    if (face.commercial_prenom && face.commercial_nom) return `${face.commercial_prenom} ${face.commercial_nom}`;
     return face.commercial_nom || 'N/A';
   };
 
   const formatDate = (date: string | null): string => {
     if (!date) return '-';
     try {
-      const d = new Date(date);
-      return d.toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    } catch {
-      return date;
-    }
+      return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch { return date; }
   };
 
-  const getDuration = (dateDebut: string | null, dateFin: string | null): number | null => {
-    if (!dateDebut || !dateFin) return null;
+  const getDuration = (d1: string | null, d2: string | null): number | null => {
+    if (!d1 || !d2) return null;
     try {
-      const debut = new Date(dateDebut);
-      const fin = new Date(dateFin);
-      return Math.ceil((fin.getTime() - debut.getTime()) / (1000 * 60 * 60 * 24));
-    } catch {
-      return null;
-    }
+      return Math.ceil((new Date(d2).getTime() - new Date(d1).getTime()) / (1000 * 60 * 60 * 24));
+    } catch { return null; }
   };
 
   const getTimerColor = (hours: number) => {
@@ -177,19 +133,14 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
 
   const handleToggleCart = (panneau: CommercialPanneau, face: CommercialFace, e: React.MouseEvent) => {
     e.stopPropagation();
-
     if (hasProblem(face)) {
       alert('❌ Impossible d\'ajouter cette face au panier car elle a un problème.');
       return;
     }
-
     const faceId = typeof face.id_face === 'number' ? face.id_face : parseInt(String(face.id_face) || '0');
     const panneauId = typeof panneau.idPan === 'number' ? panneau.idPan : parseInt(String(panneau.idPan) || '0');
 
-    if (isInCart(faceId)) {
-      removeItem(faceId);
-      return;
-    }
+    if (isInCart(faceId)) { removeItem(faceId); return; }
 
     const cartItem: CartItem = {
       id_face: faceId,
@@ -208,9 +159,8 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
       hauteur_cm: (face as any).hauteur_cm || 0,
       largeur_cm: (face as any).largeur_cm || 0,
       id_face_original: faceId,
-      currency: 'USD' as Currency
+      currency: 'USD' as Currency,
     };
-
     addItem(cartItem);
   };
 
@@ -222,7 +172,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto" />
         <p className="mt-4 text-gray-600">Chargement des panneaux...</p>
       </div>
     );
@@ -238,376 +188,435 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
     );
   }
 
+  // ============================================
+  // ✅ RENDU D'UNE FACE (utilisé en mobile et desktop)
+  // ============================================
+  const renderFaceActions = (panneau: CommercialPanneau, face: CommercialFace, faceHasProblem: boolean, inCart: boolean) => (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <button
+        onClick={(e) => { e.stopPropagation(); onFaceClick(panneau, face); }}
+        className="px-2.5 py-1.5 bg-blue-100 text-blue-700 rounded text-sm font-bold hover:bg-blue-200 transition"
+        title="Voir les détails"
+      >
+        <Eye size={14} className="inline" />
+      </button>
+
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!faceHasProblem) onReserveClick(panneau, face);
+        }}
+        disabled={faceHasProblem}
+        className={`px-2.5 py-1.5 rounded text-sm font-bold transition ${
+          faceHasProblem
+            ? 'bg-red-200 text-red-500 cursor-not-allowed border border-red-300'
+            : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+        }`}
+        title={faceHasProblem ? '❌ Réservation impossible' : 'Réserver cette face'}
+      >
+        <Calendar size={14} className="inline" />
+        <span className="ml-1">{faceHasProblem ? '❌' : 'Réserver'}</span>
+      </button>
+
+      <button
+        onClick={(e) => handleToggleCart(panneau, face, e)}
+        disabled={faceHasProblem}
+        className={`px-2.5 py-1.5 rounded text-sm font-bold transition flex items-center gap-1 ${
+          faceHasProblem
+            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            : inCart
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+        }`}
+        title={faceHasProblem ? '❌ Face avec problème' : inCart ? 'Retirer du panier' : 'Ajouter au panier'}
+      >
+        {inCart ? (<><CheckCircle size={14} /> ✓</>) : (<><ShoppingCart size={14} /> +</>)}
+      </button>
+    </div>
+  );
+
   return (
     <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-      {/* ✅ CONTENEUR SCROLLABLE INTERNE : le scroll vertical ET horizontal se fait ici */}
-      <div className="overflow-auto max-h-[calc(100vh-280px)] min-h-[400px]">
-        <table className="w-full min-w-[1900px] border-collapse">
-          {/* ✅ HEADER STICKY AU TOP DU CONTENEUR SCROLLABLE */}
-          <thead className="sticky top-0 z-30">
-            <tr className="bg-gradient-to-r from-blue-800 via-blue-700 to-blue-800">
-              <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[200px] sticky left-0 z-40 bg-gradient-to-r from-blue-800 to-blue-700">
-                Panneau / Adresse
-              </th>
-              <th className="px-4 py-4 text-center text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[70px] bg-blue-800">
-                Faces
-              </th>
-              <th className="px-4 py-4 text-center text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[220px] bg-blue-800">
-                Actions
-              </th>
-              <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[80px] bg-blue-800">
-                N° Face
-              </th>
-              <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[90px] bg-blue-800">
-                Type
-              </th>
-              <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[100px] bg-blue-800">
-                Orientation
-              </th>
-              <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[90px] bg-blue-800">
-                Dim. (m²)
-              </th>
-              <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[180px] bg-blue-800">
-                Client
-              </th>
-              <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[160px] bg-blue-800">
-                Commercial
-              </th>
-              <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[200px] bg-blue-800">
-                Période
-              </th>
-              <th className="px-4 py-4 text-center text-sm font-bold text-white uppercase tracking-wider min-w-[150px] bg-blue-800">
-                Statut
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {panneaux.map((panneau) => {
-              const faces = panneau.faces || [];
-              const panneauKey = getPanneauKey(panneau);
-              const isExpanded = expandedPanneaux.has(panneauKey);
-              const hasAnyProblem = faces.some(face => hasProblem(face));
 
-              return (
-                <React.Fragment key={panneauKey}>
-                  <tr
-                    className={'hover:bg-blue-50/50 transition-colors cursor-pointer ' + (panneau.etatPanneau === 'En panne' ? 'bg-red-50/30' : '')}
-                    onClick={() => togglePanneau(panneauKey)}
-                  >
-                    <td className="px-4 py-3 sticky left-0 z-20 bg-white">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-blue-700 truncate">
-                          {panneau.nom || 'Sans nom'}
-                        </span>
-                        <span className="text-gray-400 text-sm">
-                          {isExpanded ? '▼' : '▶'}
-                        </span>
-                        {hasAnyProblem && (
-                          <span className="ml-1 px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full animate-pulse flex items-center gap-1">
-                            <AlertTriangle size={10} /> PROBLÈME
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-sm text-gray-500 mt-0.5 truncate max-w-[200px]">
-                        📍 {panneau.adresse || 'Adresse non définie'}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center text-base font-bold text-blue-600">
-                      {faces.length}
-                    </td>
-                    <td className="px-4 py-3 text-center text-gray-400 text-sm" colSpan={9}>
-                      <span className="text-blue-500 font-medium">
-                        {panneau.etatPanneau === 'En panne' ? '⛔ Panneau en panne' : 'Cliquez pour voir les faces'}
+      {/* ============================================
+          ✅ VUE MOBILE — Cartes empilées (< lg)
+          ============================================ */}
+      <div className="lg:hidden">
+        <div className="divide-y divide-gray-200">
+          {panneaux.map((panneau) => {
+            const faces = panneau.faces || [];
+            const panneauKey = getPanneauKey(panneau);
+            const isExpanded = expandedPanneaux.has(panneauKey);
+            const hasAnyProblem = faces.some((f) => hasProblem(f));
+
+            return (
+              <div key={panneauKey} className="bg-white">
+                {/* En-tête du panneau (cliquable) */}
+                <button
+                  onClick={() => togglePanneau(panneauKey)}
+                  className="w-full text-left px-4 py-3 flex items-start justify-between gap-3 hover:bg-slate-50 transition"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-blue-700 truncate">
+                        {panneau.nom || 'Sans nom'}
                       </span>
-                    </td>
-                  </tr>
+                      {hasAnyProblem && (
+                        <span className="px-1.5 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full flex items-center gap-1">
+                          <AlertTriangle size={10} /> PROBLÈME
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                      <MapPin size={12} className="flex-shrink-0" />
+                      <span className="truncate">{panneau.adresse || 'Adresse non définie'}</span>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {faces.length} face{faces.length > 1 ? 's' : ''}
+                    </div>
+                  </div>
+                  <ChevronDown
+                    size={18}
+                    className={`text-gray-400 flex-shrink-0 mt-1 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                  />
+                </button>
 
-                  {isExpanded && panneau.etatPanneau !== 'En panne' && faces.map((face, idx) => {
-                    const faceHasProblem = hasProblem(face);
-                    const isPending = isReservationPending(face.reservation);
-                    const hasReservation = !!face.reservation;
-                    const clientName = getClientFullName(face);
-                    const commercialName = getCommercialFullName(face);
-                    const duration = getDuration(face.date_debut, face.date_fin);
-                    const remainingTime = face.remaining_time;
-                    const inCart = isFaceInCart(face);
+                {/* Faces */}
+                {isExpanded && (
+                  <div className="bg-slate-50 px-3 pb-3 space-y-2">
+                    {faces.map((face, idx) => {
+                      const faceHasProblem = hasProblem(face);
+                      const isPending = isReservationPending(face.reservation);
+                      const hasReservation = !!face.reservation;
+                      const clientName = getClientFullName(face);
+                      const commercialName = getCommercialFullName(face);
+                      const duration = getDuration(face.date_debut, face.date_fin);
+                      const remainingTime = face.remaining_time;
+                      const inCart = isFaceInCart(face);
 
-                    let rowClasses = 'hover:bg-blue-50/30 transition-colors bg-blue-50/10';
-
-                    if (faceHasProblem) {
-                      rowClasses = 'hover:bg-red-100/70 transition-colors bg-red-50/90 border-l-4 border-red-500';
-                    } else if (isPending) {
-                      rowClasses = 'animate-pulse bg-amber-50/30';
-                    } else if (face.status === 'Occupé') {
-                      rowClasses = 'hover:bg-blue-50/50 transition-colors bg-blue-50/10';
-                    }
-
-                    return (
-                      <tr
-                        key={panneauKey + '-face-' + idx}
-                        className={rowClasses}
-                      >
-                        <td className="px-4 py-3 sticky left-0 z-20 bg-inherit">
-                          <div className="flex items-center gap-2 ml-4">
-                            <span className="text-sm text-blue-400">
-                              └── F{idx + 1}
-                            </span>
-                            {faceHasProblem && (
-                              <span className="flex items-center gap-1 px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full animate-pulse">
-                                <XCircle size={12} /> PROBLÈME
+                      return (
+                        <div
+                          key={panneauKey + '-face-' + idx}
+                          className={`bg-white rounded-lg border p-3 ${
+                            faceHasProblem
+                              ? 'border-red-300 bg-red-50/50'
+                              : isPending
+                                ? 'border-amber-300 bg-amber-50/40'
+                                : 'border-slate-200'
+                          }`}
+                        >
+                          {/* Ligne 1 : Face + statut */}
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-indigo-600">
+                                Face {face.id_face?.toString() || 'F' + (idx + 1)}
+                              </span>
+                              <div className="flex items-center gap-1 text-xs text-gray-600">
+                                {getTypeFaceIcon(face.type_face)}
+                                <span className="font-semibold">{face.type_face || 'N/A'}</span>
+                              </div>
+                            </div>
+                            {faceHasProblem ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-red-400 bg-red-100 text-red-700 flex items-center gap-1">
+                                <XCircle size={10} /> Problème
+                              </span>
+                            ) : hasReservation ? (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${isPending ? 'border-amber-300 bg-amber-100 text-amber-700' : getStatusColor(face.status)} flex items-center gap-1`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${isPending ? 'bg-amber-500' : getStatusDot(face.status)}`} />
+                                {face.status}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-200 bg-emerald-100 text-emerald-700">
+                                🟢 Libre
                               </span>
                             )}
                           </div>
-                        </td>
-                        <td className="px-4 py-3" colSpan={1}></td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onFaceClick(panneau, face);
-                              }}
-                              className="px-2.5 py-1.5 bg-blue-100 text-blue-700 rounded text-sm font-bold hover:bg-blue-200 transition"
-                              title="Voir les détails"
-                            >
-                              <Eye size={14} className="inline" />
-                            </button>
 
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!faceHasProblem) {
-                                  onReserveClick(panneau, face);
-                                }
-                              }}
-                              disabled={faceHasProblem}
-                              className={`px-2.5 py-1.5 rounded text-sm font-bold transition ${
-                                faceHasProblem
-                                  ? 'bg-red-200 text-red-500 cursor-not-allowed border border-red-300'
-                                  : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                              }`}
-                              title={faceHasProblem ? '❌ Réservation impossible - Face avec problème' : 'Réserver cette face'}
-                            >
-                              <Calendar size={14} className="inline" />
-                              {faceHasProblem ? '❌' : 'Réserver'}
-                            </button>
+                          {/* Ligne 2 : Orient + Dim */}
+                          <div className="grid grid-cols-2 gap-2 mb-2 text-xs">
+                            <div>
+                              <span className="text-gray-400">Orientation</span>
+                              <div className="font-semibold text-gray-700 uppercase">{face.orientation || 'N/A'}</div>
+                            </div>
+                            <div>
+                              <span className="text-gray-400">Dimension</span>
+                              <div className="font-semibold text-gray-700">{getDimensionM2(face)}</div>
+                            </div>
+                          </div>
 
-                            <button
-                              onClick={(e) => handleToggleCart(panneau, face, e)}
-                              disabled={faceHasProblem}
-                              className={`px-2.5 py-1.5 rounded text-sm font-bold transition flex items-center gap-1 ${
-                                faceHasProblem
-                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                  : inCart
-                                  ? 'bg-green-600 text-white hover:bg-green-700'
-                                  : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                              }`}
-                              title={faceHasProblem ? '❌ Face avec problème' : inCart ? 'Retirer du panier' : 'Ajouter au panier'}
-                            >
-                              {inCart ? (
-                                <>
-                                  <CheckCircle size={14} /> ✓
-                                </>
-                              ) : (
-                                <>
-                                  <ShoppingCart size={14} /> +
-                                </>
-                              )}
-                            </button>
-                          </div>
-                          {faceHasProblem && (
-                            <div className="text-[10px] text-red-600 font-bold mt-1 animate-pulse flex items-center justify-center gap-1">
-                              <XCircle size={12} /> Réservation bloquée
-                            </div>
-                          )}
-                          {inCart && !faceHasProblem && (
-                            <div className="text-[10px] text-green-600 font-bold mt-1 flex items-center justify-center gap-1">
-                              <CheckCircle size={12} /> Dans le panier
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-bold text-indigo-600">
-                          {face.id_face?.toString() || 'F' + (idx + 1)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            {getTypeFaceIcon(face.type_face)}
-                            <span className="text-sm font-semibold text-gray-700">
-                              {face.type_face || 'Non défini'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-700 uppercase">
-                          {face.orientation || 'N/A'}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">
-                          {getDimensionM2(face)}
-                        </td>
-                        <td className="px-4 py-3">
-                          {hasReservation && !faceHasProblem ? (
-                            <div className="flex flex-col">
-                              <span className="text-sm font-semibold text-gray-800 truncate max-w-[160px]">
-                                <Building2 size={14} className="inline text-gray-400 mr-1" />
-                                {clientName}
-                              </span>
-                              {face.reservation?.client_email && (
-                                <span className="text-[11px] text-gray-400 truncate max-w-[160px]">
-                                  {face.reservation.client_email}
-                                </span>
-                              )}
-                            </div>
-                          ) : faceHasProblem ? (
-                            <span className="text-red-500 text-sm flex items-center gap-1 font-bold">
-                              <XCircle size={14} /> Face problématique
-                            </span>
-                          ) : (
-                            <span className="text-gray-300 text-sm">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {hasReservation && !faceHasProblem ? (
-                            <div className="flex flex-col">
-                              <span className="text-sm font-semibold text-gray-700 truncate max-w-[140px]">
-                                <User size={14} className="inline text-gray-400 mr-1" />
-                                {commercialName}
-                              </span>
-                              {face.reservation?.commercial_email && (
-                                <span className="text-[11px] text-gray-400 truncate max-w-[140px]">
-                                  {face.reservation.commercial_email}
-                                </span>
-                              )}
-                            </div>
-                          ) : faceHasProblem ? (
-                            <span className="text-red-400 text-sm flex items-center gap-1">-</span>
-                          ) : (
-                            <span className="text-gray-300 text-sm">-</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {hasReservation && face.date_debut && face.date_fin && !faceHasProblem ? (
-                            <div className="flex flex-col">
-                              <span className={`text-sm font-medium ${isPending ? 'text-amber-600 animate-pulse' : 'text-gray-700'}`}>
-                                📅 {formatDate(face.date_debut)} → {formatDate(face.date_fin)}
-                              </span>
-                              {duration && (
-                                <span className="text-[11px] text-gray-400">
-                                  Durée: {duration} jours
-                                </span>
+                          {/* Ligne 3 : Réservation */}
+                          {hasReservation && !faceHasProblem && (
+                            <div className="border-t border-slate-100 pt-2 space-y-1 text-xs">
+                              <div className="flex items-center gap-1 text-gray-700">
+                                <Building2 size={12} className="text-gray-400 flex-shrink-0" />
+                                <span className="font-semibold truncate">{clientName}</span>
+                              </div>
+                              <div className="flex items-center gap-1 text-gray-600">
+                                <User size={12} className="text-gray-400 flex-shrink-0" />
+                                <span className="truncate">{commercialName}</span>
+                              </div>
+                              {face.date_debut && face.date_fin && (
+                                <div className="text-gray-600">
+                                  📅 {formatDate(face.date_debut)} → {formatDate(face.date_fin)}
+                                  {duration && <span className="text-gray-400 ml-1">({duration}j)</span>}
+                                </div>
                               )}
                               {isPending && remainingTime && (
-                                <span className={`text-[11px] font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-1 mt-0.5`}>
+                                <div className={`font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-1`}>
                                   <Timer size={12} />
                                   {remainingTime.expired ? '⏰ Expirée' : remainingTime.label}
-                                </span>
+                                </div>
                               )}
                               {isPending && (
-                                <span className="text-[11px] text-amber-600 font-bold animate-pulse flex items-center gap-1">
+                                <div className="text-amber-600 font-bold flex items-center gap-1">
                                   <AlertCircle size={12} /> En attente de validation
-                                </span>
+                                </div>
                               )}
                             </div>
-                          ) : faceHasProblem ? (
-                            <span className="text-red-400 text-[12px] flex items-center gap-1 font-bold">
-                              <XCircle size={14} /> Réservation indisponible
-                            </span>
-                          ) : (
-                            <span className="text-gray-300 text-sm">-</span>
                           )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {faceHasProblem ? (
-                            <span className="px-2.5 py-1 rounded-full text-sm font-bold border border-red-500 bg-red-200 text-red-700 flex items-center gap-1 justify-center animate-pulse">
-                              <XCircle size={14} /> Problème
-                            </span>
-                          ) : hasReservation ? (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className={`px-2.5 py-1 rounded-full text-sm font-bold border ${
-                                isPending
-                                  ? 'border-amber-300 bg-amber-100 text-amber-700 animate-pulse'
-                                  : getStatusColor(face.status)
-                              } flex items-center gap-1`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${isPending ? 'bg-amber-500' : getStatusDot(face.status)}`} />
-                                {getStatusIcon(face.status)} {face.status}
-                              </span>
-                              {isPending && remainingTime && (
-                                <span className={`text-[10px] font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-0.5`}>
-                                  <Timer size={10} />
-                                  {remainingTime.expired ? 'Expirée' : remainingTime.label}
-                                </span>
-                              )}
-                              {face.reservation?.statut && (
-                                <span className="text-[10px] text-gray-400">
-                                  {face.reservation.statut}
-                                </span>
-                              )}
-                              {isPending && (
-                                <span className="text-[10px] text-amber-600 font-bold animate-pulse">
-                                  ⚠️ Validation requise
-                                </span>
-                              )}
+
+                          {faceHasProblem && (
+                            <div className="border-t border-red-100 pt-2 text-xs text-red-600 font-bold flex items-center gap-1">
+                              <XCircle size={12} /> Réservation indisponible
                             </div>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-full text-sm font-bold border bg-emerald-100 text-emerald-700 border-emerald-200 flex items-center gap-1 justify-center">
-                              🟢 Libre
-                            </span>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+
+                          {/* Ligne 4 : Actions */}
+                          <div className="mt-3 pt-2 border-t border-slate-100">
+                            {renderFaceActions(panneau, face, faceHasProblem, inCart)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 p-4 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
+      {/* ============================================
+          ✅ VUE DESKTOP — Tableau (≥ lg) — INCHANGÉ
+          ============================================ */}
+      <div className="hidden lg:block">
+        <div className="overflow-auto max-h-[calc(100vh-280px)] min-h-[400px]">
+          <table className="w-full min-w-[1900px] border-collapse">
+            <thead className="sticky top-0 z-30">
+              <tr className="bg-gradient-to-r from-blue-800 via-blue-700 to-blue-800">
+                <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[200px] sticky left-0 z-40 bg-gradient-to-r from-blue-800 to-blue-700">
+                  Panneau / Adresse
+                </th>
+                <th className="px-4 py-4 text-center text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[70px] bg-blue-800">Faces</th>
+                <th className="px-4 py-4 text-center text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[220px] bg-blue-800">Actions</th>
+                <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[80px] bg-blue-800">N° Face</th>
+                <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[90px] bg-blue-800">Type</th>
+                <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[100px] bg-blue-800">Orientation</th>
+                <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[90px] bg-blue-800">Dim. (m²)</th>
+                <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[180px] bg-blue-800">Client</th>
+                <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[160px] bg-blue-800">Commercial</th>
+                <th className="px-4 py-4 text-left text-sm font-bold text-white uppercase tracking-wider border-r border-blue-600/40 min-w-[200px] bg-blue-800">Période</th>
+                <th className="px-4 py-4 text-center text-sm font-bold text-white uppercase tracking-wider min-w-[150px] bg-blue-800">Statut</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {panneaux.map((panneau) => {
+                const faces = panneau.faces || [];
+                const panneauKey = getPanneauKey(panneau);
+                const isExpanded = expandedPanneaux.has(panneauKey);
+                const hasAnyProblem = faces.some((f) => hasProblem(f));
+
+                return (
+                  <React.Fragment key={panneauKey}>
+                    <tr
+                      className={'hover:bg-blue-50/50 transition-colors cursor-pointer ' + (panneau.etatPanneau === 'En panne' ? 'bg-red-50/30' : '')}
+                      onClick={() => togglePanneau(panneauKey)}
+                    >
+                      <td className="px-4 py-3 sticky left-0 z-20 bg-white">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-blue-700 truncate">{panneau.nom || 'Sans nom'}</span>
+                          <span className="text-gray-400 text-sm">{isExpanded ? '▼' : '▶'}</span>
+                          {hasAnyProblem && (
+                            <span className="ml-1 px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full animate-pulse flex items-center gap-1">
+                              <AlertTriangle size={10} /> PROBLÈME
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-500 mt-0.5 truncate max-w-[200px]">
+                          📍 {panneau.adresse || 'Adresse non définie'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center text-base font-bold text-blue-600">{faces.length}</td>
+                      <td className="px-4 py-3 text-center text-gray-400 text-sm" colSpan={9}>
+                        <span className="text-blue-500 font-medium">
+                          {panneau.etatPanneau === 'En panne' ? '⛔ Panneau en panne' : 'Cliquez pour voir les faces'}
+                        </span>
+                      </td>
+                    </tr>
+
+                    {isExpanded && panneau.etatPanneau !== 'En panne' && faces.map((face, idx) => {
+                      const faceHasProblem = hasProblem(face);
+                      const isPending = isReservationPending(face.reservation);
+                      const hasReservation = !!face.reservation;
+                      const clientName = getClientFullName(face);
+                      const commercialName = getCommercialFullName(face);
+                      const duration = getDuration(face.date_debut, face.date_fin);
+                      const remainingTime = face.remaining_time;
+                      const inCart = isFaceInCart(face);
+
+                      let rowClasses = 'hover:bg-blue-50/30 transition-colors bg-blue-50/10';
+                      if (faceHasProblem) rowClasses = 'hover:bg-red-100/70 transition-colors bg-red-50/90 border-l-4 border-red-500';
+                      else if (isPending) rowClasses = 'animate-pulse bg-amber-50/30';
+                      else if (face.status === 'Occupé') rowClasses = 'hover:bg-blue-50/50 transition-colors bg-blue-50/10';
+
+                      return (
+                        <tr key={panneauKey + '-face-' + idx} className={rowClasses}>
+                          <td className="px-4 py-3 sticky left-0 z-20 bg-inherit">
+                            <div className="flex items-center gap-2 ml-4">
+                              <span className="text-sm text-blue-400">└── F{idx + 1}</span>
+                              {faceHasProblem && (
+                                <span className="flex items-center gap-1 px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full animate-pulse">
+                                  <XCircle size={12} /> PROBLÈME
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3" colSpan={1}></td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {renderFaceActions(panneau, face, faceHasProblem, inCart)}
+                            </div>
+                            {faceHasProblem && (
+                              <div className="text-[10px] text-red-600 font-bold mt-1 animate-pulse flex items-center justify-center gap-1">
+                                <XCircle size={12} /> Réservation bloquée
+                              </div>
+                            )}
+                            {inCart && !faceHasProblem && (
+                              <div className="text-[10px] text-green-600 font-bold mt-1 flex items-center justify-center gap-1">
+                                <CheckCircle size={12} /> Dans le panier
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-bold text-indigo-600">
+                            {face.id_face?.toString() || 'F' + (idx + 1)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              {getTypeFaceIcon(face.type_face)}
+                              <span className="text-sm font-semibold text-gray-700">{face.type_face || 'Non défini'}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-semibold text-gray-700 uppercase">{face.orientation || 'N/A'}</td>
+                          <td className="px-4 py-3 text-sm font-semibold text-gray-700">{getDimensionM2(face)}</td>
+                          <td className="px-4 py-3">
+                            {hasReservation && !faceHasProblem ? (
+                              <div className="flex flex-col">
+                                <span className="text-sm font-semibold text-gray-800 truncate max-w-[160px]">
+                                  <Building2 size={14} className="inline text-gray-400 mr-1" />
+                                  {clientName}
+                                </span>
+                                {face.reservation?.client_email && (
+                                  <span className="text-[11px] text-gray-400 truncate max-w-[160px]">
+                                    {face.reservation.client_email}
+                                  </span>
+                                )}
+                              </div>
+                            ) : faceHasProblem ? (
+                              <span className="text-red-500 text-sm flex items-center gap-1 font-bold">
+                                <XCircle size={14} /> Face problématique
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-sm">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {hasReservation && !faceHasProblem ? (
+                              <div className="flex flex-col">
+                                <span className="text-sm font-semibold text-gray-700 truncate max-w-[140px]">
+                                  <User size={14} className="inline text-gray-400 mr-1" />
+                                  {commercialName}
+                                </span>
+                                {face.reservation?.commercial_email && (
+                                  <span className="text-[11px] text-gray-400 truncate max-w-[140px]">
+                                    {face.reservation.commercial_email}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-300 text-sm">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {hasReservation && face.date_debut && face.date_fin && !faceHasProblem ? (
+                              <div className="flex flex-col">
+                                <span className={`text-sm font-medium ${isPending ? 'text-amber-600 animate-pulse' : 'text-gray-700'}`}>
+                                  📅 {formatDate(face.date_debut)} → {formatDate(face.date_fin)}
+                                </span>
+                                {duration && (
+                                  <span className="text-[11px] text-gray-400">Durée: {duration} jours</span>
+                                )}
+                                {isPending && remainingTime && (
+                                  <span className={`text-[11px] font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-1 mt-0.5`}>
+                                    <Timer size={12} />
+                                    {remainingTime.expired ? '⏰ Expirée' : remainingTime.label}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-300 text-sm">-</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {faceHasProblem ? (
+                              <span className="px-2.5 py-1 rounded-full text-sm font-bold border border-red-500 bg-red-200 text-red-700 flex items-center gap-1 justify-center animate-pulse">
+                                <XCircle size={14} /> Problème
+                              </span>
+                            ) : hasReservation ? (
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className={`px-2.5 py-1 rounded-full text-sm font-bold border ${
+                                  isPending ? 'border-amber-300 bg-amber-100 text-amber-700 animate-pulse' : getStatusColor(face.status)
+                                } flex items-center gap-1`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isPending ? 'bg-amber-500' : getStatusDot(face.status)}`} />
+                                  {getStatusIcon(face.status)} {face.status}
+                                </span>
+                                {isPending && remainingTime && (
+                                  <span className={`text-[10px] font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-0.5`}>
+                                    <Timer size={10} />
+                                    {remainingTime.expired ? 'Expirée' : remainingTime.label}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-sm font-bold border bg-emerald-100 text-emerald-700 border-emerald-200 flex items-center gap-1 justify-center">
+                                🟢 Libre
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ============================================
+          Footer stats (commun aux 2 vues)
+          ============================================ */}
+      <div className="flex flex-wrap items-center justify-between gap-2 p-4 bg-gray-50 border-t border-gray-200 text-xs sm:text-sm text-gray-500">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold text-gray-600">
-            📊 {panneaux.length} panneau(x)
-          </span>
-          <span className="text-gray-300">•</span>
-          <span className="font-semibold text-gray-600">
-            🎯 {panneaux.reduce((acc, p) => acc + (p.faces || []).length, 0)} face(s)
-          </span>
-          <span className="text-gray-300">•</span>
-          <span className="font-semibold text-red-600">
-            ❌ {panneaux.reduce((acc, p) => acc + (p.faces || []).filter(f => hasProblem(f)).length, 0)} face(s) avec problème
-          </span>
-          <span className="text-gray-300">•</span>
-          <span className="font-semibold text-amber-600">
-            ⏳ {panneaux.reduce((acc, p) => acc + (p.faces || []).filter(f => isReservationPending(f.reservation)).length, 0)} en attente
-          </span>
-          <span className="text-gray-300">•</span>
-          <span className="font-semibold text-green-600">
-            🛒 {items.length} dans le panier
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            Libre
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-            En attente
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-            Occupé
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-            Réservé
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-            ❌ Problème
-          </span>
-        </div>
-        <div className="text-sm text-gray-400">
-          Dernière mise à jour: {new Date().toLocaleTimeString()}
+          <span className="font-semibold text-gray-600">📊 {panneaux.length} panneau(x)</span>
+          <span className="text-gray-300 hidden sm:inline">•</span>
+          <span className="font-semibold text-gray-600">🎯 {panneaux.reduce((a, p) => a + (p.faces || []).length, 0)} face(s)</span>
+          <span className="text-gray-300 hidden sm:inline">•</span>
+          <span className="font-semibold text-red-600">❌ {panneaux.reduce((a, p) => a + (p.faces || []).filter((f) => hasProblem(f)).length, 0)} problème(s)</span>
+          <span className="text-gray-300 hidden sm:inline">•</span>
+          <span className="font-semibold text-amber-600">⏳ {panneaux.reduce((a, p) => a + (p.faces || []).filter((f) => isReservationPending(f.reservation)).length, 0)} en attente</span>
+          <span className="text-gray-300 hidden sm:inline">•</span>
+          <span className="font-semibold text-green-600">🛒 {items.length} panier</span>
         </div>
       </div>
     </div>
