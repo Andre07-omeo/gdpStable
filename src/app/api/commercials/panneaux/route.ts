@@ -16,6 +16,32 @@ const dbConfig = {
   port: Number(process.env.MYSQL_PORT || process.env.DB_PORT || 3306),
 };
 
+// ✅ Parsing JSON tolérant — ne plante JAMAIS, retourne le fallback si cassé
+function safeJsonParse<T>(value: any, fallback: T, context: string): T {
+  if (value === null || value === undefined) return fallback;
+
+  // Si c'est déjà un objet/array (MySQL peut le renvoyer déjà parsé)
+  if (typeof value === 'object') return value as T;
+
+  if (typeof value !== 'string') return fallback;
+
+  const trimmed = value.trim();
+  if (trimmed === '' || trimmed === 'null') return fallback;
+
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch (err) {
+    console.error(
+      `❌ [panneaux] JSON invalide (${context}):`,
+      (err as Error).message
+    );
+    console.error(`   Longueur: ${trimmed.length}`);
+    console.error(`   Début: ${trimmed.slice(0, 150)}`);
+    console.error(`   Fin:   ${trimmed.slice(-150)}`);
+    return fallback;
+  }
+}
+
 // ✅ Log de debug au démarrage (une seule fois)
 console.log('🔍 [panneaux] Config DB:', {
   host: dbConfig.host,
@@ -36,9 +62,15 @@ export async function GET(request: NextRequest) {
 
     console.log('🔍 [panneaux] Paramètres:', { commercialId, statut, search });
 
+    // ============================================
     // Établir la connexion
+    // ============================================
     connection = await mysql.createConnection(dbConfig);
     console.log('✅ [panneaux] Connexion MySQL établie');
+
+    // ✅ IMPORTANT : augmenter la limite GROUP_CONCAT (par défaut 1024)
+    await connection.execute('SET SESSION group_concat_max_len = 1000000');
+    console.log('✅ [panneaux] group_concat_max_len = 1 000 000');
 
     // ============================================
     // Requête principale
@@ -164,7 +196,9 @@ export async function GET(request: NextRequest) {
 
     sql += ` ORDER BY p.nom ASC`;
 
+    // ============================================
     // Exécution
+    // ============================================
     const [rows] = await connection.execute(sql, params);
     const panneaux = rows as any[];
 
@@ -174,15 +208,12 @@ export async function GET(request: NextRequest) {
     // Formatage
     // ============================================
     const formattedPanneaux = panneaux.map((panneau: any) => {
-      let faces: any[] = [];
-      try {
-        if (panneau.faces) {
-          faces = JSON.parse(panneau.faces);
-        }
-      } catch (e) {
-        console.warn(`Erreur parsing JSON panneau ${panneau.id}:`, e);
-        faces = [];
-      }
+      // ✅ Parsing tolérant
+      const faces = safeJsonParse<any[]>(
+        panneau.faces,
+        [],
+        `panneau ${panneau.id}`
+      );
 
       let panneauType = 'Standard';
       if (faces.length > 0 && faces[0].type_face) {
@@ -201,15 +232,12 @@ export async function GET(request: NextRequest) {
         etatPanneau: panneau.etatPanneau || 'Actif',
         hasProblem: hasProblemFaces,
         faces: faces.map((face: any) => {
-          let reservations: any[] = [];
-          try {
-            if (face.reservations) {
-              reservations = JSON.parse(face.reservations);
-            }
-          } catch (e) {
-            console.warn(`Erreur parsing JSON face ${face.id_face}:`, e);
-            reservations = [];
-          }
+          // ✅ Parsing tolérant
+          const reservations = safeJsonParse<any[]>(
+            face.reservations,
+            [],
+            `face ${face.id_face}`
+          );
 
           const today = new Date();
           today.setHours(0, 0, 0, 0);
@@ -220,30 +248,49 @@ export async function GET(request: NextRequest) {
             const fin = new Date(r.date_fin_campagne);
             debut.setHours(0, 0, 0, 0);
             fin.setHours(0, 0, 0, 0);
-            return today >= debut && today <= fin &&
-              r.statut !== 'Expirée' && r.statut !== 'Annulée';
+            return (
+              today >= debut &&
+              today <= fin &&
+              r.statut !== 'Expirée' &&
+              r.statut !== 'Annulée'
+            );
           });
 
           const futureReservation = reservations.find((r: any) => {
             if (!r.date_debut_campagne) return false;
             const debut = new Date(r.date_debut_campagne);
             debut.setHours(0, 0, 0, 0);
-            return debut > today &&
-              r.statut !== 'Expirée' && r.statut !== 'Annulée';
+            return (
+              debut > today &&
+              r.statut !== 'Expirée' &&
+              r.statut !== 'Annulée'
+            );
           });
 
           const pendingReservation = reservations.find((r: any) => {
-            return r.statut === 'En attente' || r.statut === 'En attente de validation';
+            return (
+              r.statut === 'En attente' ||
+              r.statut === 'En attente de validation'
+            );
           });
 
-          const reservation = activeReservation || futureReservation || pendingReservation;
+          const reservation =
+            activeReservation || futureReservation || pendingReservation;
 
-          let status: 'Libre' | 'Occupé' | 'Réservé' | 'En attente' | 'Problème' = 'Libre';
+          let status:
+            | 'Libre'
+            | 'Occupé'
+            | 'Réservé'
+            | 'En attente'
+            | 'Problème' = 'Libre';
 
           if (face.a_probleme === 1) {
             status = 'Problème';
           } else if (reservation) {
-            if (reservation.statut === 'En attente' || reservation.statut === 'En attente de validation') {
+            if (
+              reservation.statut === 'En attente' ||
+              reservation.statut === 'En attente de validation'
+            ) {
               status = 'En attente';
             } else if (activeReservation) {
               status = 'Occupé';
@@ -271,10 +318,17 @@ export async function GET(request: NextRequest) {
             const diffMs = expiration.getTime() - now.getTime();
 
             if (diffMs <= 0) {
-              remainingTime = { expired: true, label: '⏰ Expirée', hours: 0, minutes: 0 };
+              remainingTime = {
+                expired: true,
+                label: '⏰ Expirée',
+                hours: 0,
+                minutes: 0,
+              };
             } else {
               const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-              const diffMin = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+              const diffMin = Math.floor(
+                (diffMs % (1000 * 60 * 60)) / (1000 * 60)
+              );
 
               if (diffHrs > 24) {
                 const diffDays = Math.floor(diffHrs / 24);
@@ -311,16 +365,24 @@ export async function GET(request: NextRequest) {
             dimension_m2: dimensionM2,
             status: status,
             reservations: hasProblem ? [] : reservations,
-            reservation_active: hasProblem ? null : (activeReservation || null),
-            reservation_future: hasProblem ? null : (futureReservation || null),
-            reservation_attente: hasProblem ? null : (pendingReservation || null),
-            reservation: hasProblem ? null : (reservation || null),
-            client_nom: hasProblem ? null : (reservation?.client_nom || null),
-            client_prenom: hasProblem ? null : (reservation?.client_prenom || null),
-            commercial_nom: hasProblem ? null : (reservation?.commercial_nom || null),
-            commercial_prenom: hasProblem ? null : (reservation?.commercial_prenom || null),
-            date_debut: hasProblem ? null : (reservation?.date_debut_campagne || null),
-            date_fin: hasProblem ? null : (reservation?.date_fin_campagne || null),
+            reservation_active: hasProblem ? null : activeReservation || null,
+            reservation_future: hasProblem ? null : futureReservation || null,
+            reservation_attente: hasProblem ? null : pendingReservation || null,
+            reservation: hasProblem ? null : reservation || null,
+            client_nom: hasProblem ? null : reservation?.client_nom || null,
+            client_prenom: hasProblem
+              ? null
+              : reservation?.client_prenom || null,
+            commercial_nom: hasProblem
+              ? null
+              : reservation?.commercial_nom || null,
+            commercial_prenom: hasProblem
+              ? null
+              : reservation?.commercial_prenom || null,
+            date_debut: hasProblem
+              ? null
+              : reservation?.date_debut_campagne || null,
+            date_fin: hasProblem ? null : reservation?.date_fin_campagne || null,
             remaining_time: remainingTime,
           };
         }),
