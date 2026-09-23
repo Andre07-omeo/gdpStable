@@ -2,8 +2,15 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+  Suspense,
+} from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import dynamicImport from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -17,10 +24,18 @@ import {
   FileText,
   Map,
   Bell,
+  BellOff,
   Clock,
   ChevronDown,
   ChevronUp,
+  CheckCircle2,
+  AlertTriangle,
+  Info,
+  CheckCheck,
+  ArrowRight,
+  RefreshCw,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   loadReservationsByFace,
   ReservationsMap,
@@ -82,11 +97,11 @@ import { PanneauFiltersState } from './components/filters/types';
 // ============================================
 import { CommercialPanneau, CommercialFace } from './types/commercial.types';
 
-// ✅ Type Notification
 interface Notification {
   id: string | number;
   type: string;
-  title: string;
+  title?: string;
+  titre?: string;
   message: string;
   lien?: string | null;
   isRead: boolean;
@@ -94,7 +109,14 @@ interface Notification {
   metadata?: Record<string, any>;
 }
 
-// ✅ Filtres par défaut
+// ✅ Statut du nettoyage
+type CleanupStatus =
+  | { kind: 'idle' }
+  | { kind: 'running' }
+  | { kind: 'success'; terminees: number; expirees: number }
+  | { kind: 'empty' }
+  | { kind: 'error'; message: string };
+
 const DEFAULT_FILTERS: PanneauFiltersState = {
   search: '',
   situation: 'tous',
@@ -104,11 +126,382 @@ const DEFAULT_FILTERS: PanneauFiltersState = {
   echeanceFin: '',
 };
 
+type TabKey =
+  | 'dashboard'
+  | 'catalogue'
+  | 'map'
+  | 'pending'
+  | 'notifications';
+
 // ============================================
-// PAGE PRINCIPALE
+// 🆕 COMPOSANT INTERNE : ONGLET NOTIFICATIONS
 // ============================================
-export default function CommercialDashboard() {
+function NotificationsTab({ user }: { user: any }) {
   const router = useRouter();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | number | null>(null);
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  useEffect(() => {
+    async function fetchNotifications() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch('/api/commercials/notifications', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(`Erreur HTTP: ${res.status}`);
+        const data = await res.json();
+        setNotifications(data.data || data.notifications || data || []);
+      } catch (err: any) {
+        console.error('❌ Erreur notifications:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchNotifications();
+  }, []);
+
+  const handleMarkAsRead = async (id: string | number) => {
+    try {
+      await fetch(`/api/commercials/notifications/${id}/read`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+    } catch (err) {
+      console.error('Erreur markAsRead:', err);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await fetch('/api/commercials/notifications/mark-all', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    } catch (err) {
+      console.error('Erreur markAllAsRead:', err);
+    }
+  };
+
+  const handleToggle = (notif: Notification) => {
+    const isOpening = expandedId !== notif.id;
+    setExpandedId(isOpening ? notif.id : null);
+    if (isOpening && !notif.isRead) handleMarkAsRead(notif.id);
+  };
+
+  const getIcon = (type: string) => {
+    switch (type) {
+      case 'panneau_problem':
+      case 'facture_rejetee':
+        return <AlertTriangle className="w-4 h-4 text-red-500" />;
+      case 'facture_valide':
+      case 'facture_validee':
+        return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+      case 'reservation_created':
+      case 'campaign_started':
+      case 'panneau_created':
+        return <CheckCircle2 className="w-4 h-4 text-blue-500" />;
+      case 'campaign_ending_soon':
+      case 'message_from_chef':
+        return <Clock className="w-4 h-4 text-amber-500" />;
+      default:
+        return <Info className="w-4 h-4 text-slate-400" />;
+    }
+  };
+
+  const getIconBg = (type: string) => {
+    if (type === 'panneau_problem' || type === 'facture_rejetee')
+      return 'bg-red-50';
+    if (type === 'facture_valide' || type === 'facture_validee')
+      return 'bg-emerald-50';
+    if (type === 'campaign_ending_soon' || type === 'message_from_chef')
+      return 'bg-amber-50';
+    return 'bg-blue-50';
+  };
+
+  const getDotColor = (type: string) => {
+    if (type === 'panneau_problem' || type === 'facture_rejetee')
+      return 'bg-red-500';
+    if (type === 'facture_valide' || type === 'facture_validee')
+      return 'bg-emerald-500';
+    if (type === 'campaign_ending_soon' || type === 'message_from_chef')
+      return 'bg-amber-500';
+    return 'bg-blue-500';
+  };
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (diff < 60) return "à l'instant";
+    if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `il y a ${Math.floor(diff / 3600)} h`;
+    if (diff < 604800) return `il y a ${Math.floor(diff / 86400)} j`;
+    return d.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-24">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
+          <p className="text-sm text-slate-400">Chargement…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-24 px-6">
+          <AlertTriangle className="w-12 h-12 text-red-400 mb-4" />
+          <p className="text-base font-medium text-red-600">
+            Erreur de chargement
+          </p>
+          <p className="text-sm text-red-400 text-center mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <div className="p-2 rounded-lg bg-blue-100">
+              <Bell className="w-5 h-5 text-blue-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Notifications
+            </h1>
+            {unreadCount > 0 && (
+              <span className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded-full font-bold">
+                {unreadCount} non lue{unreadCount > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-slate-500">
+            Consultez et gérez toutes vos notifications
+          </p>
+        </div>
+
+        {unreadCount > 0 && (
+          <button
+            onClick={handleMarkAllAsRead}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 transition"
+          >
+            <CheckCheck size={16} />
+            Tout marquer comme lu
+          </button>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        {notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24">
+            <div className="p-5 bg-slate-50 rounded-full mb-4">
+              <BellOff className="w-10 h-10 text-slate-300" />
+            </div>
+            <p className="text-base font-medium text-slate-600">
+              Aucune notification
+            </p>
+            <p className="text-sm text-slate-400 mt-1">Vous êtes à jour ✨</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {notifications.map((notif) => {
+              const isExpanded = expandedId === notif.id;
+
+              return (
+                <li
+                  key={notif.id}
+                  className={`transition-colors ${
+                    notif.isRead ? 'bg-white' : 'bg-blue-50/40'
+                  }`}
+                >
+                  <button
+                    onClick={() => handleToggle(notif)}
+                    className="w-full text-left flex items-start gap-4 px-6 py-4 hover:bg-slate-50/70 transition group"
+                  >
+                    <div
+                      className={`mt-0.5 flex-shrink-0 p-2.5 rounded-lg ${getIconBg(
+                        notif.type
+                      )}`}
+                    >
+                      {getIcon(notif.type)}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <p
+                          className={`text-base leading-tight ${
+                            notif.isRead
+                              ? 'font-medium text-slate-700'
+                              : 'font-semibold text-slate-900'
+                          }`}
+                        >
+                          {notif.title || notif.titre || 'Notification'}
+                        </p>
+
+                        {!notif.isRead && (
+                          <span
+                            className={`mt-2 w-2 h-2 rounded-full flex-shrink-0 ${getDotColor(
+                              notif.type
+                            )}`}
+                          />
+                        )}
+                      </div>
+
+                      {!isExpanded && (
+                        <p className="text-sm text-slate-500 mt-1 line-clamp-1">
+                          {notif.message}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-xs text-slate-400 font-medium">
+                          {formatDate(notif.createdAt)}
+                        </p>
+
+                        <motion.span
+                          animate={{ rotate: isExpanded ? 180 : 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-slate-400 group-hover:text-slate-600"
+                        >
+                          <ChevronDown size={16} />
+                        </motion.span>
+                      </div>
+                    </div>
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div
+                        key="content"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: 'easeInOut' }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-6 pb-5 pl-[72px]">
+                          <div className="text-sm text-slate-600 whitespace-pre-line leading-relaxed bg-slate-50 rounded-lg p-4 border border-slate-100">
+                            {notif.message}
+                          </div>
+
+                          {notif.lien && (
+                            <button
+                              onClick={() => router.push(notif.lien!)}
+                              className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700 transition group/link"
+                            >
+                              Voir le détail
+                              <ArrowRight
+                                size={14}
+                                className="transition-transform group-hover/link:translate-x-0.5"
+                              />
+                            </button>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// 🆕 BANDEAU DE NETTOYAGE (retour visuel)
+// ============================================
+function CleanupBanner({
+  status,
+  onRetry,
+  onClose,
+}: {
+  status: CleanupStatus;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  if (status.kind === 'idle' || status.kind === 'running') return null;
+
+  let bg = 'bg-slate-50 border-slate-200';
+  let text = 'text-slate-700';
+  let icon = <Info className="w-4 h-4" />;
+  let message = '';
+
+  if (status.kind === 'success') {
+    bg = 'bg-emerald-50 border-emerald-200';
+    text = 'text-emerald-800';
+    icon = <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
+    message = `Nettoyage réussi — ${status.terminees} terminée(s), ${status.expirees} expirée(s).`;
+  } else if (status.kind === 'empty') {
+    bg = 'bg-blue-50 border-blue-200';
+    text = 'text-blue-800';
+    icon = <Info className="w-4 h-4 text-blue-600" />;
+    message = 'Aucune réservation à nettoyer.';
+  } else if (status.kind === 'error') {
+    bg = 'bg-red-50 border-red-200';
+    text = 'text-red-800';
+    icon = <AlertTriangle className="w-4 h-4 text-red-600" />;
+    message = `Erreur de nettoyage : ${status.message}`;
+  }
+
+  return (
+    <div
+      className={`mt-3 flex items-center justify-between gap-3 border rounded-lg px-4 py-2 text-sm ${bg} ${text}`}
+    >
+      <div className="flex items-center gap-2">
+        {icon}
+        <span>{message}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onRetry}
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/60 hover:bg-white text-xs font-bold border border-current/20"
+          title="Relancer le nettoyage"
+        >
+          <RefreshCw size={12} />
+          Relancer
+        </button>
+        <button
+          onClick={onClose}
+          className="text-xs font-bold underline opacity-70 hover:opacity-100"
+        >
+          Fermer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// 🆕 COMPOSANT INTERNE (utilise useSearchParams)
+// ============================================
+function CommercialDashboardInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const { user, logout } = useAuth();
   const { addItem } = useCart();
   const { panneaux, loading, error, refresh } = useCommercialData();
@@ -123,17 +516,33 @@ export default function CommercialDashboard() {
 
   const features = user ? getFeaturesByProfil(user.profil) : null;
 
-  // ✅ Plus d'onglet "notifications" (page séparée)
-  const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'catalogue' | 'map' | 'pending'
-  >('dashboard');
+  // ✅ Onglet actif persisté dans l'URL
+  const initialTab = (searchParams.get('tab') as TabKey) || 'dashboard';
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    ['dashboard', 'catalogue', 'map', 'pending', 'notifications'].includes(
+      initialTab
+    )
+      ? initialTab
+      : 'dashboard'
+  );
+
+  const handleTabChange = useCallback((tab: TabKey) => {
+    setActiveTab(tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url.toString());
+  }, []);
 
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
 
-  // ============================================
-  // 🔔 NOTIFICATIONS (compteur uniquement)
-  // ============================================
+  // 🔔 Notifications
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const notificationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 🧹 Statut du nettoyage
+  const [cleanupStatus, setCleanupStatus] = useState<CleanupStatus>({
+    kind: 'idle',
+  });
 
   // États UI
   const [selectedFaceId, setSelectedFaceId] = useState<number | null>(null);
@@ -164,9 +573,7 @@ export default function CommercialDashboard() {
   } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // ============================================
-  // 🔔 CHARGER LES NOTIFICATIONS (juste le compteur)
-  // ============================================
+  // 🔔 Charger les notifications
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
@@ -176,16 +583,25 @@ export default function CommercialDashboard() {
       });
       if (!res.ok) throw new Error('Erreur de chargement');
       const data = await res.json();
-      setNotifications(Array.isArray(data) ? data : []);
+      setNotifications(
+        Array.isArray(data) ? data : data.data || data.notifications || []
+      );
     } catch (err: any) {
       console.error('❌ Erreur chargement notifications:', err);
       setNotifications([]);
     }
   }, [user]);
 
-  // ============================================
-  // ✅ CHARGER LES RÉSERVATIONS PAR FACE
-  // ============================================
+  // Réservations
+  const reloadReservationsMap = useCallback(async () => {
+    try {
+      const map = await loadReservationsByFace();
+      setReservationsMap(map);
+    } catch (err) {
+      console.error('❌ Erreur chargement réservations:', err);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     loadReservationsByFace().then((map) => {
@@ -196,64 +612,91 @@ export default function CommercialDashboard() {
     };
   }, []);
 
-  // ============================================
-  // 🔔 Charger les notifications au montage
-  // ============================================
+  // Notifications + intervalle
   useEffect(() => {
+    if (!user) return;
+
     loadNotifications();
-  }, [loadNotifications]);
+
+    if (notificationIntervalRef.current) {
+      clearInterval(notificationIntervalRef.current);
+    }
+
+    notificationIntervalRef.current = setInterval(() => {
+      loadNotifications();
+    }, 30000);
+
+    return () => {
+      if (notificationIntervalRef.current) {
+        clearInterval(notificationIntervalRef.current);
+        notificationIntervalRef.current = null;
+      }
+    };
+  }, [user, loadNotifications]);
 
   // ============================================
-  // 🧹 NETTOYAGE AUTOMATIQUE DES RÉSERVATIONS
+  // 🧹 NETTOYAGE AUTOMATIQUE (avec feedback visuel)
   // ============================================
-  const [nettoyageEnCours, setNettoyageEnCours] = useState(false);
+  const executerNettoyage = useCallback(
+    async (force: boolean = false) => {
+      // Anti-doublon par session (sauf si on force)
+      const dejaFait = sessionStorage.getItem('nettoyage_reservations_fait');
+      if (!force && dejaFait) return;
 
-  useEffect(() => {
-    const nettoyageFait = sessionStorage.getItem('nettoyage_reservations_fait');
-    if (nettoyageFait) return;
-
-    let cancelled = false;
-
-    async function executerNettoyage() {
-      if (nettoyageEnCours) return;
-      setNettoyageEnCours(true);
+      setCleanupStatus({ kind: 'running' });
 
       try {
         const response = await fetch('/api/reservations/clean', {
           method: 'POST',
           headers: {
-            'X-Cleanup-Token':
-              process.env.NEXT_PUBLIC_CLEANUP_TOKEN ||
-              'mon-token-securise-123456',
             'Content-Type': 'application/json',
+            'X-Cleanup-Token': 'mon-token-securise-123456',
           },
+          credentials: 'include',
           body: JSON.stringify({ batch: 50 }),
         });
 
-        if (response.ok) {
-          const result = await response.json();
-          sessionStorage.setItem('nettoyage_reservations_fait', 'true');
-          if (result.data?.terminees > 0 || result.data?.expirees > 0) {
-            refresh();
-          }
+        if (!response.ok) {
+          const txt = await response.text().catch(() => '');
+          throw new Error(`HTTP ${response.status}${txt ? ' — ' + txt.slice(0, 120) : ''}`);
         }
-      } catch {
-        // silencieux
-      } finally {
-        if (!cancelled) setNettoyageEnCours(false);
+
+        const result = await response.json();
+
+        const terminees = Number(result?.data?.terminees ?? 0);
+        const expirees = Number(result?.data?.expirees ?? 0);
+
+        if (terminees === 0 && expirees === 0) {
+          setCleanupStatus({ kind: 'empty' });
+        } else {
+          setCleanupStatus({ kind: 'success', terminees, expirees });
+          // Rafraîchir uniquement si quelque chose a bougé
+          refresh();
+          reloadReservationsMap();
+        }
+
+        sessionStorage.setItem('nettoyage_reservations_fait', 'true');
+      } catch (err: any) {
+        console.error('❌ Nettoyage auto échoué:', err?.message || err);
+        setCleanupStatus({
+          kind: 'error',
+          message: err?.message || 'Erreur inconnue',
+        });
       }
-    }
+    },
+    [refresh, reloadReservationsMap]
+  );
 
-    const timer = setTimeout(executerNettoyage, 2000);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [refresh, nettoyageEnCours]);
+  // Lancement auto (une seule fois par session)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      executerNettoyage(false);
+    }, 2000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // ============================================
-  // 📍 GPS
-  // ============================================
+  // GPS
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocationError('GPS non supporté');
@@ -270,9 +713,7 @@ export default function CommercialDashboard() {
     );
   }, []);
 
-  // ============================================
-  // Handlers UI
-  // ============================================
+  // Handlers
   const openFaceDetails = (
     panneau: CommercialPanneau,
     face: CommercialFace
@@ -299,11 +740,17 @@ export default function CommercialDashboard() {
     }
   };
 
-  // ✅ Refresh global
   const refreshData = useCallback(async (): Promise<void> => {
-    refresh();
-    await loadNotifications();
-  }, [refresh, loadNotifications]);
+    try {
+      await Promise.all([
+        Promise.resolve(refresh()),
+        reloadReservationsMap(),
+        loadNotifications(),
+      ]);
+    } catch (err) {
+      console.error('❌ Erreur refresh global:', err);
+    }
+  }, [refresh, reloadReservationsMap, loadNotifications]);
 
   const handleMapMarkerClick = (panneau: any) => {
     setSelectedPanneau(panneau);
@@ -337,16 +784,10 @@ export default function CommercialDashboard() {
     });
   };
 
-  // ============================================
-  // ✅ Ouvre la page notifications dédiée
-  // ============================================
   const handleNotificationsToggle = () => {
-    router.push('/dashboard/commercial/notifications');
+    handleTabChange('notifications');
   };
 
-  // ============================================
-  // Cartes stats
-  // ============================================
   const statsCards = [
     {
       label: 'Panneaux',
@@ -386,13 +827,11 @@ export default function CommercialDashboard() {
     },
   ];
 
-  // ✅ unreadCount mémoïsé
   const unreadCount = useMemo(
     () => notifications.filter((n) => !n.isRead).length,
     [notifications]
   );
 
-  // ✅ Transformation des panneaux pour la carte
   const transformedPanneaux = useMemo(() => {
     return panneaux.map((p: any) => ({
       id_panneau: p.id_panneau || p.idPan || p.id,
@@ -411,14 +850,10 @@ export default function CommercialDashboard() {
     }));
   }, [panneaux]);
 
-  // ✅ Application des filtres
   const panneauxFiltres = useMemo(() => {
     return filterPanneaux(transformedPanneaux, filters, reservationsMap);
   }, [transformedPanneaux, filters, reservationsMap]);
 
-  // ============================================
-  // 🔒 Écrans de chargement
-  // ============================================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -442,7 +877,7 @@ export default function CommercialDashboard() {
           </h2>
           <p className="text-gray-600 mb-4">{error}</p>
           <button
-            onClick={refresh}
+            onClick={refreshData}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
           >
             Réessayer
@@ -457,7 +892,7 @@ export default function CommercialDashboard() {
       <CommercialHeader
         user={user}
         onLogout={logout}
-        onRefresh={refresh}
+        onRefresh={refreshData}
         onNotificationsToggle={handleNotificationsToggle}
         onAdminToggle={
           features?.canManageAgents
@@ -465,10 +900,10 @@ export default function CommercialDashboard() {
             : undefined
         }
         onCatalogueToggle={() =>
-          setActiveTab(activeTab === 'catalogue' ? 'dashboard' : 'catalogue')
+          handleTabChange(activeTab === 'catalogue' ? 'dashboard' : 'catalogue')
         }
         onMapToggle={() =>
-          setActiveTab(activeTab === 'map' ? 'dashboard' : 'map')
+          handleTabChange(activeTab === 'map' ? 'dashboard' : 'map')
         }
         onExportToggle={async () => {
           try {
@@ -507,24 +942,45 @@ export default function CommercialDashboard() {
       />
 
       <main className="max-w-7xl mx-auto px-2 sm:px-4 py-4 sm:py-6 pb-20 sm:pb-6">
-        {/* ============================================
-            Onglets
-            ============================================ */}
+        {/* 🧹 Bandeau de nettoyage */}
+        <CleanupBanner
+          status={cleanupStatus}
+          onRetry={() => executerNettoyage(true)}
+          onClose={() => setCleanupStatus({ kind: 'idle' })}
+        />
+
         <div className="flex gap-1 sm:gap-4 mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
           {[
             {
-              key: 'dashboard',
+              key: 'dashboard' as TabKey,
               icon: <LayoutDashboard size={16} />,
               label: 'Tableau',
             },
-            { key: 'catalogue', icon: <span>📸</span>, label: 'Catalogue' },
-            { key: 'map', icon: <Map size={16} />, label: 'Carte' },
-            { key: 'pending', icon: <Clock size={16} />, label: 'Réserv.' },
+            {
+              key: 'catalogue' as TabKey,
+              icon: <span>📸</span>,
+              label: 'Catalogue',
+            },
+            {
+              key: 'map' as TabKey,
+              icon: <Map size={16} />,
+              label: 'Carte',
+            },
+            {
+              key: 'pending' as TabKey,
+              icon: <Clock size={16} />,
+              label: 'Réserv.',
+            },
+            {
+              key: 'notifications' as TabKey,
+              icon: <Bell size={16} />,
+              label: 'Notifs',
+            },
           ].map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`flex flex-col sm:flex-row items-center gap-1 sm:gap-2 px-2 sm:px-6 py-2 sm:py-3 font-bold text-[10px] sm:text-sm transition border-b-2 whitespace-nowrap ${
+              onClick={() => handleTabChange(tab.key)}
+              className={`relative flex flex-col sm:flex-row items-center gap-1 sm:gap-2 px-2 sm:px-6 py-2 sm:py-3 font-bold text-[10px] sm:text-sm transition border-b-2 whitespace-nowrap ${
                 activeTab === tab.key
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -532,16 +988,17 @@ export default function CommercialDashboard() {
             >
               {tab.icon}
               <span>{tab.label}</span>
+              {tab.key === 'notifications' && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
 
-        {/* ============================================
-            Contenu
-            ============================================ */}
         {activeTab === 'dashboard' && (
           <>
-            {/* Bouton statistiques repliable (mobile) */}
             <button
               onClick={() => setIsStatsExpanded((v) => !v)}
               className="lg:hidden w-full flex items-center justify-between px-3 py-2 mb-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm"
@@ -616,11 +1073,10 @@ export default function CommercialDashboard() {
         )}
 
         {activeTab === 'pending' && <PendingReservationsTab user={user} />}
+
+        {activeTab === 'notifications' && <NotificationsTab user={user} />}
       </main>
 
-      {/* ============================================
-          Modals
-          ============================================ */}
       {isPanneauReservationsModalOpen && selectedPanneauForReservations && (
         <PanneauReservationsModal
           isOpen={isPanneauReservationsModalOpen}
@@ -693,5 +1149,27 @@ export default function CommercialDashboard() {
         onClose={() => setIsReservationsManagementOpen(false)}
       />
     </div>
+  );
+}
+
+// ============================================
+// ✅ EXPORT PAR DÉFAUT AVEC SUSPENSE
+// ============================================
+export default function CommercialDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
+            <p className="mt-4 text-sm text-gray-500">
+              Chargement du tableau de bord...
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <CommercialDashboardInner />
+    </Suspense>
   );
 }

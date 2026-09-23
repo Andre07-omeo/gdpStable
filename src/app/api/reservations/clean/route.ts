@@ -2,18 +2,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
+import jwt from 'jsonwebtoken';
 
 export const dynamic = 'force-dynamic';
 
-// ============================================
-// TOKEN DE NETTOYAGE
-// ============================================
 const CLEANUP_TOKEN =
   process.env.CLEANUP_API_TOKEN || 'mon-token-securise-123456';
 
-// ============================================
-// POOL MYSQL
-// ============================================
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
   user: process.env.MYSQL_USER || 'root',
@@ -27,19 +22,52 @@ const pool = mysql.createPool({
 });
 
 // ============================================
+// ✅ Vérification : SOIT token, SOIT session
+// ============================================
+function isAuthorized(request: NextRequest): boolean {
+  // 1. Vérif par header (pour cron / appels externes)
+  const headerToken =
+    request.headers.get('x-cleanup-token') ||
+    request.headers.get('X-Cleanup-Token');
+
+  if (headerToken && headerToken === CLEANUP_TOKEN) {
+    console.log('✅ Nettoyage autorisé via header');
+    return true;
+  }
+
+  // 2. Vérif par cookie de session (utilisateur connecté)
+  try {
+    const authToken = request.cookies.get('auth_token')?.value;
+    if (authToken) {
+      const JWT_SECRET = process.env.JWT_SECRET;
+      if (JWT_SECRET) {
+        const decoded: any = jwt.verify(authToken, JWT_SECRET);
+        // Autoriser les profils habilités
+        const allowed = ['CHEF_COMMERCIAL', 'ADMIN', 'SUPER_ADMIN', 'PDG', 'DG'];
+        if (decoded && allowed.includes(decoded.profil)) {
+          console.log(
+            `✅ Nettoyage autorisé via session (${decoded.email})`
+          );
+          return true;
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return false;
+}
+
+// ============================================
 // POST : Effectuer le nettoyage
 // ============================================
 export async function POST(request: NextRequest) {
   let connection: mysql.PoolConnection | null = null;
 
   try {
-    // 1. Vérification du token
-    const token =
-      request.headers.get('X-Cleanup-Token') ||
-      request.headers.get('x-cleanup-token');
-
-    if (!token || token !== CLEANUP_TOKEN) {
-      console.warn('⚠️ Nettoyage refusé : token invalide ou absent');
+    if (!isAuthorized(request)) {
+      console.warn('⚠️ Nettoyage refusé (401)');
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
@@ -49,7 +77,6 @@ export async function POST(request: NextRequest) {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // 1. Réservations confirmées / actives dont la campagne est finie
     const [termineesResult] = await connection.execute(
       `UPDATE reservation 
        SET statut = 'Terminée', updated_at = NOW()
@@ -58,7 +85,6 @@ export async function POST(request: NextRequest) {
       []
     );
 
-    // 2. Réservations en attente expirées
     const [expireesResult] = await connection.execute(
       `UPDATE reservation 
        SET statut = 'Expirée', updated_at = NOW()
@@ -72,6 +98,8 @@ export async function POST(request: NextRequest) {
 
     const terminees = (termineesResult as any).affectedRows || 0;
     const expirees = (expireesResult as any).affectedRows || 0;
+
+    console.log(`✅ Nettoyage OK — terminées: ${terminees}, expirées: ${expirees}`);
 
     return NextResponse.json({
       success: true,
@@ -105,17 +133,13 @@ export async function POST(request: NextRequest) {
 }
 
 // ============================================
-// GET : Simulation (sans modification)
+// GET : Simulation
 // ============================================
 export async function GET(request: NextRequest) {
   let connection: mysql.PoolConnection | null = null;
 
   try {
-    const token =
-      request.headers.get('X-Cleanup-Token') ||
-      request.headers.get('x-cleanup-token');
-
-    if (!token || token !== CLEANUP_TOKEN) {
+    if (!isAuthorized(request)) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
