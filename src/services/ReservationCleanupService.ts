@@ -2,17 +2,24 @@
 
 import mysql from 'mysql2/promise';
 
-// Configuration de la base de données
+// ============================================
+// CONFIGURATION BASE DE DONNÉES
+// ============================================
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'gestion_panneaux_pro',
+  host: process.env.MYSQL_HOST || 'localhost',
+  user: process.env.MYSQL_USER || 'root',
+  password: process.env.MYSQL_PASSWORD || '',
+  database: process.env.MYSQL_DATABASE || 'gestion_panneaux_pro',
+  port: Number(process.env.MYSQL_PORT) || 3306,
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+  connectionLimit: 20,
+  queueLimit: 0,
+  connectTimeout: 10000,
 });
 
+// ============================================
+// TYPES
+// ============================================
 export interface CleanupResult {
   terminees: number;
   expirees: number;
@@ -24,40 +31,43 @@ export interface CleanupResult {
   }>;
 }
 
+// ============================================
+// SERVICE
+// ============================================
 export class ReservationCleanupService {
-  
   /**
-   * Vérifie si la campagne est terminée (date_fin_campagne < aujourd'hui)
+   * Vérifie si la campagne est terminée
    */
   isCampaignFinished(dateFinCampagne: Date | string | null): boolean {
     if (!dateFinCampagne) return false;
     return new Date(dateFinCampagne) < new Date();
   }
 
-  isExpired(dateExpiration: Date | string | null, statut: string | null): boolean {
+  isExpired(
+    dateExpiration: Date | string | null,
+    statut: string | null
+  ): boolean {
     if (!dateExpiration) return false;
-    
-    // Ne pas déplacer si déjà terminée ou expirée
+
     if (statut === 'Terminée' || statut === 'Expirée') return false;
-    
-    // Ne pas déplacer si la réservation est confirmée (même si date_expiration est passée)
     if (statut === 'Confirmée') return false;
-    
+
     return new Date(dateExpiration) < new Date();
   }
 
-  async cleanReservationsByBatch(batchSize: number = 50): Promise<CleanupResult> {
+  async cleanReservationsByBatch(
+    batchSize: number = 50
+  ): Promise<CleanupResult> {
     const resultats: CleanupResult = {
       terminees: 0,
       expirees: 0,
       erreurs: 0,
-      details: []
+      details: [],
     };
 
     const connection = await pool.getConnection();
 
     try {
-      // Récupérer les réservations (sauf celles déjà terminées ou expirées)
       const [reservations] = await connection.query(
         `SELECT * FROM reservation 
          WHERE statut NOT IN ('Terminée', 'Expirée')
@@ -65,7 +75,9 @@ export class ReservationCleanupService {
         [batchSize]
       );
 
-      console.log(`📊 ${(reservations as any[]).length} réservation(s) à vérifier`);
+      console.log(
+        `📊 ${(reservations as any[]).length} réservation(s) à vérifier`
+      );
 
       for (const reservation of reservations as any[]) {
         try {
@@ -73,43 +85,61 @@ export class ReservationCleanupService {
           const dateFinCampagne = reservation.date_fin_campagne;
           const dateExpiration = reservation.date_expiration;
 
-          console.log(`🔍 Vérification réservation ${reservation.id_reservation} (${reservation.numero_commande}) - Statut: ${statut}`);
+          console.log(
+            `🔍 Vérification réservation ${reservation.id_reservation} (${reservation.numero_commande}) - Statut: ${statut}`
+          );
 
-          // ============================================
-          // CAS 1 : Réservation Confirmée
-          // → Déplacée UNIQUEMENT si date_fin_campagne est passée
-          // ============================================
+          // CAS 1 : Confirmée → terminée si campagne finie
           if (statut === 'Confirmée') {
             if (this.isCampaignFinished(dateFinCampagne)) {
-              console.log(`✅ Réservation ${reservation.id_reservation} terminée (campagne finie)`);
-              await this.moveReservation(connection, reservation, 'terminée', 'Terminée', resultats);
+              console.log(
+                `✅ Réservation ${reservation.id_reservation} terminée (campagne finie)`
+              );
+              await this.moveReservation(
+                connection,
+                reservation,
+                'terminée',
+                'Terminée',
+                resultats
+              );
             } else {
-              console.log(`⏳ Réservation ${reservation.id_reservation} confirmée - Campagne en cours`);
+              console.log(
+                `⏳ Réservation ${reservation.id_reservation} confirmée - Campagne en cours`
+              );
             }
             continue;
           }
 
-          // ============================================
-          // CAS 2 : Réservation En attente (non confirmée)
-          // → Déplacée UNIQUEMENT si date_expiration est passée
-          // ============================================
+          // CAS 2 : En attente → expirée si date dépassée
           if (statut === 'En attente') {
             if (this.isExpired(dateExpiration, statut)) {
-              console.log(`⏰ Réservation ${reservation.id_reservation} expirée (date expiration passée)`);
-              await this.moveReservation(connection, reservation, 'expirée', 'Expirée', resultats);
+              console.log(
+                `⏰ Réservation ${reservation.id_reservation} expirée (date expiration passée)`
+              );
+              await this.moveReservation(
+                connection,
+                reservation,
+                'expirée',
+                'Expirée',
+                resultats
+              );
             } else {
-              console.log(`⏳ Réservation ${reservation.id_reservation} en attente - En cours de validité`);
+              console.log(
+                `⏳ Réservation ${reservation.id_reservation} en attente - En cours de validité`
+              );
             }
             continue;
           }
 
-          // ============================================
-          // CAS 3 : Autres statuts (payée, etc.)
-          // ============================================
-          console.log(`ℹ️ Réservation ${reservation.id_reservation} - Statut ${statut} non traité`);
-
+          // CAS 3 : autres statuts
+          console.log(
+            `ℹ️ Réservation ${reservation.id_reservation} - Statut ${statut} non traité`
+          );
         } catch (error) {
-          console.error(`❌ Erreur réservation ${reservation.id_reservation}:`, error);
+          console.error(
+            `❌ Erreur réservation ${reservation.id_reservation}:`,
+            error
+          );
           resultats.erreurs++;
         }
       }
@@ -117,11 +147,10 @@ export class ReservationCleanupService {
       console.log('📊 Résumé du nettoyage:', {
         terminees: resultats.terminees,
         expirees: resultats.expirees,
-        erreurs: resultats.erreurs
+        erreurs: resultats.erreurs,
       });
 
       return resultats;
-
     } finally {
       connection.release();
     }
@@ -134,13 +163,11 @@ export class ReservationCleanupService {
     nouveauStatut: string,
     resultats: CleanupResult
   ): Promise<void> {
-    // 1. Mettre à jour le statut
     await connection.query(
       'UPDATE reservation SET statut = ? WHERE id_reservation = ?',
       [nouveauStatut, reservation.id_reservation]
     );
 
-    // 2. Copier dans l'historique
     await connection.query(
       `INSERT INTO historique_reservation (
         id_reservation, id_client, id_commercial, id_chef_validation,
@@ -172,29 +199,35 @@ export class ReservationCleanupService {
         new Date(),
         motif,
         reservation.statut,
-        nouveauStatut
+        nouveauStatut,
       ]
     );
 
-    // 3. Supprimer de la table principale
     await connection.query(
       'DELETE FROM reservation WHERE id_reservation = ?',
       [reservation.id_reservation]
     );
 
-    // 4. Compter
     if (motif === 'terminée') {
       resultats.terminees++;
     } else {
       resultats.expirees++;
     }
-    
+
     resultats.details.push({
       id: reservation.id_reservation,
       commande: reservation.numero_commande || 'N/A',
-      motif: motif === 'terminée' ? 'Campagne terminée' : 'Réservation expirée'
+      motif:
+        motif === 'terminée' ? 'Campagne terminée' : 'Réservation expirée',
     });
 
-    console.log(`📦 Réservation ${reservation.id_reservation} déplacée vers historique (${motif})`);
+    console.log(
+      `📦 Réservation ${reservation.id_reservation} déplacée vers historique (${motif})`
+    );
   }
 }
+
+// ============================================
+// INSTANCE PARTAGÉE
+// ============================================
+export const reservationCleanupService = new ReservationCleanupService();
