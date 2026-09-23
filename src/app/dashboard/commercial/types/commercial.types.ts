@@ -15,7 +15,11 @@ export type Profil =
   | 'CAISSIER'
   | 'COMPTABLE';
 
+// ============================================
+// ✅ USER FEATURES — COMPLÈTE (ajouts en fin)
+// ============================================
 export interface UserFeatures {
+  // Existantes
   canManageAgents: boolean;
   canValidateReservations: boolean;
   canViewReports: boolean;
@@ -25,6 +29,14 @@ export interface UserFeatures {
   canExportReports: boolean;
   canManageTeam: boolean;
   canModifyReservations: boolean;
+
+  // ✅ AJOUTS (nécessaires pour proformat + impression + navigation)
+  canCreateProformat: boolean;
+  canPrintFacture: boolean;
+  canViewAllPanneaux: boolean;
+  canAccessPanier: boolean;
+  canAccessCatalogue: boolean;
+  canAccessMap: boolean;
 }
 
 // ============================================
@@ -32,6 +44,7 @@ export interface UserFeatures {
 // ============================================
 export const getFeaturesByProfil = (profil?: string | null): UserFeatures => {
   const baseFeatures: UserFeatures = {
+    // Existantes
     canManageAgents: false,
     canValidateReservations: false,
     canViewReports: false,
@@ -41,9 +54,19 @@ export const getFeaturesByProfil = (profil?: string | null): UserFeatures => {
     canExportReports: false,
     canManageTeam: false,
     canModifyReservations: false,
+
+    // ✅ AJOUTS
+    canCreateProformat: false,
+    canPrintFacture: false,
+    canViewAllPanneaux: false,
+    canAccessPanier: false,
+    canAccessCatalogue: false,
+    canAccessMap: false,
   };
 
-  switch (profil || '') {
+  const p = (profil || '').toUpperCase();
+
+  switch (p) {
     case 'SUPER_ADMIN':
     case 'ADMIN_SYSTEM':
       return {
@@ -57,6 +80,13 @@ export const getFeaturesByProfil = (profil?: string | null): UserFeatures => {
         canExportReports: true,
         canManageTeam: true,
         canModifyReservations: true,
+        // ✅ AJOUTS
+        canCreateProformat: true,
+        canPrintFacture: true,
+        canViewAllPanneaux: true,
+        canAccessPanier: true,
+        canAccessCatalogue: true,
+        canAccessMap: true,
       };
 
     case 'DG':
@@ -68,8 +98,21 @@ export const getFeaturesByProfil = (profil?: string | null): UserFeatures => {
         canViewAllStats: true,
         canExportReports: true,
         canValidateReservations: true,
-        canManageTeam: true,           // ✅ Ajouté
-        canModifyReservations: false,
+        canManageTeam: true,
+
+        // ✅ CORRECTION MAJEURE : DG/PDG doivent pouvoir gérer les réservations
+        // C'est CE changement qui débloque l'accès au panier, proformat et impression
+        canModifyReservations: true,
+
+        // ✅ AJOUTS : mêmes droits que CHEF_COMMERCIAL pour l'impression
+        canManageAgents: true,
+        canManagePanneaux: true,
+        canCreateProformat: true,
+        canPrintFacture: true,
+        canViewAllPanneaux: true,
+        canAccessPanier: true,
+        canAccessCatalogue: true,
+        canAccessMap: true,
       };
 
     case 'CHEF_COMMERCIAL':
@@ -79,19 +122,35 @@ export const getFeaturesByProfil = (profil?: string | null): UserFeatures => {
         canValidateReservations: true,
         canViewReports: true,
         canExportReports: true,
-        canManageTeam: true,           // ✅
+        canManageTeam: true,
         canModifyReservations: true,
         canViewAllStats: true,
+        // ✅ AJOUTS
+        canManagePanneaux: true,
+        canViewPredictions: true,
+        canCreateProformat: true,
+        canPrintFacture: true,
+        canViewAllPanneaux: true,
+        canAccessPanier: true,
+        canAccessCatalogue: true,
+        canAccessMap: true,
       };
 
     case 'COMMERCIAL':
       return {
         ...baseFeatures,
-        canManageTeam: false,           // ✅ CORRIGÉ : Le commercial gère son équipe
+        canManageTeam: false,
         canViewReports: false,
         canExportReports: false,
         canModifyReservations: false,
         canValidateReservations: false,
+        // ✅ AJOUTS : le commercial peut créer/imprimer ses proformats
+        canCreateProformat: true,
+        canPrintFacture: true,
+        canViewAllPanneaux: false,
+        canAccessPanier: true,
+        canAccessCatalogue: true,
+        canAccessMap: true,
       };
 
     case 'SUPERVISEUR':
@@ -100,6 +159,13 @@ export const getFeaturesByProfil = (profil?: string | null): UserFeatures => {
         canViewReports: true,
         canViewAllStats: true,
         canManagePanneaux: true,
+        // ✅ AJOUTS
+        canCreateProformat: true,
+        canPrintFacture: true,
+        canViewAllPanneaux: true,
+        canAccessPanier: false,
+        canAccessCatalogue: true,
+        canAccessMap: true,
       };
 
     case 'CAISSIER':
@@ -107,6 +173,9 @@ export const getFeaturesByProfil = (profil?: string | null): UserFeatures => {
         ...baseFeatures,
         canViewReports: false,
         canManageAgents: false,
+        // ✅ AJOUTS
+        canPrintFacture: true,
+        canAccessCatalogue: true,
       };
 
     case 'COMPTABLE':
@@ -114,6 +183,11 @@ export const getFeaturesByProfil = (profil?: string | null): UserFeatures => {
         ...baseFeatures,
         canViewReports: true,
         canViewAllStats: true,
+        // ✅ AJOUTS
+        canPrintFacture: true,
+        canViewAllPanneaux: true,
+        canAccessCatalogue: true,
+        canAccessMap: true,
       };
 
     default:
@@ -149,7 +223,7 @@ export interface Face {
     largeur_cm: number;
     est_scroller: number;
   };
-  type_face_libelle?: string;      // ✅ Ajouté
+  type_face_libelle?: string;
   reservations?: Reservation[];
   societeLocatrice?: string | null;
   dateDebut?: string | null;

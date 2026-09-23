@@ -12,7 +12,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 
-RUN npm ci --no-audit --no-fund
+# ⚡ INSTALLER AUSSI LES devDependencies (tailwindcss, typescript, etc.)
+RUN npm ci --include=dev --no-audit --no-fund
 
 
 # ============================================
@@ -25,17 +26,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma ./prisma
 
-# ⚡ COPIER LE CODE
 COPY . .
-
-# ✅ VÉRIFICATIONS OBLIGATOIRES AVANT BUILD
-RUN echo "===== VÉRIFICATION DES FICHIERS =====" && \
-    ls -la tsconfig.json next.config.js next.config.mjs 2>&1 || true && \
-    echo "===== CONTENU tsconfig.json =====" && \
-    cat tsconfig.json && \
-    echo "===== VÉRIFICATION src/components =====" && \
-    ls -la src/components/shared/ 2>&1 || echo "❌ src/components/shared MANQUANT" && \
-    ls -la src/context/ 2>&1 || echo "❌ src/context MANQUANT"
 
 RUN npx prisma generate
 
@@ -46,8 +37,9 @@ RUN echo "🔧 BUILD_VERSION=${BUILD_VERSION}" && \
       echo "✅ CACHE_VERSION injectée"; \
     fi
 
+# ⚡ NE PAS METTRE NODE_ENV=production ICI
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NODE_ENV=production
+# ENV NODE_ENV=production  ← ❌ RETIRÉ (empêche l'install des devDeps)
 
 RUN npm run build
 
