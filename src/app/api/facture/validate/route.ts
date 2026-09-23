@@ -1,4 +1,5 @@
 // src/app/api/facture/validate/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
 import jwt from 'jsonwebtoken';
@@ -28,6 +29,38 @@ function getUserIdFromToken(request: NextRequest): number | null {
   } catch {
     return null;
   }
+}
+
+// ✅ Normaliser le statut (évite "Data truncated" sur ENUM)
+function normaliserStatut(valeur: any, defaut = 'EN_ATTENTE'): string {
+  const val = String(valeur || defaut).trim().toUpperCase();
+  const statutsValides = [
+    'EN_ATTENTE',
+    'VALIDE',
+    'PAYEE',
+    'REJETEE',
+    'ANNULEE',
+    'BROUILLON',
+  ];
+  if (statutsValides.includes(val)) return val;
+  console.warn(`⚠️ statut invalide: "${valeur}", remplacé par "${defaut}"`);
+  return defaut;
+}
+
+// ✅ Normaliser le mode de paiement
+function normaliserModePaiement(valeur: any, defaut = 'comptant'): string {
+  const val = String(valeur || defaut).trim().toLowerCase();
+  const modesValides = [
+    'comptant',
+    'virement',
+    'cheque',
+    'carte',
+    'espece',
+    'mobile_money',
+    'credit',
+  ];
+  if (modesValides.includes(val)) return val;
+  return defaut;
 }
 
 export async function POST(request: NextRequest) {
@@ -110,7 +143,6 @@ export async function POST(request: NextRequest) {
       .map((l) => Number(l.id_face))
       .filter((id) => id > 0);
 
-    // Dédupliquer
     const uniqueReservationIds = [...new Set(reservationIds)];
     const uniqueFaceIds = [...new Set(faceIds)];
 
@@ -124,6 +156,7 @@ export async function POST(request: NextRequest) {
     // ============================================
     if (action === 'valider') {
       const montantPaye = Number(montant_recu) || 0;
+      const modePaiementFinal = normaliserModePaiement(mode_paiement);
 
       if (montantPaye <= 0) {
         await connection.rollback();
@@ -150,11 +183,16 @@ export async function POST(request: NextRequest) {
       );
       const dejaPaye = Number((paymentsRows as any[])[0]?.deja_paye || 0);
       const totalPayeApres = dejaPaye + montantPaye;
-      const nouveauStatut = totalPayeApres >= totalFacture ? 'PAYEE' : 'VALIDE';
 
-      console.log(`💰 Déjà payé: ${dejaPaye}, nouveau paiement: ${montantPaye}, total: ${totalPayeApres}, statut: ${nouveauStatut}`);
+      // ✅ Normaliser le statut AVANT update
+      const statutBrut = totalPayeApres >= totalFacture ? 'PAYEE' : 'VALIDE';
+      const nouveauStatut = normaliserStatut(statutBrut);
 
-      // 2️⃣ Enregistrer le paiement dans facture_tranche
+      console.log(
+        `💰 Déjà payé: ${dejaPaye}, nouveau paiement: ${montantPaye}, total: ${totalPayeApres}, statut: ${nouveauStatut}`
+      );
+
+      // 2️⃣ Enregistrer le paiement
       const [maxTranche] = await connection.query(
         `SELECT COALESCE(MAX(numero_tranche), 0) as max_num FROM facture_tranche WHERE id_facture = ?`,
         [id_facture]
@@ -165,7 +203,7 @@ export async function POST(request: NextRequest) {
         `INSERT INTO facture_tranche 
          (id_facture, numero_tranche, montant, date_paiement, mode_paiement, statut, created_at)
          VALUES (?, ?, ?, NOW(), ?, 'paye', NOW())`,
-        [id_facture, numeroTranche, montantPaye, mode_paiement || 'comptant']
+        [id_facture, numeroTranche, montantPaye, modePaiementFinal]
       );
       console.log(`✅ Tranche ${numeroTranche} enregistrée`);
 
@@ -179,7 +217,13 @@ export async function POST(request: NextRequest) {
              date_validation = NOW(),
              updated_at = NOW()
          WHERE id_facture = ?`,
-        [nouveauStatut, mode_paiement, nombre_tranches, comptableId, id_facture]
+        [
+          nouveauStatut,
+          modePaiementFinal,
+          nombre_tranches,
+          comptableId,
+          id_facture,
+        ]
       );
       console.log(`✅ Facture passée à ${nouveauStatut}`);
 
@@ -199,7 +243,6 @@ export async function POST(request: NextRequest) {
         );
         console.log(`✅ ${uniqueReservationIds.length} réservation(s) activée(s)`);
 
-        // ACTIVER les lignes de réservation
         await connection.query(
           `UPDATE ligne_reservation 
            SET statut_diffusion = 'ACTIVE',
@@ -209,7 +252,6 @@ export async function POST(request: NextRequest) {
         );
         console.log(`✅ Lignes de réservation activées`);
 
-        // ACTIVER les faces (est_active = 1)
         if (uniqueFaceIds.length > 0) {
           const facePlaceholders = uniqueFaceIds.map(() => '?').join(',');
           await connection.query(
@@ -238,7 +280,7 @@ export async function POST(request: NextRequest) {
       );
       console.log(`✅ Historique enregistré`);
 
-      // 6️⃣ Notifications (optionnel)
+      // 6️⃣ Notifications
       try {
         await connection.query(
           `INSERT INTO notifications 
@@ -288,18 +330,20 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // ✅ Normaliser le statut REJETEE
+      const statutRejet = normaliserStatut('REJETEE');
+
       await connection.query(
         `UPDATE facture 
-         SET statut = 'REJETEE',
+         SET statut = ?,
              id_comptable_validation = ?,
              motif_rejet = ?,
              date_rejet = NOW(),
              updated_at = NOW()
          WHERE id_facture = ?`,
-        [comptableId, motif_rejet, id_facture]
+        [statutRejet, comptableId, motif_rejet, id_facture]
       );
 
-      // Remettre les réservations en attente
       if (uniqueReservationIds.length > 0) {
         const placeholders = uniqueReservationIds.map(() => '?').join(',');
         await connection.query(
@@ -316,10 +360,11 @@ export async function POST(request: NextRequest) {
       await connection.query(
         `INSERT INTO facture_historique 
          (id_facture, action, ancien_statut, nouveau_statut, description, id_utilisateur, date_action)
-         VALUES (?, 'REJET', ?, 'REJETEE', ?, ?, NOW())`,
+         VALUES (?, 'REJET', ?, ?, ?, ?, NOW())`,
         [
           id_facture,
           statutActuel || 'EN_ATTENTE',
+          statutRejet,
           `Facture rejetée: ${motif_rejet}`,
           comptableId,
         ]
@@ -334,13 +379,12 @@ export async function POST(request: NextRequest) {
         data: {
           id_facture,
           numero_facture: facture.numero_facture,
-          statut: 'REJETEE',
+          statut: statutRejet,
           motif_rejet,
         },
       });
     }
 
-    // Si on arrive ici, l'action était invalide
     await connection.rollback();
     connection.release();
     return NextResponse.json(
