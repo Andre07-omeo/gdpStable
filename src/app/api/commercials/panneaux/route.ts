@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // ============================================
-// ✅ CONNEXION MySQL — variables Coolify en priorité
+// ✅ CONNEXION MySQL
 // ============================================
 const dbConfig = {
   host: process.env.MYSQL_HOST || process.env.DB_HOST || 'localhost',
@@ -16,13 +16,12 @@ const dbConfig = {
   port: Number(process.env.MYSQL_PORT || process.env.DB_PORT || 3306),
 };
 
-// ✅ Parsing JSON tolérant — ne plante JAMAIS, retourne le fallback si cassé
+// ============================================
+// ✅ PARSING JSON TOLÉRANT
+// ============================================
 function safeJsonParse<T>(value: any, fallback: T, context: string): T {
   if (value === null || value === undefined) return fallback;
-
-  // Si c'est déjà un objet/array (MySQL peut le renvoyer déjà parsé)
   if (typeof value === 'object') return value as T;
-
   if (typeof value !== 'string') return fallback;
 
   const trimmed = value.trim();
@@ -42,7 +41,9 @@ function safeJsonParse<T>(value: any, fallback: T, context: string): T {
   }
 }
 
-// ✅ Log de debug au démarrage (une seule fois)
+// ============================================
+// LOGS DE DÉMARRAGE
+// ============================================
 console.log('🔍 [panneaux] Config DB:', {
   host: dbConfig.host,
   port: dbConfig.port,
@@ -51,6 +52,9 @@ console.log('🔍 [panneaux] Config DB:', {
   passwordSet: !!dbConfig.password,
 });
 
+// ============================================
+// ROUTE GET
+// ============================================
 export async function GET(request: NextRequest) {
   let connection: mysql.Connection | null = null;
 
@@ -60,20 +64,25 @@ export async function GET(request: NextRequest) {
     const statut = searchParams.get('statut');
     const search = searchParams.get('search');
 
-    console.log('🔍 [panneaux] Paramètres:', { commercialId, statut, search });
+    console.log('🔍 [panneaux] Paramètres:', {
+      commercialId,
+      statut,
+      search,
+    });
 
     // ============================================
-    // Établir la connexion
+    // ÉTABLIR LA CONNEXION
     // ============================================
     connection = await mysql.createConnection(dbConfig);
     console.log('✅ [panneaux] Connexion MySQL établie');
 
-    // ✅ IMPORTANT : augmenter la limite GROUP_CONCAT (par défaut 1024)
+    // ⚠️⚠️⚠️ CRUCIAL : AUGMENTER LA LIMITE GROUP_CONCAT ⚠️⚠️⚠️
+    // Sans cette ligne, MySQL tronque le JSON à 1024 caractères
     await connection.execute('SET SESSION group_concat_max_len = 1000000');
     console.log('✅ [panneaux] group_concat_max_len = 1 000 000');
 
     // ============================================
-    // Requête principale
+    // REQUÊTE PRINCIPALE
     // ============================================
     let sql = `
       SELECT 
@@ -167,7 +176,13 @@ export async function GET(request: NextRequest) {
 
     // Filtre par statut
     if (statut) {
-      const validStatuses = ['Confirmée', 'En attente', 'En cours', 'Expirée', 'Annulée'];
+      const validStatuses = [
+        'Confirmée',
+        'En attente',
+        'En cours',
+        'Expirée',
+        'Annulée',
+      ];
       if (!validStatuses.includes(statut)) {
         return NextResponse.json(
           { error: 'Statut invalide' },
@@ -197,7 +212,7 @@ export async function GET(request: NextRequest) {
     sql += ` ORDER BY p.nom ASC`;
 
     // ============================================
-    // Exécution
+    // EXÉCUTION
     // ============================================
     const [rows] = await connection.execute(sql, params);
     const panneaux = rows as any[];
@@ -205,10 +220,10 @@ export async function GET(request: NextRequest) {
     console.log(`✅ [panneaux] ${panneaux.length} panneaux récupérés`);
 
     // ============================================
-    // Formatage
+    // FORMATAGE
     // ============================================
     const formattedPanneaux = panneaux.map((panneau: any) => {
-      // ✅ Parsing tolérant
+      // ✅ Parsing tolérant (retourne [] si cassé)
       const faces = safeJsonParse<any[]>(
         panneau.faces,
         [],
@@ -232,7 +247,6 @@ export async function GET(request: NextRequest) {
         etatPanneau: panneau.etatPanneau || 'Actif',
         hasProblem: hasProblemFaces,
         faces: faces.map((face: any) => {
-          // ✅ Parsing tolérant
           const reservations = safeJsonParse<any[]>(
             face.reservations,
             [],
@@ -405,7 +419,6 @@ export async function GET(request: NextRequest) {
       stack: error.stack,
     });
 
-    // Erreur de connexion DB
     if (error.code === 'ECONNREFUSED') {
       return NextResponse.json(
         {
@@ -417,7 +430,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Erreur SQL
     if (error.code?.startsWith('ER_')) {
       return NextResponse.json(
         {
@@ -429,7 +441,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Erreur générique
     return NextResponse.json(
       {
         error: 'Erreur lors de la récupération des données',
