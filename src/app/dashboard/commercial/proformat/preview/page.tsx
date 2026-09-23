@@ -3,7 +3,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Printer, ArrowLeft, FileText, Save, CheckCircle, Loader2, AlertCircle, Eye, XCircle } from 'lucide-react';
@@ -67,6 +67,9 @@ export default function ProformatPreviewPage() {
   const [conditions, setConditions] = useState('Paiement à 30 jours');
   const [showValidationModal, setShowValidationModal] = useState(false);
 
+  // ✅ Ref pour éviter les doubles impressions
+  const hasPrintedRef = useRef(false);
+
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 850) {
@@ -88,7 +91,7 @@ export default function ProformatPreviewPage() {
 
     const data = typeof window !== "undefined" ? localStorage.getItem('proformat_selected_reservations') : null;
     const client = typeof window !== "undefined" ? localStorage.getItem('proformat_client_nom') : null;
-    
+
     if (!data || !client) {
       setError('Aucune donnée trouvée. Veuillez sélectionner des réservations.');
       setLoading(false);
@@ -97,7 +100,7 @@ export default function ProformatPreviewPage() {
 
     try {
       const parsed = JSON.parse(data);
-      
+
       if (parsed.length === 0) {
         setError('Aucune réservation sélectionnée.');
         setLoading(false);
@@ -115,19 +118,19 @@ export default function ProformatPreviewPage() {
 
       setReservations(parsed);
       setClientNom(client);
-      
+
       setCommercialInfo({
         nom: nomCommercial,
         prenom: prenomCommercial,
         email: finalEmail,
         nomComplet: finalNomComplet
       });
-      
+
       const total = parsed.reduce((sum: number, r: ReservationProformat) => {
         return sum + (r.prix_saisi || 0);
       }, 0);
       setTotalGeneral(total);
-      
+
     } catch (e) {
       console.error('Erreur de chargement:', e);
       setError('Erreur lors du chargement des données.');
@@ -139,12 +142,10 @@ export default function ProformatPreviewPage() {
   const validateProformat = (): { isValid: boolean; errors: string[] } => {
     const errors: string[] = [];
 
-    // 1. Vérifier le client
     if (!clientNom || clientNom.trim() === '') {
       errors.push('❌ Le nom du client est requis');
     }
 
-    // 2. Vérifier les informations du commercial
     const commercialNom = commercialInfo.nomComplet || getUserName();
     if (!commercialNom || commercialNom === 'Commercial' || commercialNom.trim() === '') {
       errors.push('❌ Le nom du commercial est requis. Veuillez vous reconnecter.');
@@ -155,41 +156,34 @@ export default function ProformatPreviewPage() {
       errors.push('❌ L\'email du commercial est requis. Veuillez vous reconnecter.');
     }
 
-    // 3. Vérifier les réservations
     if (!reservations || reservations.length === 0) {
       errors.push('❌ Aucune réservation sélectionnée');
     } else {
-      // Vérifier que toutes les réservations ont un prix
       const reservationsSansPrix = reservations.filter(r => !r.prix_saisi || r.prix_saisi <= 0);
       if (reservationsSansPrix.length > 0) {
         errors.push(`❌ ${reservationsSansPrix.length} réservation(s) sans prix valide`);
       }
 
-      // Vérifier que toutes les réservations ont un ID
       const reservationsSansId = reservations.filter(r => !r.id_reservation);
       if (reservationsSansId.length > 0) {
         errors.push(`❌ ${reservationsSansId.length} réservation(s) sans ID`);
       }
 
-      // Vérifier que toutes les réservations ont des lignes
       const reservationsSansLignes = reservations.filter(r => !r.lignes || r.lignes.length === 0);
       if (reservationsSansLignes.length > 0) {
         errors.push(`❌ ${reservationsSansLignes.length} réservation(s) sans lignes`);
       }
 
-      // Vérifier que toutes les réservations ont le même client
       const clientNames = [...new Set(reservations.map(r => r.client_nom))];
       if (clientNames.length > 1) {
         errors.push(`❌ Plusieurs clients différents sélectionnés: ${clientNames.join(', ')}`);
       }
     }
 
-    // 4. Vérifier le total
     if (totalGeneral <= 0) {
       errors.push('❌ Le total doit être supérieur à 0');
     }
 
-    // 5. Vérifier les dates
     for (const reservation of reservations) {
       if (reservation.date_debut_campagne && reservation.date_fin_campagne) {
         const debut = new Date(reservation.date_debut_campagne);
@@ -206,9 +200,8 @@ export default function ProformatPreviewPage() {
   // ✅ Fonction pour vérifier les doublons en base de données
   const checkDuplicate = async (): Promise<{ isDuplicate: boolean; message?: string }> => {
     try {
-      // Vérifier si une facture existe déjà avec ces réservations
       const reservationIds = reservations.map(r => r.id_reservation).join(',');
-      
+
       const response = await fetch(`/api/facture/check-duplicate?reservations=${reservationIds}`, {
         method: 'GET',
         headers: {
@@ -224,32 +217,50 @@ export default function ProformatPreviewPage() {
     }
   };
 
-  // ✅ Fonction unique : Enregistrer puis imprimer
+  // ✅ Fonction unique : Enregistrer puis imprimer (avec logs détaillés)
   const handleSaveAndPrint = async () => {
+    console.log('🟢 [1] handleSaveAndPrint appelé, saved =', saved);
+
     // Si déjà enregistré, imprimer directement
     if (saved) {
-      window.print();
+      console.log('🟢 [2] Déjà enregistré, impression directe');
+      try {
+        window.print();
+      } catch (e) {
+        console.error('❌ Erreur window.print():', e);
+      }
       return;
     }
 
-    if (saving) return;
-    
+    if (saving) {
+      console.log('⏸️ [3] Déjà en cours, on ignore');
+      return;
+    }
+
     // ✅ Étape 1: Valider les données
+    console.log('🟢 [4] Validation en cours...');
     const validation = validateProformat();
+    console.log('🟢 [5] Résultat validation:', validation);
+
     if (!validation.isValid) {
+      console.error('❌ [6] Validation échouée:', validation.errors);
       setValidationErrors(validation.errors);
       setShowValidationModal(true);
       return;
     }
 
     // ✅ Étape 2: Vérifier les doublons
+    console.log('🟢 [7] Validation OK, vérification doublon...');
     setSaving(true);
     setSaveError(null);
     setSaveSuccess(null);
 
     try {
       const duplicateCheck = await checkDuplicate();
+      console.log('🟢 [8] Résultat checkDuplicate:', duplicateCheck);
+
       if (duplicateCheck.isDuplicate) {
+        console.error('❌ [9] Doublon détecté');
         setSaveError(`⚠️ ${duplicateCheck.message || 'Une facture existe déjà pour ces réservations'}`);
         setSaving(false);
         return;
@@ -285,7 +296,7 @@ export default function ProformatPreviewPage() {
         conditions_paiement: conditions
       };
 
-      console.log('📤 Envoi des données:', factureData);
+      console.log('🟢 [10] Envoi POST /api/facture:', factureData);
 
       const response = await fetch('/api/facture', {
         method: 'POST',
@@ -295,32 +306,49 @@ export default function ProformatPreviewPage() {
         body: JSON.stringify(factureData),
       });
 
+      console.log('🟢 [11] Réponse status:', response.status);
       const result = await response.json();
+      console.log('🟢 [12] Réponse body:', result);
 
       if (response.ok && result.success) {
         setSaved(true);
         setSaveSuccess(`✅ Proformat enregistré avec succès ! N°: ${result.data.numero_facture}`);
         setNumeroFacture(result.data.numero_facture);
         setIdFacture(result.data.id_facture);
-        
+
         localStorage.setItem('last_facture_id', result.data.id_facture);
         localStorage.setItem('last_facture_numero', result.data.numero_facture);
-        setNumeroFacture(result.data.numero_facture);
-        
-        // ✅ Attendre un peu puis imprimer automatiquement
+
+        // ✅ Attendre le re-render React PUIS imprimer
+        console.log('🟢 [13] Programmation impression dans 1200ms');
         setTimeout(() => {
-          window.print();
-        }, 800);
-        
+          try {
+            console.log('🟢 [14] Appel window.print() maintenant');
+            window.print();
+          } catch (e) {
+            console.error('❌ [14-bis] Erreur window.print():', e);
+          }
+        }, 1200);
+
       } else {
         setSaveError(result.message || '❌ Erreur lors de l\'enregistrement du proformat');
-        console.error('Erreur API:', result);
+        console.error('❌ [13-bis] Erreur API:', result);
       }
     } catch (error: any) {
-      console.error('Erreur:', error);
+      console.error('❌ [15] Exception:', error);
       setSaveError(`❌ Erreur technique: ${error.message || 'Veuillez réessayer'}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ✅ Fallback : force l'impression même si l'auto-print échoue
+  const handleManualPrint = () => {
+    console.log('🖨️ Impression manuelle demandée');
+    try {
+      window.print();
+    } catch (e) {
+      console.error('❌ Erreur impression manuelle:', e);
     }
   };
 
@@ -424,6 +452,7 @@ export default function ProformatPreviewPage() {
           RETOUR
         </button>
 
+        {/* ✅ Bouton principal : Enregistrer & Imprimer */}
         <button
           className={`btn-action ${saved ? 'btn-print-mode' : 'btn-save-mode'}`}
           onClick={handleSaveAndPrint}
@@ -446,6 +475,18 @@ export default function ProformatPreviewPage() {
             </>
           )}
         </button>
+
+        {/* ✅ Bouton fallback : impression manuelle (toujours visible si enregistré) */}
+        {saved && (
+          <button
+            className="btn-manual-print"
+            onClick={handleManualPrint}
+            title="Imprimer manuellement"
+          >
+            <Printer size={16} className="mr-2" />
+            Impression manuelle
+          </button>
+        )}
 
         {saved && (
           <span className="status-badge">
@@ -472,7 +513,6 @@ export default function ProformatPreviewPage() {
 
       <div className="zoom-wrapper" style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
         <div className="sheet">
-          {/* ... (le reste du contenu reste identique) ... */}
           {/* 📅 DATE */}
           <div style={{
             position: 'absolute',
@@ -542,7 +582,7 @@ export default function ProformatPreviewPage() {
                   <span>{reservation.numero_commande}</span>
                   <span>{reservation.prix_saisi?.toLocaleString()} FCFA/mois</span>
                 </div>
-                
+
                 {reservation.lignes.map((ligne, lIdx) => (
                   <div key={lIdx} style={{
                     display: 'flex',
@@ -724,14 +764,15 @@ export default function ProformatPreviewPage() {
           align-items: center;
           gap: 15px;
           box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+          flex-wrap: wrap;
         }
-        .btn-back { 
-          background: #e74c3c; 
-          color: white; 
-          border: none; 
-          padding: 10px 20px; 
-          font-weight: bold; 
-          cursor: pointer; 
+        .btn-back {
+          background: #e74c3c;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          font-weight: bold;
+          cursor: pointer;
           border-radius: 5px;
           font-size: 14px;
           display: flex;
@@ -769,6 +810,22 @@ export default function ProformatPreviewPage() {
           background: #219a52;
           transform: scale(1.02);
         }
+        .btn-manual-print {
+          background: #3498db;
+          color: white;
+          border: none;
+          padding: 10px 18px;
+          font-weight: bold;
+          cursor: pointer;
+          border-radius: 5px;
+          font-size: 13px;
+          display: flex;
+          align-items: center;
+          transition: all 0.3s;
+        }
+        .btn-manual-print:hover {
+          background: #2980b9;
+        }
         .btn-action:disabled {
           opacity: 0.6;
           cursor: not-allowed;
@@ -785,7 +842,7 @@ export default function ProformatPreviewPage() {
         }
         .success-message {
           position: fixed;
-          top: 80px;
+          top: 100px;
           left: 50%;
           transform: translateX(-50%);
           z-index: 99;
@@ -801,7 +858,7 @@ export default function ProformatPreviewPage() {
         }
         .error-message {
           position: fixed;
-          top: 80px;
+          top: 100px;
           left: 50%;
           transform: translateX(-50%);
           z-index: 99;
@@ -815,8 +872,6 @@ export default function ProformatPreviewPage() {
           box-shadow: 0 4px 15px rgba(231, 76, 60, 0.4);
           animation: slideDown 0.5s ease;
         }
-
-        /* ✅ Styles pour le modal de validation */
         .modal-overlay {
           position: fixed;
           top: 0;
@@ -934,4 +989,3 @@ export default function ProformatPreviewPage() {
     </div>
   );
 }
-

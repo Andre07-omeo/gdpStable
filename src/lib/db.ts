@@ -1,34 +1,47 @@
 ﻿// src/lib/db.ts
 import { PrismaClient } from '@prisma/client';
 import mysql from 'mysql2/promise';
-import type { RowDataPacket, ResultSetHeader, OkPacket } from 'mysql2';
+import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 // ============================================
 // 1. PRISMA CLIENT
 // ============================================
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
-export const prisma = globalForPrisma.prisma || new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-});
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log:
+      process.env.NODE_ENV === 'development'
+        ? ['query', 'error', 'warn']
+        : ['error'],
+  });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 // ============================================
 // 2. MYSQL POOL (pour les requêtes brutes)
 // ============================================
+// Connexion MySQL interne Docker/Coolify.
+//
+// IMPORTANT :
+// - Pas de SSL forcé (MySQL Docker interne ne le supporte pas).
+// - Variables MYSQL_* utilisées en priorité.
+// ============================================
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
+  port: Number(process.env.MYSQL_PORT || '3306'),
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || '',
   database: process.env.MYSQL_DATABASE || 'gestion_panneaux_pro',
+
   waitForConnections: true,
   connectionLimit: 5,
   queueLimit: 0,
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false
-  } : undefined,
   connectTimeout: 10000,
+
+  // ⚠️ AUCUN SSL ici : MySQL interne Docker.
+  // ssl: ... supprimé volontairement.
 });
 
 // ============================================
@@ -69,7 +82,6 @@ export async function execute(
 
 /**
  * Version générique de `query` pour les SELECT.
- * Alias plus explicite quand on veut un tableau.
  */
 export async function select<T extends RowDataPacket[] = RowDataPacket[]>(
   sql: string,
@@ -97,7 +109,25 @@ export async function transaction<T>(
 }
 
 // ============================================
-// 4. EXPORTS PAR DÉFAUT
+// 4. TEST DE CONNEXION
+// ============================================
+export async function testDatabaseConnection(): Promise<boolean> {
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.query('SELECT 1');
+    return true;
+  } catch (error) {
+    console.error('❌ Erreur de connexion MySQL :', error);
+    return false;
+  } finally {
+    if (connection) connection.release();
+  }
+}
+
+// ============================================
+// 5. EXPORTS PAR DÉFAUT
 // ============================================
 export default pool;
 

@@ -5,9 +5,15 @@ import mysql from 'mysql2/promise';
 
 export const dynamic = 'force-dynamic';
 
-const CLEANUP_TOKEN = process.env.CLEANUP_API_TOKEN || 'mon-token-securise-123456';
+// ============================================
+// TOKEN DE NETTOYAGE
+// ============================================
+const CLEANUP_TOKEN =
+  process.env.CLEANUP_API_TOKEN || 'mon-token-securise-123456';
 
-// ✅ Pool avec les BONNES variables d'environnement (MYSQL_*)
+// ============================================
+// POOL MYSQL
+// ============================================
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
   user: process.env.MYSQL_USER || 'root',
@@ -25,9 +31,15 @@ const pool = mysql.createPool({
 // ============================================
 export async function POST(request: NextRequest) {
   let connection: mysql.PoolConnection | null = null;
+
   try {
-    const token = request.headers.get('X-Cleanup-Token');
-    if (token !== CLEANUP_TOKEN) {
+    // 1. Vérification du token
+    const token =
+      request.headers.get('X-Cleanup-Token') ||
+      request.headers.get('x-cleanup-token');
+
+    if (!token || token !== CLEANUP_TOKEN) {
+      console.warn('⚠️ Nettoyage refusé : token invalide ou absent');
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
@@ -37,7 +49,7 @@ export async function POST(request: NextRequest) {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // ✅ 1. Réservations Confirmée / ACTIVE dont la campagne est terminée
+    // 1. Réservations confirmées / actives dont la campagne est finie
     const [termineesResult] = await connection.execute(
       `UPDATE reservation 
        SET statut = 'Terminée', updated_at = NOW()
@@ -46,7 +58,7 @@ export async function POST(request: NextRequest) {
       []
     );
 
-    // ✅ 2. Réservations En attente expirées
+    // 2. Réservations en attente expirées
     const [expireesResult] = await connection.execute(
       `UPDATE reservation 
        SET statut = 'Expirée', updated_at = NOW()
@@ -69,11 +81,14 @@ export async function POST(request: NextRequest) {
         expirees,
         erreurs: 0,
         traite_a: new Date().toISOString(),
+        batch: batchSize,
       },
     });
   } catch (error) {
     if (connection) {
-      try { await connection.rollback(); } catch {}
+      try {
+        await connection.rollback();
+      } catch {}
     }
     console.error('❌ Erreur nettoyage:', error);
     return NextResponse.json(
@@ -94,15 +109,18 @@ export async function POST(request: NextRequest) {
 // ============================================
 export async function GET(request: NextRequest) {
   let connection: mysql.PoolConnection | null = null;
+
   try {
-    const token = request.headers.get('X-Cleanup-Token');
-    if (token !== CLEANUP_TOKEN) {
+    const token =
+      request.headers.get('X-Cleanup-Token') ||
+      request.headers.get('x-cleanup-token');
+
+    if (!token || token !== CLEANUP_TOKEN) {
       return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
     }
 
     connection = await pool.getConnection();
 
-    // Réservations à terminer
     const [aTerminer] = await connection.query(
       `SELECT id_reservation, numero_commande, statut, date_fin_campagne
        FROM reservation
@@ -110,7 +128,6 @@ export async function GET(request: NextRequest) {
          AND date_fin_campagne < CURDATE()`
     );
 
-    // Réservations à expirer
     const [aExpirer] = await connection.query(
       `SELECT id_reservation, numero_commande, statut, date_expiration
        FROM reservation
@@ -146,7 +163,10 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('❌ Erreur simulation:', error);
     return NextResponse.json(
-      { error: 'Erreur simulation', details: error instanceof Error ? error.message : 'Erreur' },
+      {
+        error: 'Erreur simulation',
+        details: error instanceof Error ? error.message : 'Erreur',
+      },
       { status: 500 }
     );
   } finally {
