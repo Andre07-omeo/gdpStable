@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// ✅ Routes publiques (accessibles sans être connecté)
+// ✅ Routes publiques
 const publicRoutes = [
   '/login',
   '/register',
@@ -20,25 +20,44 @@ const publicRoutes = [
 ];
 
 // ✅ Rôles autorisés par route
+// ⚠️ ORDRE : plus spécifique D'ABORD
 const routeRoles: Record<string, string[]> = {
-  '/dashboard/admin': ['SUPER_ADMIN', 'ADMIN'],
+  // Admin
   '/dashboard/admin-system': ['SUPER_ADMIN', 'ADMIN_SYSTEM'],
+  '/dashboard/admin': ['SUPER_ADMIN', 'ADMIN'],
+
+  // DG / PDG (leurs propres dashboards)
   '/dashboard/dg': ['SUPER_ADMIN', 'DG'],
   '/dashboard/pdg': ['SUPER_ADMIN', 'PDG'],
-  '/dashboard/commercial': ['SUPER_ADMIN', 'CHEF_COMMERCIAL', 'COMMERCIAL'],
+
+  // ✅ SOUS-ROUTES COMMERCIAL — PLACÉES EN PREMIER
+  '/dashboard/commercial/proformat': [
+    'SUPER_ADMIN', 'ADMIN_SYSTEM', 'DG', 'PDG',
+    'CHEF_COMMERCIAL', 'COMMERCIAL',
+  ],
+  '/dashboard/commercial/facture': [
+    'SUPER_ADMIN', 'ADMIN_SYSTEM', 'DG', 'PDG',
+    'CHEF_COMMERCIAL', 'COMMERCIAL', 'COMPTABLE',
+  ],
+
+  // ✅ Règle générale commerciale — EN DERNIER
+  '/dashboard/commercial': [
+    'SUPER_ADMIN', 'ADMIN_SYSTEM', 'DG', 'PDG',
+    'CHEF_COMMERCIAL', 'COMMERCIAL',
+  ],
+
+  // Autres dashboards
   '/dashboard/superviseur': ['SUPER_ADMIN', 'SUPERVISEUR'],
   '/dashboard/caissier': ['SUPER_ADMIN', 'CAISSIER'],
-  '/dashboard/comptable': ['SUPER_ADMIN', 'COMPTABLE'],
   '/dashboard/comptable/factures': ['SUPER_ADMIN', 'COMPTABLE'],
   '/dashboard/comptable/paiements': ['SUPER_ADMIN', 'COMPTABLE'],
   '/dashboard/comptable/stats': ['SUPER_ADMIN', 'COMPTABLE'],
+  '/dashboard/comptable': ['SUPER_ADMIN', 'COMPTABLE'],
 };
 
-// ✅ Variable pour tracker le dernier nettoyage
 let dernierNettoyage = 0;
-const DELAI_MINIMUM = 3600000; // 1 heure
+const DELAI_MINIMUM = 3600000;
 
-// ✅ Fonction pour décoder le token
 function getUserRole(token: string): string | null {
   try {
     const base64Url = token.split('.')[1];
@@ -73,35 +92,23 @@ function getDashboardPath(role: string): string {
   return roleMap[role] || '/dashboard';
 }
 
-/**
- * 🧹 Déclencher le nettoyage automatique des réservations
- */
 async function declencherNettoyageAutomatique() {
   const maintenant = Date.now();
-
-  if (maintenant - dernierNettoyage < DELAI_MINIMUM) {
-    return;
-  }
-
+  if (maintenant - dernierNettoyage < DELAI_MINIMUM) return;
   dernierNettoyage = maintenant;
-
   try {
     const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
     const response = await fetch(`${baseUrl}/api/reservations/clean`, {
       method: 'POST',
       headers: {
-        'X-Cleanup-Token':
-          process.env.CLEANUP_API_TOKEN || 'mon-token-securise-123456',
+        'X-Cleanup-Token': process.env.CLEANUP_API_TOKEN || 'mon-token-securise-123456',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ batch: 50 }),
     });
-
     if (response.ok) {
       const result = await response.json();
-      console.log(
-        `✅ Nettoyage auto: ${result.data?.terminees || 0} terminées, ${result.data?.expirees || 0} expirées`
-      );
+      console.log(`✅ Nettoyage auto: ${result.data?.terminees || 0} terminées, ${result.data?.expirees || 0} expirées`);
     } else {
       console.error('❌ Nettoyage auto échoué:', response.status);
     }
@@ -113,10 +120,7 @@ async function declencherNettoyageAutomatique() {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // ═══════════════════════════════════════════════════════
-  // ✅ 1. LAISSER PASSER LES FICHIERS STATIQUES ET PWA
-  // ═══════════════════════════════════════════════════════
-  // (le matcher le fait déjà, mais on double-sécurise)
+  // 1. Fichiers statiques
   if (
     pathname === '/manifest.json' ||
     pathname === '/sw.js' ||
@@ -133,35 +137,24 @@ export function middleware(request: NextRequest) {
 
   const token = request.cookies.get('auth_token')?.value;
 
-  // ═══════════════════════════════════════════════════════
-  // ✅ 2. REDIRECTION AUTOMATIQUE DEPUIS LA RACINE
-  // ═══════════════════════════════════════════════════════
+  // 2. Racine
   if (pathname === '/') {
     if (token) {
       const role = getUserRole(token);
       if (role) {
-        return NextResponse.redirect(
-          new URL(getDashboardPath(role), request.url)
-        );
+        return NextResponse.redirect(new URL(getDashboardPath(role), request.url));
       }
     }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ✅ 3. ROUTES PUBLIQUES — LAISSER PASSER
-  // ═══════════════════════════════════════════════════════
+  // 3. Routes publiques
   const isPublicRoute = publicRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
+  if (isPublicRoute) return NextResponse.next();
 
-  if (isPublicRoute) {
-    return NextResponse.next();
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // ✅ 4. SI PAS DE TOKEN → REDIRIGER
-  // ═══════════════════════════════════════════════════════
+  // 4. Pas de token
   if (!token) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
@@ -169,9 +162,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ✅ 5. VÉRIFIER LE TOKEN
-  // ═══════════════════════════════════════════════════════
+  // 5. Token invalide
   const role = getUserRole(token);
   if (!role) {
     if (pathname.startsWith('/api/')) {
@@ -180,78 +171,57 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ✅ 6. AUTORISATIONS PAR ROUTE DASHBOARD
-  // ═══════════════════════════════════════════════════════
+  // 6. Autorisations dashboard
   if (pathname.startsWith('/dashboard/')) {
     // Règle spéciale comptable
     if (pathname.startsWith('/dashboard/comptable/')) {
       if (role !== 'COMPTABLE' && role !== 'SUPER_ADMIN') {
-        return NextResponse.redirect(
-          new URL(getDashboardPath(role), request.url)
-        );
+        return NextResponse.redirect(new URL(getDashboardPath(role), request.url));
       }
       if (role === 'COMPTABLE' && pathname === '/dashboard/comptable') {
-        return NextResponse.redirect(
-          new URL('/dashboard/comptable/factures', request.url)
-        );
+        return NextResponse.redirect(new URL('/dashboard/comptable/factures', request.url));
       }
       return NextResponse.next();
     }
 
-    // Autres routes dashboard
+    // ✅ Prendre la route LA PLUS SPÉCIFIQUE
     let matchedRoute = '';
     for (const route of Object.keys(routeRoles)) {
-      if (pathname.startsWith(route)) {
+      if (pathname.startsWith(route) && route.length > matchedRoute.length) {
         matchedRoute = route;
-        break;
       }
     }
 
     if (matchedRoute && !routeRoles[matchedRoute].includes(role)) {
-      return NextResponse.redirect(
-        new URL(getDashboardPath(role), request.url)
-      );
+      return NextResponse.redirect(new URL(getDashboardPath(role), request.url));
     }
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ✅ 7. NETTOYAGE AUTOMATIQUE (fire & forget)
-  // ═══════════════════════════════════════════════════════
+  // 7. Nettoyage auto
   if (pathname.startsWith('/dashboard/') || pathname === '/dashboard') {
     declencherNettoyageAutomatique().catch(console.error);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ✅ 8. REDIRECTION /dashboard
-  // ═══════════════════════════════════════════════════════
+  // 8. Redirection /dashboard
   if (pathname === '/dashboard') {
     return NextResponse.redirect(new URL(getDashboardPath(role), request.url));
   }
 
-  // ═══════════════════════════════════════════════════════
-  // ✅ 9. PROTECTION API PAR RÔLE
-  // ═══════════════════════════════════════════════════════
+  // 9. Protection API
   if (pathname.startsWith('/api/')) {
-    if (pathname.startsWith('/api/facture')) {
+    // ✅ check-duplicate : accessible à tous ceux qui impriment
+    if (pathname.startsWith('/api/facture/check-duplicate')) {
       const allowedRoles = [
-        'SUPER_ADMIN',
-        'COMMERCIAL',
-        'CHEF_COMMERCIAL',
-        'COMPTABLE',
+        'SUPER_ADMIN', 'ADMIN_SYSTEM', 'DG', 'PDG',
+        'COMMERCIAL', 'CHEF_COMMERCIAL', 'COMPTABLE',
       ];
       if (!allowedRoles.includes(role)) {
-        return NextResponse.json(
-          { error: 'Accès non autorisé' },
-          { status: 403 }
-        );
+        return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 });
       }
     }
 
-    if (
-      pathname.startsWith('/api/facture/validate') ||
-      pathname.startsWith('/api/facture/check-duplicate')
-    ) {
+    // ✅ validate : réservé aux comptables (inchangé)
+    if (pathname.startsWith('/api/facture/validate')) {
       const allowedRoles = ['SUPER_ADMIN', 'COMPTABLE'];
       if (!allowedRoles.includes(role)) {
         return NextResponse.json(
@@ -261,6 +231,22 @@ export function middleware(request: NextRequest) {
       }
     }
 
+    // ✅ /api/facture (POST principal) : accessible à tous
+    if (
+      pathname.startsWith('/api/facture') &&
+      !pathname.startsWith('/api/facture/validate') &&
+      !pathname.startsWith('/api/facture/check-duplicate')
+    ) {
+      const allowedRoles = [
+        'SUPER_ADMIN', 'ADMIN_SYSTEM', 'DG', 'PDG',
+        'COMMERCIAL', 'CHEF_COMMERCIAL', 'COMPTABLE',
+      ];
+      if (!allowedRoles.includes(role)) {
+        return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 });
+      }
+    }
+
+    // ✅ Suppression facture : comptables
     if (pathname.startsWith('/api/facture/') && pathname.includes('/delete')) {
       const allowedRoles = ['SUPER_ADMIN', 'COMPTABLE'];
       if (!allowedRoles.includes(role)) {
@@ -275,18 +261,8 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// ═══════════════════════════════════════════════════════
-// ✅ MATCHER CORRIGÉ — exclut tous les fichiers statiques/PWA
-// ═══════════════════════════════════════════════════════
 export const config = {
   matcher: [
-    /*
-     * Exclut :
-     * - _next/static, _next/image (fichiers Next.js)
-     * - favicon.ico
-     * - manifest.json, sw.js, service-worker.js, robots.txt, sitemap.xml
-     * - tout fichier avec extension (images, css, js, etc.)
-     */
     '/((?!_next/static|_next/image|favicon\\.ico|manifest\\.json|sw\\.js|service-worker\\.js|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf|eot|map)$).*)',
   ],
 };
