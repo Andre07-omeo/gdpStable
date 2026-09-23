@@ -1,13 +1,22 @@
 ﻿/** @type {import('next').NextConfig} */
+const path = require('path');
+
 const nextConfig = {
   images: {
-    domains: ['localhost'],
+    // ✅ Remplacé domains (déprécié) par remotePatterns
+    remotePatterns: [
+      { protocol: 'http', hostname: 'localhost' },
+      { protocol: 'https', hostname: '**' },
+    ],
   },
-  // serverActions est maintenant activé par défaut dans Next.js 14
-  // On peut supprimer cette option
+
+  // ✅ RÉSOLUTION DES ALIAS @/  (OBLIGATOIRE POUR DOCKER)
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
+      // ✅ AJOUT CRUCIAL : résout @/components, @/context, etc.
+      '@': path.resolve(__dirname, 'src'),
+      // Ton alias existant pour Leaflet
       'leaflet': 'leaflet/dist/leaflet.js',
     };
     return config;
