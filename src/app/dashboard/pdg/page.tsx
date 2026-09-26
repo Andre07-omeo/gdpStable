@@ -668,13 +668,11 @@ function DGDashboardInner() {
               </div>
             </button>
 
-            {/* ✅ Stats centrées dans un max-w-6xl */}
-            <div className="w-full max-w-6xl mx-auto mb-4 sm:mb-6">
-              <div className={`stats-grid-6 ${isStatsExpanded ? 'grid' : 'hidden lg:grid'}`}>
-                {statsCards.map((card, i) => (
-                  <StatCard key={i} label={card.label} value={card.value} icon={card.icon} color={card.color} loading={loading} />
-                ))}
-              </div>
+            {/* ✅ CORRECTION : Stats 100% largeur (comme le Commercial) — plus de max-w-6xl */}
+            <div className={`stats-grid-6 mb-4 sm:mb-6 ${isStatsExpanded ? 'grid' : 'hidden lg:grid'}`}>
+              {statsCards.map((card, i) => (
+                <StatCard key={i} label={card.label} value={card.value} icon={card.icon} color={card.color} loading={loading} />
+              ))}
             </div>
 
             {/* ✅ Filtres + Table : 100% largeur */}

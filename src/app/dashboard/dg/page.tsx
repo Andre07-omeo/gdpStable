@@ -165,16 +165,15 @@ function NotificationsTab({ user }: { user: any }) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 p-16 sm:p-24 text-center">
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 p-16 sm:p-24 text-center">
         <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
-        <p className="mt-3 text-sm text-slate-400">Chargement…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 p-12 text-center">
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 p-12 text-center">
         <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-3" />
         <p className="text-red-600 font-bold">Erreur: {error}</p>
       </div>
@@ -183,10 +182,9 @@ function NotificationsTab({ user }: { user: any }) {
 
   if (notifications.length === 0) {
     return (
-      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 p-16 sm:p-24 text-center">
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 p-16 sm:p-24 text-center">
         <BellOff className="w-12 h-12 text-slate-300 mx-auto mb-3" />
         <p className="text-slate-500 font-medium">Aucune notification</p>
-        <p className="text-xs text-slate-400 mt-1">Vous êtes à jour ✨</p>
       </div>
     );
   }
@@ -209,29 +207,24 @@ function NotificationsTab({ user }: { user: any }) {
         )}
       </div>
 
-      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 divide-y divide-slate-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 divide-y divide-slate-100 overflow-hidden">
         {notifications.map((notif) => {
           const isExpanded = expandedId === notif.id;
           return (
             <div key={notif.id} className={notif.isRead ? 'bg-white' : 'bg-emerald-50/40'}>
               <button onClick={() => handleToggle(notif)}
-                className="w-full text-left flex items-start gap-3 sm:gap-4 px-3 sm:px-6 py-3 sm:py-4 hover:bg-slate-50 transition">
+                className="w-full text-left flex items-start gap-3 sm:gap-4 px-3 sm:px-6 py-3 sm:py-4 hover:bg-slate-50">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-3">
                     <p className="font-semibold text-slate-900 text-sm sm:text-base break-words">
                       {notif.title || notif.titre || 'Notification'}
                     </p>
                     <motion.span animate={{ rotate: isExpanded ? 180 : 0 }}
-                      transition={{ duration: 0.2 }}
                       className="flex-shrink-0 text-slate-400">
                       <ChevronDown size={16} />
                     </motion.span>
                   </div>
-                  {!isExpanded && (
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1 line-clamp-1 break-words">
-                      {notif.message}
-                    </p>
-                  )}
+                  {!isExpanded && <p className="text-xs sm:text-sm text-slate-500 mt-1 line-clamp-1 break-words">{notif.message}</p>}
                 </div>
               </button>
               <AnimatePresence>
@@ -240,16 +233,15 @@ function NotificationsTab({ user }: { user: any }) {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.22, ease: 'easeInOut' }}
                     className="overflow-hidden"
                   >
                     <div className="px-3 sm:px-6 pb-4 sm:pb-5 sm:pl-[72px]">
-                      <div className="text-xs sm:text-sm text-slate-600 bg-slate-50 rounded-lg p-3 sm:p-4 border break-words whitespace-pre-line">
+                      <div className="text-xs sm:text-sm text-slate-600 bg-slate-50 rounded-lg p-3 sm:p-4 border break-words">
                         {notif.message}
                       </div>
                       {notif.lien && (
                         <button onClick={() => router.push(notif.lien!)}
-                          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:text-emerald-700">
+                          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600">
                           Voir le détail <ArrowRight size={14} />
                         </button>
                       )}
@@ -319,7 +311,7 @@ function ProformatTab({ user, panneaux }: { user: any; panneaux: any[] }) {
           Sélectionnez des réservations dans le panier pour générer un proformat imprimable.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
           <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
             <p className="text-xs font-bold text-emerald-600 uppercase">Proformats disponibles</p>
             <p className="text-2xl font-bold text-emerald-700 mt-1">{panneaux.length}</p>
@@ -330,7 +322,7 @@ function ProformatTab({ user, panneaux }: { user: any; panneaux: any[] }) {
             <p className="text-lg font-bold text-blue-700 mt-1">Prêt</p>
             <p className="text-xs text-blue-600">Accès complet</p>
           </div>
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200 sm:col-span-2 md:col-span-1">
+          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200">
             <p className="text-xs font-bold text-amber-600 uppercase">Impressions</p>
             <p className="text-lg font-bold text-amber-700 mt-1">Illimitées</p>
             <p className="text-xs text-amber-600">Autorisation DG</p>
@@ -632,7 +624,7 @@ function DGDashboardInner() {
         notificationCount={unreadCount}
       />
 
-      {/* ✅ CONTENEUR PRINCIPAL : 100% largeur, plus de max-w, plus de mx-auto */}
+      {/* ✅ CONTENEUR PRINCIPAL : 100% largeur */}
       <main className="flex-1 w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 sm:py-4 md:py-6 pb-20 sm:pb-6">
         <CleanupBanner status={cleanupStatus} onRetry={() => executerNettoyage(true)} onClose={() => setCleanupStatus({ kind: 'idle' })} />
 
@@ -661,7 +653,6 @@ function DGDashboardInner() {
             ============================================ */}
         {activeTab === 'dashboard' && (
           <>
-            {/* Toggle stats mobile */}
             <button onClick={() => setIsStatsExpanded((v) => !v)}
               className="lg:hidden w-full flex items-center justify-between px-4 py-3 mb-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm">
               <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
@@ -673,19 +664,15 @@ function DGDashboardInner() {
                 <span className="text-xs text-gray-500 hidden sm:inline">
                   {isStatsExpanded ? 'Masquer' : 'Afficher'}
                 </span>
-                <ChevronDown size={16}
-                  className={`text-emerald-600 transition-transform ${isStatsExpanded ? 'rotate-180' : ''}`} />
+                <ChevronDown size={16} className={`text-emerald-600 transition-transform ${isStatsExpanded ? 'rotate-180' : ''}`} />
               </div>
             </button>
 
-            {/* ✅ Stats centrées dans un max-w-6xl */}
-            <div className="w-full max-w-6xl mx-auto mb-4 sm:mb-6">
-              <div className={`stats-grid-6 ${isStatsExpanded ? 'grid' : 'hidden lg:grid'}`}>
-                {statsCards.map((card, i) => (
-                  <StatCard key={i} label={card.label} value={card.value}
-                    icon={card.icon} color={card.color} loading={loading} />
-                ))}
-              </div>
+            {/* ✅ CORRECTION : Stats 100% largeur (comme le Commercial) — plus de max-w-6xl */}
+            <div className={`stats-grid-6 mb-4 sm:mb-6 ${isStatsExpanded ? 'grid' : 'hidden lg:grid'}`}>
+              {statsCards.map((card, i) => (
+                <StatCard key={i} label={card.label} value={card.value} icon={card.icon} color={card.color} loading={loading} />
+              ))}
             </div>
 
             {/* ✅ Filtres + Table : 100% largeur */}
@@ -709,7 +696,7 @@ function DGDashboardInner() {
         )}
 
         {/* ============================================
-            ONGLET CARTE — 100% largeur + hauteur fluide
+            ONGLET CARTE — 100% largeur
             ============================================ */}
         {activeTab === 'map' && (
           <div className="w-full h-[55vh] sm:h-[60vh] md:h-[65vh] lg:h-[70vh] xl:h-[75vh] 2xl:h-[80vh] rounded-lg sm:rounded-xl overflow-hidden border-2 border-gray-200">
