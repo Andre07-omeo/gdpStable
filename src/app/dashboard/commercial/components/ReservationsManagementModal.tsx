@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/commercial/components/ReservationsManagementModal.tsximport React, { useState, useEffect } from 'react';
+// src/app/dashboard/commercial/components/ReservationsManagementModal.tsx
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Calendar,
@@ -17,6 +18,8 @@ import {
   XCircle,
   Eye,
   Edit,
+  Tv,
+  Construction,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
@@ -67,10 +70,13 @@ interface Reservation {
 interface ReservationsManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
+  inline?: boolean;
 }
 
+type TabType = 'toutes' | 'desaffichage';
+
 // ============================================
-// HELPER : FORMAT DATE
+// HELPERS
 // ============================================
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '-';
@@ -102,9 +108,6 @@ function formatDateTime(dateStr: string | null): string {
   }
 }
 
-// ============================================
-// HELPER : BADGE STATUT
-// ============================================
 function getStatutBadge(statut: string) {
   const styles: Record<string, { color: string; label: string }> = {
     'En attente': {
@@ -144,7 +147,7 @@ function getStatutBadge(statut: string) {
 
   return (
     <span
-      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${style.color}`}
+      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${style.color}`}
     >
       {style.label}
     </span>
@@ -152,27 +155,36 @@ function getStatutBadge(statut: string) {
 }
 
 // ============================================
-// MODAL PRINCIPAL
+// CONTENU PARTAGÉ
 // ============================================
-export function ReservationsManagementModal({
-  isOpen,
-  onClose,
-}: ReservationsManagementModalProps) {
+interface ContentProps {
+  onClose: () => void;
+  inline: boolean;
+}
+
+function ReservationsContent({ onClose, inline }: ContentProps) {
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<TabType>('toutes');
+
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statutFilter, setStatutFilter] = useState('TOUS');
 
-  // ✅ États pour les modals
   const [isProlongationOpen, setIsProlongationOpen] = useState(false);
   const [isModificationOpen, setIsModificationOpen] = useState(false);
-  const [selectedReservationForProlongation, setSelectedReservationForProlongation] =
-    useState<any>(null);
-  const [selectedReservationForModification, setSelectedReservationForModification] =
-    useState<any>(null);
+  const [
+    selectedReservationForProlongation,
+    setSelectedReservationForProlongation,
+  ] = useState<any>(null);
+  const [
+    selectedReservationForModification,
+    setSelectedReservationForModification,
+  ] = useState<any>(null);
 
-  // ✅ Charger les réservations
+  // ============================================
+  // FETCH onglet 1
+  // ============================================
   const fetchReservations = async () => {
     setLoading(true);
     try {
@@ -188,8 +200,6 @@ export function ReservationsManagementModal({
 
       if (data.success) {
         setReservations(data.data || []);
-      } else {
-        console.error('Erreur:', data.error);
       }
     } catch (error) {
       console.error('Erreur chargement réservations:', error);
@@ -198,22 +208,22 @@ export function ReservationsManagementModal({
     }
   };
 
+  // ============================================
+  // EFFECTS
+  // ============================================
   useEffect(() => {
-    if (isOpen) {
-      fetchReservations();
-    }
-  }, [isOpen, statutFilter]);
+    if (activeTab === 'toutes') fetchReservations();
+  }, [statutFilter, activeTab]);
 
-  // ✅ Recherche avec debounce
   useEffect(() => {
-    if (!isOpen) return;
-    const timer = setTimeout(() => {
-      fetchReservations();
-    }, 400);
-    return () => clearTimeout(timer);
+    if (activeTab !== 'toutes') return;
+    const t = setTimeout(() => fetchReservations(), 400);
+    return () => clearTimeout(t);
   }, [searchTerm]);
 
-  // ✅ Stats
+  // ============================================
+  // STATS
+  // ============================================
   const stats = {
     total: reservations.length,
     enAttente: reservations.filter((r) => r.statut === 'En attente').length,
@@ -223,7 +233,6 @@ export function ReservationsManagementModal({
     expirees: reservations.filter((r) => r.statut === 'Expirée').length,
   };
 
-  // ✅ Peut-on prolonger / modifier ?
   const canProlonger = (resa: Reservation): boolean => {
     return (
       resa.jours_restants > 14 &&
@@ -235,47 +244,84 @@ export function ReservationsManagementModal({
     return resa.est_verrouille !== 1 || resa.statut !== 'ACTIVE';
   };
 
-  if (!isOpen) return null;
-
   return (
     <>
-      <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col overflow-hidden"
-        >
-          {/* ============================================ */}
-          {/* HEADER BLEU */}
-          {/* ============================================ */}
-          <div className="bg-gradient-to-r from-[#00539B] to-[#0077cc] px-6 py-3.5 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-blue-200 uppercase tracking-wider">
-                  Gestion des réservations
-                </p>
-                <h2 className="text-lg font-bold text-white">
-                  Mes réservations
-                </h2>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-2 bg-white/20 hover:bg-red-500 rounded-lg transition"
-              title="Fermer"
-            >
-              <X className="w-5 h-5 text-white" />
-            </button>
+      {/* HEADER */}
+      <div className="bg-gradient-to-r from-[#00539B] to-[#0077cc] px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 md:py-3.5 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
+            <Calendar className="w-4 h-4 sm:w-4.5 sm:h-4.5 md:w-5 md:h-5 text-white" />
           </div>
+          <div className="min-w-0">
+            <p className="text-[9px] sm:text-[10px] font-bold text-blue-200 uppercase tracking-wider truncate">
+              Gestion des réservations
+            </p>
+            <h2 className="text-sm sm:text-base md:text-lg font-bold text-white truncate">
+              Mes réservations
+            </h2>
+          </div>
+        </div>
+        {!inline && (
+          <button
+            onClick={onClose}
+            className="p-1.5 sm:p-2 bg-white/20 hover:bg-red-500 rounded-lg transition flex-shrink-0"
+            title="Fermer"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+          </button>
+        )}
+      </div>
 
-          {/* ============================================ */}
-          {/* STATS COMPACTES */}
-          {/* ============================================ */}
-          <div className="grid grid-cols-4 gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+      {/* ONGLETS */}
+      <div className="flex border-b border-gray-200 bg-white flex-shrink-0">
+        <button
+          onClick={() => setActiveTab('toutes')}
+          className={`
+            flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 sm:py-3
+            text-[11px] sm:text-xs md:text-sm font-bold transition relative
+            ${
+              activeTab === 'toutes'
+                ? 'text-blue-700 bg-blue-50'
+                : 'text-gray-500 hover:bg-gray-50'
+            }
+          `}
+        >
+          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+          <span className="truncate">Toutes les réservations</span>
+          {reservations.length > 0 && activeTab === 'toutes' && (
+            <span className="hidden sm:inline-block ml-1 px-1.5 py-0.5 bg-blue-600 text-white rounded-full text-[9px] font-bold">
+              {reservations.length}
+            </span>
+          )}
+          {activeTab === 'toutes' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('desaffichage')}
+          className={`
+            flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 sm:py-3
+            text-[11px] sm:text-xs md:text-sm font-bold transition relative
+            ${
+              activeTab === 'desaffichage'
+                ? 'text-orange-700 bg-orange-50'
+                : 'text-gray-500 hover:bg-gray-50'
+            }
+          `}
+        >
+          <Tv className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+          <span className="truncate">À désafficher</span>
+          {activeTab === 'desaffichage' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-orange-500" />
+          )}
+        </button>
+      </div>
+
+      {/* ONGLET 1 : TOUTES */}
+      {activeTab === 'toutes' && (
+        <>
+          {/* STATS */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 px-2 sm:px-3 md:px-4 py-2 sm:py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
             {[
               {
                 icon: Calendar,
@@ -310,20 +356,22 @@ export function ReservationsManagementModal({
               return (
                 <div
                   key={i}
-                  className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200"
+                  className="flex items-center gap-1.5 sm:gap-2 bg-white rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-200 min-w-0"
                 >
                   <div
-                    className={`w-7 h-7 rounded-md ${s.bg} flex items-center justify-center flex-shrink-0`}
+                    className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md ${s.bg} flex items-center justify-center flex-shrink-0`}
                   >
-                    <Icon className={`w-3.5 h-3.5 ${s.color}`} />
+                    <Icon
+                      className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${s.color}`}
+                    />
                   </div>
                   <div className="min-w-0">
                     <p
-                      className={`text-base font-bold ${s.color} leading-none`}
+                      className={`text-sm sm:text-base font-bold ${s.color} leading-none`}
                     >
                       {s.value}
                     </p>
-                    <p className="text-[9px] text-gray-500 truncate">
+                    <p className="text-[8px] sm:text-[9px] text-gray-500 truncate">
                       {s.label}
                     </p>
                   </div>
@@ -332,25 +380,21 @@ export function ReservationsManagementModal({
             })}
           </div>
 
-          {/* ============================================ */}
           {/* FILTRES */}
-          {/* ============================================ */}
-          <div className="px-4 py-3 border-b border-gray-200 flex-shrink-0">
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Recherche */}
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+          <div className="px-2 sm:px-3 md:px-4 py-2 sm:py-3 border-b border-gray-200 flex-shrink-0">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <div className="relative flex-1 min-w-[140px] sm:min-w-[180px]">
+                <Search className="absolute left-2 sm:left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Rechercher (n° commande, client, panneau...)"
+                  placeholder="Rechercher..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full pl-7 sm:pl-8 pr-2 sm:pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
 
-              {/* Filtres statut */}
-              <div className="flex gap-1 flex-wrap">
+              <div className="flex gap-1 flex-wrap w-full sm:w-auto">
                 {[
                   { value: 'TOUS', label: 'Tous' },
                   { value: 'En attente', label: 'En attente' },
@@ -364,7 +408,7 @@ export function ReservationsManagementModal({
                     key={f.value}
                     onClick={() => setStatutFilter(f.value)}
                     className={`
-                      px-2.5 py-1.5 rounded-lg text-xs font-bold transition
+                      px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition whitespace-nowrap
                       ${
                         statutFilter === f.value
                           ? 'bg-blue-600 text-white'
@@ -377,24 +421,27 @@ export function ReservationsManagementModal({
                 ))}
               </div>
 
-              {/* Refresh */}
               <button
                 onClick={fetchReservations}
                 disabled={loading}
-                className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+                className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition flex-shrink-0"
                 title="Actualiser"
               >
                 <RefreshCw
-                  className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${
+                    loading ? 'animate-spin' : ''
+                  }`}
                 />
               </button>
             </div>
           </div>
 
-          {/* ============================================ */}
-          {/* LISTE DES RÉSERVATIONS */}
-          {/* ============================================ */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* LISTE */}
+          <div
+            className={`${
+              inline ? '' : 'flex-1 overflow-y-auto'
+            } p-2 sm:p-3 md:p-4`}
+          >
             {loading ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -423,16 +470,15 @@ export function ReservationsManagementModal({
                   return (
                     <div
                       key={resa.id_ligne}
-                      className="border-2 border-gray-200 rounded-xl p-3 hover:shadow-md hover:border-blue-300 transition bg-white"
+                      className="border-2 border-gray-200 rounded-xl p-2 sm:p-3 hover:shadow-md hover:border-blue-300 transition bg-white"
                     >
-                      <div className="flex flex-wrap items-start gap-3">
-                        {/* N° commande + statut */}
-                        <div className="flex items-center gap-2 min-w-[140px]">
-                          <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <Calendar className="w-4 h-4 text-white" />
+                      <div className="flex flex-wrap items-start gap-2 sm:gap-3">
+                        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1 sm:flex-initial sm:min-w-[140px]">
+                          <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                           </div>
-                          <div>
-                            <p className="font-bold text-sm text-gray-800">
+                          <div className="min-w-0">
+                            <p className="font-bold text-xs sm:text-sm text-gray-800 truncate">
                               {resa.numero_commande}
                             </p>
                             <div className="mt-0.5">
@@ -441,65 +487,61 @@ export function ReservationsManagementModal({
                           </div>
                         </div>
 
-                        {/* Client */}
-                        <div className="flex items-center gap-1.5 min-w-[160px]">
-                          <Building2 className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-initial sm:min-w-[160px]">
+                          <Building2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
                           <div className="min-w-0">
-                            <p className="text-xs font-semibold text-gray-800 truncate">
+                            <p className="text-[11px] sm:text-xs font-semibold text-gray-800 truncate">
                               {resa.client_nom || 'Client'}
                             </p>
-                            <p className="text-[10px] text-gray-400 truncate">
+                            <p className="text-[9px] sm:text-[10px] text-gray-400 truncate">
                               {resa.client_email}
                             </p>
                           </div>
                         </div>
 
-                        {/* Panneau + face */}
-                        <div className="flex items-center gap-1.5 min-w-[180px] flex-1">
-                          <MapPin className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-initial sm:min-w-[180px]">
+                          <MapPin className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
                           <div className="min-w-0">
-                            <p className="text-xs font-semibold text-gray-800 truncate">
+                            <p className="text-[11px] sm:text-xs font-semibold text-gray-800 truncate">
                               {resa.panneau_nom} - {resa.face_orientation}
                             </p>
-                            <p className="text-[10px] text-gray-400 truncate">
+                            <p className="text-[9px] sm:text-[10px] text-gray-400 truncate">
                               {resa.panneau_adresse}
                             </p>
                           </div>
                         </div>
 
-                        {/* Commercial */}
-                        <div className="flex items-center gap-1.5 min-w-[130px]">
-                          <User className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-initial sm:min-w-[130px]">
+                          <User className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
                           <div className="min-w-0">
-                            <p className="text-xs font-semibold text-gray-700 truncate">
+                            <p className="text-[11px] sm:text-xs font-semibold text-gray-700 truncate">
                               {resa.commercial_prenom} {resa.commercial_nom}
                             </p>
                           </div>
                         </div>
 
-                        {/* Période */}
-                        <div className="flex items-center gap-1.5 min-w-[180px]">
-                          <Clock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 sm:flex-initial sm:min-w-[180px]">
+                          <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 flex-shrink-0" />
                           <div className="min-w-0">
-                            <p className="text-xs text-gray-700">
+                            <p className="text-[11px] sm:text-xs text-gray-700 truncate">
                               {formatDate(resa.date_debut_campagne)} →{' '}
                               {formatDate(resa.date_fin_campagne)}
                             </p>
                             {resa.date_expiration && (
-                              <p className="text-[10px] text-amber-600 font-semibold">
-                                ⏰ Expire: {formatDateTime(resa.date_expiration)}
+                              <p className="text-[9px] sm:text-[10px] text-amber-600 font-semibold truncate">
+                                ⏰ {formatDateTime(resa.date_expiration)}
                               </p>
                             )}
                           </div>
                         </div>
 
-                        {/* Prix */}
-                        <div className="min-w-[100px] text-right">
-                          <p className="text-xs font-bold text-blue-600">
-                            {Number(resa.prix_vente_net || 0).toLocaleString()} FC
+                        <div className="min-w-0 flex-1 sm:flex-initial sm:min-w-[100px] sm:text-right">
+                          <p className="text-[11px] sm:text-xs font-bold text-blue-600 truncate">
+                            {Number(resa.prix_vente_net || 0).toLocaleString()}{' '}
+                            FC
                           </p>
                           <p
-                            className={`text-[10px] ${
+                            className={`text-[9px] sm:text-[10px] ${
                               resa.jours_restants > 0
                                 ? resa.jours_restants > 14
                                   ? 'text-emerald-600 font-semibold'
@@ -513,9 +555,7 @@ export function ReservationsManagementModal({
                           </p>
                         </div>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-1">
-                          {/* Voir détails */}
+                        <div className="flex items-center gap-1 w-full sm:w-auto justify-end">
                           <button
                             className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition"
                             title="Voir détails"
@@ -523,7 +563,6 @@ export function ReservationsManagementModal({
                             <Eye className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* ✅ Prolonger */}
                           <button
                             onClick={() => {
                               setSelectedReservationForProlongation(resa);
@@ -547,7 +586,6 @@ export function ReservationsManagementModal({
                             <Calendar className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* ✅ Modifier */}
                           <button
                             onClick={() => {
                               setSelectedReservationForModification(resa);
@@ -578,27 +616,74 @@ export function ReservationsManagementModal({
               </div>
             )}
           </div>
+        </>
+      )}
 
-          {/* ============================================ */}
-          {/* FOOTER */}
-          {/* ============================================ */}
-          <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
-            <div className="text-xs text-gray-500">
-              {reservations.length} réservation(s)
+      {/* ============================================ */}
+      {/* ONGLET 2 : À DÉSAFFICHER — MESSAGE INFO */}
+      {/* ============================================ */}
+      {activeTab === 'desaffichage' && (
+        <div
+          className={`${
+            inline ? '' : 'flex-1 overflow-y-auto'
+          } flex items-center justify-center p-4 sm:p-6 md:p-10`}
+        >
+          <div className="max-w-lg w-full text-center">
+            {/* Icône */}
+            <div className="mx-auto w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center mb-4 sm:mb-6 shadow-lg">
+              <Construction className="w-10 h-10 sm:w-12 sm:h-12 text-orange-600" />
             </div>
-            <button
-              onClick={onClose}
-              className="px-5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-bold text-sm transition"
-            >
-              Fermer
-            </button>
+
+            {/* Titre */}
+            <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 mb-2">
+              Fonctionnalité à venir
+            </h3>
+
+            {/* Sous-titre */}
+            <p className="text-sm sm:text-base text-gray-600 mb-1">
+              La gestion du désaffichement des panneaux sera disponible
+            </p>
+            <p className="text-sm sm:text-base font-bold text-orange-600 mb-4">
+              dans la prochaine version de l'application.
+            </p>
+
+            {/* Info */}
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs sm:text-sm text-blue-800">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              Restez connecté pour les prochaines mises à jour
+            </div>
+
+            {/* Bouton retour */}
+            <div className="mt-6">
+              <button
+                onClick={() => setActiveTab('toutes')}
+                className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-bold text-sm transition shadow-md hover:shadow-lg"
+              >
+                Retour aux réservations
+              </button>
+            </div>
           </div>
-        </motion.div>
+        </div>
+      )}
+
+      {/* FOOTER */}
+      <div className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between flex-shrink-0">
+        <div className="text-[10px] sm:text-xs text-gray-500">
+          {activeTab === 'toutes'
+            ? `${reservations.length} réservation(s)`
+            : 'Bientôt disponible'}
+        </div>
+        {!inline && (
+          <button
+            onClick={onClose}
+            className="px-3 sm:px-5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-bold text-xs sm:text-sm transition"
+          >
+            Fermer
+          </button>
+        )}
       </div>
 
-      {/* ============================================ */}
-      {/* MODALS */}
-      {/* ============================================ */}
+      {/* Modals internes */}
       <ProlongationModal
         isOpen={isProlongationOpen}
         onClose={() => {
@@ -619,5 +704,37 @@ export function ReservationsManagementModal({
         reservation={selectedReservationForModification}
       />
     </>
+  );
+}
+
+// ============================================
+// WRAPPER : modal OU inline
+// ============================================
+export function ReservationsManagementModal({
+  isOpen,
+  onClose,
+  inline = false,
+}: ReservationsManagementModalProps) {
+  if (inline) {
+    if (!isOpen) return null;
+    return (
+      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <ReservationsContent onClose={onClose} inline={true} />
+      </div>
+    );
+  }
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-0 sm:p-2 md:p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full h-full sm:h-auto sm:max-h-[95vh] md:max-h-[90vh] max-w-full sm:max-w-3xl md:max-w-5xl lg:max-w-7xl flex flex-col overflow-hidden"
+      >
+        <ReservationsContent onClose={onClose} inline={false} />
+      </motion.div>
+    </div>
   );
 }

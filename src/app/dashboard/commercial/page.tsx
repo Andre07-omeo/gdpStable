@@ -35,6 +35,7 @@ import {
   CheckCheck,
   ArrowRight,
   RefreshCw,
+  ClipboardCheck,   // ← AJOUTER CETTE LIGNE
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -132,7 +133,9 @@ type TabKey =
   | 'catalogue'
   | 'map'
   | 'pending'
-  | 'notifications';
+  | 'notifications'
+  | 'reservations';   // ← AJOUTER CETTE LIGNE
+
 
 // ============================================
 // 🆕 COMPOSANT INTERNE : ONGLET NOTIFICATIONS
@@ -332,9 +335,8 @@ function NotificationsTab({ user }: { user: any }) {
               return (
                 <li
                   key={notif.id}
-                  className={`transition-colors ${
-                    notif.isRead ? 'bg-white' : 'bg-blue-50/40'
-                  }`}
+                  className={`transition-colors ${notif.isRead ? 'bg-white' : 'bg-blue-50/40'
+                    }`}
                 >
                   <button
                     onClick={() => handleToggle(notif)}
@@ -351,11 +353,10 @@ function NotificationsTab({ user }: { user: any }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-3">
                         <p
-                          className={`text-base leading-tight ${
-                            notif.isRead
-                              ? 'font-medium text-slate-700'
-                              : 'font-semibold text-slate-900'
-                          }`}
+                          className={`text-base leading-tight ${notif.isRead
+                            ? 'font-medium text-slate-700'
+                            : 'font-semibold text-slate-900'
+                            }`}
                         >
                           {notif.title || notif.titre || 'Notification'}
                         </p>
@@ -520,7 +521,7 @@ function CommercialDashboardInner() {
   // ✅ Onglet actif persisté dans l'URL
   const initialTab = (searchParams.get('tab') as TabKey) || 'dashboard';
   const [activeTab, setActiveTab] = useState<TabKey>(
-    ['dashboard', 'catalogue', 'map', 'pending', 'notifications'].includes(
+    ['dashboard', 'catalogue', 'map', 'pending', 'reservations','notifications'].includes(
       initialTab
     )
       ? initialTab
@@ -973,6 +974,11 @@ function CommercialDashboardInner() {
               label: 'Réserv.',
             },
             {
+              key: 'reservations' as TabKey,     // ← AJOUTER CE BLOC
+              icon: <ClipboardCheck size={16} />,
+              label: 'Gestion résa',
+            },
+            {
               key: 'notifications' as TabKey,
               icon: <Bell size={16} />,
               label: 'Notifs',
@@ -981,11 +987,10 @@ function CommercialDashboardInner() {
             <button
               key={tab.key}
               onClick={() => handleTabChange(tab.key)}
-              className={`relative flex flex-col sm:flex-row items-center gap-1 sm:gap-2 px-2 sm:px-6 py-2 sm:py-3 font-bold text-[10px] sm:text-sm transition border-b-2 whitespace-nowrap ${
-                activeTab === tab.key
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
+              className={`relative flex flex-col sm:flex-row items-center gap-1 sm:gap-2 px-2 sm:px-6 py-2 sm:py-3 font-bold text-[10px] sm:text-sm transition border-b-2 whitespace-nowrap ${activeTab === tab.key
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
             >
               {tab.icon}
               <span>{tab.label}</span>
@@ -1025,9 +1030,8 @@ function CommercialDashboardInner() {
             </button>
 
             <div
-              className={`stats-grid-6 mb-3 ${
-                isStatsExpanded ? 'grid' : 'hidden'
-              } lg:grid lg:!grid`}
+              className={`stats-grid-6 mb-3 ${isStatsExpanded ? 'grid' : 'hidden'
+                } lg:grid lg:!grid`}
             >
               {statsCards.map((card, index) => (
                 <StatCard
@@ -1059,6 +1063,13 @@ function CommercialDashboardInner() {
 
         {activeTab === 'catalogue' && <CatalogueContent user={user} />}
 
+        {activeTab === 'reservations' && (
+          <ReservationsManagementModal
+            isOpen={true}
+            onClose={() => handleTabChange('dashboard')}
+            inline={true}
+          />
+        )}
         {activeTab === 'map' && (
           <div className="h-[50vh] sm:h-[60vh] lg:h-[70vh] rounded-xl overflow-hidden border-2 border-gray-200">
             <MapComponent
