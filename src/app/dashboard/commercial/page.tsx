@@ -35,7 +35,7 @@ import {
   CheckCheck,
   ArrowRight,
   RefreshCw,
-  ClipboardCheck,   // ← AJOUTER CETTE LIGNE
+  ClipboardCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -79,9 +79,9 @@ const MapComponent = dynamicImport(() => import('./components/MapComponent'), {
   ssr: false,
   loading: () => (
     <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950">
-      <div className="text-center">
-        <div className="w-20 h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-white/80 text-lg font-bold uppercase tracking-wider">
+      <div className="text-center px-4">
+        <div className="w-14 h-14 sm:w-20 sm:h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-white/80 text-sm sm:text-lg font-bold uppercase tracking-wider">
           Chargement de la carte...
         </p>
       </div>
@@ -111,7 +111,6 @@ interface Notification {
   metadata?: Record<string, any>;
 }
 
-// ✅ Statut du nettoyage
 type CleanupStatus =
   | { kind: 'idle' }
   | { kind: 'running' }
@@ -134,8 +133,7 @@ type TabKey =
   | 'map'
   | 'pending'
   | 'notifications'
-  | 'reservations';   // ← AJOUTER CETTE LIGNE
-
+  | 'reservations';
 
 // ============================================
 // 🆕 COMPOSANT INTERNE : ONGLET NOTIFICATIONS
@@ -260,8 +258,8 @@ function NotificationsTab({ user }: { user: any }) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
-        <div className="flex flex-col items-center justify-center py-24">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-16 sm:py-24">
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
           <p className="text-sm text-slate-400">Chargement…</p>
         </div>
@@ -271,8 +269,8 @@ function NotificationsTab({ user }: { user: any }) {
 
   if (error) {
     return (
-      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
-        <div className="flex flex-col items-center justify-center py-24 px-6">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="flex flex-col items-center justify-center py-16 sm:py-24 px-6">
           <AlertTriangle className="w-12 h-12 text-red-400 mb-4" />
           <p className="text-base font-medium text-red-600">
             Erreur de chargement
@@ -284,14 +282,14 @@ function NotificationsTab({ user }: { user: any }) {
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-3 mb-1">
+    <div className="w-full">
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-3 mb-1 flex-wrap">
             <div className="p-2 rounded-lg bg-blue-100">
               <Bell className="w-5 h-5 text-blue-600" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
               Notifications
             </h1>
             {unreadCount > 0 && (
@@ -308,7 +306,7 @@ function NotificationsTab({ user }: { user: any }) {
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllAsRead}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 transition"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 transition whitespace-nowrap w-full sm:w-auto"
           >
             <CheckCheck size={16} />
             Tout marquer comme lu
@@ -316,9 +314,9 @@ function NotificationsTab({ user }: { user: any }) {
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 overflow-hidden">
         {notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24">
+          <div className="flex flex-col items-center justify-center py-16 sm:py-24 px-4">
             <div className="p-5 bg-slate-50 rounded-full mb-4">
               <BellOff className="w-10 h-10 text-slate-300" />
             </div>
@@ -335,15 +333,16 @@ function NotificationsTab({ user }: { user: any }) {
               return (
                 <li
                   key={notif.id}
-                  className={`transition-colors ${notif.isRead ? 'bg-white' : 'bg-blue-50/40'
-                    }`}
+                  className={`transition-colors ${
+                    notif.isRead ? 'bg-white' : 'bg-blue-50/40'
+                  }`}
                 >
                   <button
                     onClick={() => handleToggle(notif)}
-                    className="w-full text-left flex items-start gap-4 px-6 py-4 hover:bg-slate-50/70 transition group"
+                    className="w-full text-left flex items-start gap-3 sm:gap-4 px-3 sm:px-6 py-3 sm:py-4 hover:bg-slate-50/70 transition group"
                   >
                     <div
-                      className={`mt-0.5 flex-shrink-0 p-2.5 rounded-lg ${getIconBg(
+                      className={`mt-0.5 flex-shrink-0 p-2 sm:p-2.5 rounded-lg ${getIconBg(
                         notif.type
                       )}`}
                     >
@@ -353,17 +352,18 @@ function NotificationsTab({ user }: { user: any }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-3">
                         <p
-                          className={`text-base leading-tight ${notif.isRead
-                            ? 'font-medium text-slate-700'
-                            : 'font-semibold text-slate-900'
-                            }`}
+                          className={`text-sm sm:text-base leading-tight break-words ${
+                            notif.isRead
+                              ? 'font-medium text-slate-700'
+                              : 'font-semibold text-slate-900'
+                          }`}
                         >
                           {notif.title || notif.titre || 'Notification'}
                         </p>
 
                         {!notif.isRead && (
                           <span
-                            className={`mt-2 w-2 h-2 rounded-full flex-shrink-0 ${getDotColor(
+                            className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${getDotColor(
                               notif.type
                             )}`}
                           />
@@ -371,7 +371,7 @@ function NotificationsTab({ user }: { user: any }) {
                       </div>
 
                       {!isExpanded && (
-                        <p className="text-sm text-slate-500 mt-1 line-clamp-1">
+                        <p className="text-xs sm:text-sm text-slate-500 mt-1 line-clamp-1 break-words">
                           {notif.message}
                         </p>
                       )}
@@ -402,8 +402,8 @@ function NotificationsTab({ user }: { user: any }) {
                         transition={{ duration: 0.22, ease: 'easeInOut' }}
                         className="overflow-hidden"
                       >
-                        <div className="px-6 pb-5 pl-[72px]">
-                          <div className="text-sm text-slate-600 whitespace-pre-line leading-relaxed bg-slate-50 rounded-lg p-4 border border-slate-100">
+                        <div className="px-3 sm:px-6 pb-4 sm:pb-5 sm:pl-[72px]">
+                          <div className="text-sm text-slate-600 whitespace-pre-line leading-relaxed bg-slate-50 rounded-lg p-3 sm:p-4 border border-slate-100 break-words">
                             {notif.message}
                           </div>
 
@@ -434,7 +434,7 @@ function NotificationsTab({ user }: { user: any }) {
 }
 
 // ============================================
-// 🆕 BANDEAU DE NETTOYAGE (retour visuel)
+// 🆕 BANDEAU DE NETTOYAGE
 // ============================================
 function CleanupBanner({
   status,
@@ -471,13 +471,13 @@ function CleanupBanner({
 
   return (
     <div
-      className={`mt-3 flex items-center justify-between gap-3 border rounded-lg px-4 py-2 text-sm ${bg} ${text}`}
+      className={`mt-2 sm:mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 border rounded-lg px-3 sm:px-4 py-2 text-sm ${bg} ${text}`}
     >
-      <div className="flex items-center gap-2">
-        {icon}
-        <span>{message}</span>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="flex-shrink-0">{icon}</span>
+        <span className="break-words">{message}</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto">
         <button
           onClick={onRetry}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/60 hover:bg-white text-xs font-bold border border-current/20"
@@ -498,7 +498,7 @@ function CleanupBanner({
 }
 
 // ============================================
-// 🆕 COMPOSANT INTERNE (utilise useSearchParams)
+// 🆕 COMPOSANT INTERNE PRINCIPAL
 // ============================================
 function CommercialDashboardInner() {
   const router = useRouter();
@@ -518,10 +518,9 @@ function CommercialDashboardInner() {
 
   const features = user ? getFeaturesByProfil(user.profil) : null;
 
-  // ✅ Onglet actif persisté dans l'URL
   const initialTab = (searchParams.get('tab') as TabKey) || 'dashboard';
   const [activeTab, setActiveTab] = useState<TabKey>(
-    ['dashboard', 'catalogue', 'map', 'pending', 'reservations','notifications'].includes(
+    ['dashboard', 'catalogue', 'map', 'pending', 'reservations', 'notifications'].includes(
       initialTab
     )
       ? initialTab
@@ -537,16 +536,13 @@ function CommercialDashboardInner() {
 
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
 
-  // 🔔 Notifications
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const notificationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 🧹 Statut du nettoyage
   const [cleanupStatus, setCleanupStatus] = useState<CleanupStatus>({
     kind: 'idle',
   });
 
-  // États UI
   const [selectedFaceId, setSelectedFaceId] = useState<number | null>(null);
   const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(false);
@@ -557,7 +553,6 @@ function CommercialDashboardInner() {
   const [isReservationsManagementOpen, setIsReservationsManagementOpen] =
     useState(false);
 
-  // Réservations
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
   const [selectedPanneau, setSelectedPanneau] =
     useState<CommercialPanneau | null>(null);
@@ -568,14 +563,12 @@ function CommercialDashboardInner() {
   const [selectedPanneauForReservations, setSelectedPanneauForReservations] =
     useState<CommercialPanneau | null>(null);
 
-  // GPS
   const [userLocation, setUserLocation] = useState<{
     lat: number;
     lng: number;
   } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // 🔔 Charger les notifications
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
@@ -594,7 +587,6 @@ function CommercialDashboardInner() {
     }
   }, [user]);
 
-  // Réservations
   const reloadReservationsMap = useCallback(async () => {
     try {
       const map = await loadReservationsByFace();
@@ -614,7 +606,6 @@ function CommercialDashboardInner() {
     };
   }, []);
 
-  // Notifications + intervalle
   useEffect(() => {
     if (!user) return;
 
@@ -636,12 +627,8 @@ function CommercialDashboardInner() {
     };
   }, [user, loadNotifications]);
 
-  // ============================================
-  // 🧹 NETTOYAGE AUTOMATIQUE (avec feedback visuel)
-  // ============================================
   const executerNettoyage = useCallback(
     async (force: boolean = false) => {
-      // Anti-doublon par session (sauf si on force)
       const dejaFait = sessionStorage.getItem('nettoyage_reservations_fait');
       if (!force && dejaFait) return;
 
@@ -660,7 +647,9 @@ function CommercialDashboardInner() {
 
         if (!response.ok) {
           const txt = await response.text().catch(() => '');
-          throw new Error(`HTTP ${response.status}${txt ? ' — ' + txt.slice(0, 120) : ''}`);
+          throw new Error(
+            `HTTP ${response.status}${txt ? ' — ' + txt.slice(0, 120) : ''}`
+          );
         }
 
         const result = await response.json();
@@ -672,7 +661,6 @@ function CommercialDashboardInner() {
           setCleanupStatus({ kind: 'empty' });
         } else {
           setCleanupStatus({ kind: 'success', terminees, expirees });
-          // Rafraîchir uniquement si quelque chose a bougé
           refresh();
           reloadReservationsMap();
         }
@@ -689,7 +677,6 @@ function CommercialDashboardInner() {
     [refresh, reloadReservationsMap]
   );
 
-  // Lancement auto (une seule fois par session)
   useEffect(() => {
     const t = setTimeout(() => {
       executerNettoyage(false);
@@ -698,7 +685,6 @@ function CommercialDashboardInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // GPS
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocationError('GPS non supporté');
@@ -715,7 +701,6 @@ function CommercialDashboardInner() {
     );
   }, []);
 
-  // Handlers
   const openFaceDetails = (
     panneau: CommercialPanneau,
     face: CommercialFace
@@ -858,7 +843,7 @@ function CommercialDashboardInner() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
           <p className="mt-4 text-sm text-gray-500">
@@ -872,12 +857,12 @@ function CommercialDashboardInner() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="text-center max-w-md">
+        <div className="text-center max-w-md w-full">
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-xl font-bold text-gray-800 mb-2">
             Erreur de chargement
           </h2>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 mb-4 break-words">{error}</p>
           <button
             onClick={refreshData}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
@@ -889,8 +874,41 @@ function CommercialDashboardInner() {
     );
   }
 
+  const tabs = [
+    {
+      key: 'dashboard' as TabKey,
+      icon: <LayoutDashboard size={16} />,
+      label: 'Tableau',
+    },
+    {
+      key: 'catalogue' as TabKey,
+      icon: <span>📸</span>,
+      label: 'Catalogue',
+    },
+    {
+      key: 'map' as TabKey,
+      icon: <Map size={16} />,
+      label: 'Carte',
+    },
+    {
+      key: 'pending' as TabKey,
+      icon: <Clock size={16} />,
+      label: 'Réserv.',
+    },
+    {
+      key: 'reservations' as TabKey,
+      icon: <ClipboardCheck size={16} />,
+      label: 'Gestion résa',
+    },
+    {
+      key: 'notifications' as TabKey,
+      icon: <Bell size={16} />,
+      label: 'Notifs',
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 w-full overflow-x-hidden">
       <CommercialHeader
         user={user}
         onLogout={logout}
@@ -943,7 +961,8 @@ function CommercialDashboardInner() {
         notificationCount={unreadCount}
       />
 
-      <main className="max-w-7xl mx-auto px-2 sm:px-4 py-4 sm:py-6 pb-20 sm:pb-6">
+      {/* Conteneur principal — largeur fluide du mobile au 4K */}
+      <main className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 pb-20 sm:pb-6">
         {/* 🧹 Bandeau de nettoyage */}
         <CleanupBanner
           status={cleanupStatus}
@@ -951,51 +970,24 @@ function CommercialDashboardInner() {
           onClose={() => setCleanupStatus({ kind: 'idle' })}
         />
 
-        <div className="flex gap-1 sm:gap-4 mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
-          {[
-            {
-              key: 'dashboard' as TabKey,
-              icon: <LayoutDashboard size={16} />,
-              label: 'Tableau',
-            },
-            {
-              key: 'catalogue' as TabKey,
-              icon: <span>📸</span>,
-              label: 'Catalogue',
-            },
-            {
-              key: 'map' as TabKey,
-              icon: <Map size={16} />,
-              label: 'Carte',
-            },
-            {
-              key: 'pending' as TabKey,
-              icon: <Clock size={16} />,
-              label: 'Réserv.',
-            },
-            {
-              key: 'reservations' as TabKey,     // ← AJOUTER CE BLOC
-              icon: <ClipboardCheck size={16} />,
-              label: 'Gestion résa',
-            },
-            {
-              key: 'notifications' as TabKey,
-              icon: <Bell size={16} />,
-              label: 'Notifs',
-            },
-          ].map((tab) => (
+        {/* ============================================
+            ONGLETS — scroll horizontal sur mobile
+            ============================================ */}
+        <div className="flex gap-1 sm:gap-2 md:gap-4 mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
+          {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => handleTabChange(tab.key)}
-              className={`relative flex flex-col sm:flex-row items-center gap-1 sm:gap-2 px-2 sm:px-6 py-2 sm:py-3 font-bold text-[10px] sm:text-sm transition border-b-2 whitespace-nowrap ${activeTab === tab.key
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
+              className={`relative flex flex-row items-center gap-1 sm:gap-2 px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition border-b-2 whitespace-nowrap flex-shrink-0 ${
+                activeTab === tab.key
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
             >
-              {tab.icon}
+              <span className="[&>svg]:w-4 [&>svg]:h-4">{tab.icon}</span>
               <span>{tab.label}</span>
               {tab.key === 'notifications' && unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                <span className="absolute -top-1 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
@@ -1003,11 +995,15 @@ function CommercialDashboardInner() {
           ))}
         </div>
 
+        {/* ============================================
+            ONGLET DASHBOARD
+            ============================================ */}
         {activeTab === 'dashboard' && (
           <>
+            {/* Toggle stats mobile */}
             <button
               onClick={() => setIsStatsExpanded((v) => !v)}
-              className="lg:hidden w-full flex items-center justify-between px-3 py-2 mb-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm"
+              className="lg:hidden w-full flex items-center justify-between px-4 py-3 mb-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm"
               aria-expanded={isStatsExpanded}
             >
               <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
@@ -1018,7 +1014,7 @@ function CommercialDashboardInner() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 hidden sm:inline">
                   {isStatsExpanded ? 'Masquer' : 'Afficher'}
                 </span>
                 {isStatsExpanded ? (
@@ -1029,9 +1025,11 @@ function CommercialDashboardInner() {
               </div>
             </button>
 
+            {/* Grille stats responsive via CSS (voir globals.css) */}
             <div
-              className={`stats-grid-6 mb-3 ${isStatsExpanded ? 'grid' : 'hidden'
-                } lg:grid lg:!grid`}
+              className={`stats-grid-6 mb-4 sm:mb-6 ${
+                isStatsExpanded ? 'grid' : 'hidden lg:grid'
+              }`}
             >
               {statsCards.map((card, index) => (
                 <StatCard
@@ -1061,8 +1059,18 @@ function CommercialDashboardInner() {
           </>
         )}
 
-        {activeTab === 'catalogue' && <CatalogueContent user={user} />}
+        {/* ============================================
+            ONGLET CATALOGUE
+            ============================================ */}
+        {activeTab === 'catalogue' && (
+          <div className="w-full">
+            <CatalogueContent user={user} />
+          </div>
+        )}
 
+        {/* ============================================
+            ONGLET GESTION RÉSERVATIONS
+            ============================================ */}
         {activeTab === 'reservations' && (
           <ReservationsManagementModal
             isOpen={true}
@@ -1070,8 +1078,12 @@ function CommercialDashboardInner() {
             inline={true}
           />
         )}
+
+        {/* ============================================
+            ONGLET CARTE
+            ============================================ */}
         {activeTab === 'map' && (
-          <div className="h-[50vh] sm:h-[60vh] lg:h-[70vh] rounded-xl overflow-hidden border-2 border-gray-200">
+          <div className="w-full h-[55vh] sm:h-[60vh] md:h-[65vh] lg:h-[70vh] xl:h-[75vh] rounded-lg sm:rounded-xl overflow-hidden border-2 border-gray-200">
             <MapComponent
               panneaux={transformedPanneaux}
               reservationsMap={reservationsMap}
@@ -1084,11 +1096,20 @@ function CommercialDashboardInner() {
           </div>
         )}
 
+        {/* ============================================
+            ONGLET RÉSERVATIONS EN ATTENTE
+            ============================================ */}
         {activeTab === 'pending' && <PendingReservationsTab user={user} />}
 
+        {/* ============================================
+            ONGLET NOTIFICATIONS
+            ============================================ */}
         {activeTab === 'notifications' && <NotificationsTab user={user} />}
       </main>
 
+      {/* ============================================
+          MODALES
+          ============================================ */}
       {isPanneauReservationsModalOpen && selectedPanneauForReservations && (
         <PanneauReservationsModal
           isOpen={isPanneauReservationsModalOpen}
@@ -1171,7 +1192,7 @@ export default function CommercialDashboard() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
           <div className="text-center">
             <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
             <p className="mt-4 text-sm text-gray-500">
