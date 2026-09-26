@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/dg/page.tsximport React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
+// src/app/dashboard/dg/page.tsx
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import dynamicImport from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
@@ -51,9 +52,9 @@ const MapComponent = dynamicImport(
     ssr: false,
     loading: () => (
       <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-emerald-900 to-emerald-950">
-        <div className="text-center">
-          <div className="w-20 h-20 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-white/80 text-lg font-bold uppercase tracking-wider">Chargement...</p>
+        <div className="text-center px-4">
+          <div className="w-14 h-14 sm:w-20 sm:h-20 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white/80 text-sm sm:text-lg font-bold uppercase tracking-wider">Chargement...</p>
         </div>
       </div>
     ),
@@ -164,15 +165,16 @@ function NotificationsTab({ user }: { user: any }) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 p-24 text-center">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 p-16 sm:p-24 text-center">
         <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mx-auto" />
+        <p className="mt-3 text-sm text-slate-400">Chargement…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 p-12 text-center">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 p-12 text-center">
         <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-3" />
         <p className="text-red-600 font-bold">Erreur: {error}</p>
       </div>
@@ -181,17 +183,18 @@ function NotificationsTab({ user }: { user: any }) {
 
   if (notifications.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 p-24 text-center">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 p-16 sm:p-24 text-center">
         <BellOff className="w-12 h-12 text-slate-300 mx-auto mb-3" />
         <p className="text-slate-500 font-medium">Aucune notification</p>
+        <p className="text-xs text-slate-400 mt-1">Vous êtes à jour ✨</p>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">
+    <div className="w-full">
+      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
           Notifications {unreadCount > 0 && (
             <span className="ml-2 text-xs px-2 py-0.5 bg-emerald-600 text-white rounded-full">
               {unreadCount}
@@ -200,27 +203,35 @@ function NotificationsTab({ user }: { user: any }) {
         </h1>
         {unreadCount > 0 && (
           <button onClick={handleMarkAllAsRead}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-emerald-600 bg-emerald-50 hover:bg-emerald-100">
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 whitespace-nowrap w-full sm:w-auto">
             <CheckCheck size={16} /> Tout marquer lu
           </button>
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 divide-y divide-slate-100">
+      <div className="bg-white rounded-lg sm:rounded-xl shadow-sm ring-1 ring-slate-200 divide-y divide-slate-100 overflow-hidden">
         {notifications.map((notif) => {
           const isExpanded = expandedId === notif.id;
           return (
             <div key={notif.id} className={notif.isRead ? 'bg-white' : 'bg-emerald-50/40'}>
               <button onClick={() => handleToggle(notif)}
-                className="w-full text-left flex items-start gap-4 px-6 py-4 hover:bg-slate-50">
+                className="w-full text-left flex items-start gap-3 sm:gap-4 px-3 sm:px-6 py-3 sm:py-4 hover:bg-slate-50 transition">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between">
-                    <p className="font-semibold text-slate-900">{notif.title || notif.titre || 'Notification'}</p>
-                    <motion.span animate={{ rotate: isExpanded ? 180 : 0 }}>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="font-semibold text-slate-900 text-sm sm:text-base break-words">
+                      {notif.title || notif.titre || 'Notification'}
+                    </p>
+                    <motion.span animate={{ rotate: isExpanded ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex-shrink-0 text-slate-400">
                       <ChevronDown size={16} />
                     </motion.span>
                   </div>
-                  {!isExpanded && <p className="text-sm text-slate-500 mt-1 line-clamp-1">{notif.message}</p>}
+                  {!isExpanded && (
+                    <p className="text-xs sm:text-sm text-slate-500 mt-1 line-clamp-1 break-words">
+                      {notif.message}
+                    </p>
+                  )}
                 </div>
               </button>
               <AnimatePresence>
@@ -229,15 +240,16 @@ function NotificationsTab({ user }: { user: any }) {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.22, ease: 'easeInOut' }}
                     className="overflow-hidden"
                   >
-                    <div className="px-6 pb-5 pl-[72px]">
-                      <div className="text-sm text-slate-600 bg-slate-50 rounded-lg p-4 border">
+                    <div className="px-3 sm:px-6 pb-4 sm:pb-5 sm:pl-[72px]">
+                      <div className="text-xs sm:text-sm text-slate-600 bg-slate-50 rounded-lg p-3 sm:p-4 border break-words whitespace-pre-line">
                         {notif.message}
                       </div>
                       {notif.lien && (
                         <button onClick={() => router.push(notif.lien!)}
-                          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600">
+                          className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:text-emerald-700">
                           Voir le détail <ArrowRight size={14} />
                         </button>
                       )}
@@ -276,9 +288,12 @@ function CleanupBanner({ status, onRetry, onClose }: {
     message = `Erreur de nettoyage : ${status.message}`;
   }
   return (
-    <div className={`mt-3 flex items-center justify-between gap-3 border rounded-lg px-4 py-2 text-sm ${bg} ${text}`}>
-      <div className="flex items-center gap-2">{icon}<span>{message}</span></div>
-      <div className="flex items-center gap-2">
+    <div className={`mt-2 sm:mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 border rounded-lg px-3 sm:px-4 py-2 text-sm ${bg} ${text}`}>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="flex-shrink-0">{icon}</span>
+        <span className="break-words">{message}</span>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto">
         <button onClick={onRetry}
           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/60 text-xs font-bold border">
           <RefreshCw size={12} /> Relancer
@@ -294,17 +309,17 @@ function CleanupBanner({ status, onRetry, onClose }: {
 // ============================================
 function ProformatTab({ user, panneaux }: { user: any; panneaux: any[] }) {
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-2xl shadow-lg border border-emerald-100 p-6">
+    <div className="w-full space-y-6">
+      <div className="bg-white rounded-2xl shadow-lg border border-emerald-100 p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-4">
           <FileCheck className="w-6 h-6 text-emerald-600" />
-          <h2 className="text-xl font-bold text-gray-800">Gestion des Proformats</h2>
+          <h2 className="text-lg sm:text-xl font-bold text-gray-800">Gestion des Proformats</h2>
         </div>
         <p className="text-sm text-gray-600 mb-4">
           Sélectionnez des réservations dans le panier pour générer un proformat imprimable.
         </p>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4 mb-6">
           <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
             <p className="text-xs font-bold text-emerald-600 uppercase">Proformats disponibles</p>
             <p className="text-2xl font-bold text-emerald-700 mt-1">{panneaux.length}</p>
@@ -315,7 +330,7 @@ function ProformatTab({ user, panneaux }: { user: any; panneaux: any[] }) {
             <p className="text-lg font-bold text-blue-700 mt-1">Prêt</p>
             <p className="text-xs text-blue-600">Accès complet</p>
           </div>
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200">
+          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200 sm:col-span-2 md:col-span-1">
             <p className="text-xs font-bold text-amber-600 uppercase">Impressions</p>
             <p className="text-lg font-bold text-amber-700 mt-1">Illimitées</p>
             <p className="text-xs text-amber-600">Autorisation DG</p>
@@ -559,7 +574,7 @@ function DGDashboardInner() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto" />
           <p className="mt-4 text-sm text-gray-500">Chargement...</p>
@@ -571,10 +586,10 @@ function DGDashboardInner() {
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="text-center max-w-md">
+        <div className="text-center max-w-md w-full">
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-xl font-bold mb-2">Erreur</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <p className="text-gray-600 mb-4 break-words">{error}</p>
           <button onClick={refreshData} className="px-6 py-2 bg-emerald-600 text-white rounded-lg">
             Réessayer
           </button>
@@ -583,8 +598,19 @@ function DGDashboardInner() {
     );
   }
 
+  const tabs = [
+    { key: 'dashboard' as TabKey, icon: <LayoutDashboard size={16} />, label: 'Tableau' },
+    { key: 'catalogue' as TabKey, icon: <span>📸</span>, label: 'Catalogue' },
+    { key: 'map' as TabKey, icon: <Map size={16} />, label: 'Carte' },
+    { key: 'pending' as TabKey, icon: <Clock size={16} />, label: 'Réserv.' },
+    { key: 'proformat' as TabKey, icon: <Printer size={16} />, label: 'Proformat' },
+    { key: 'notifications' as TabKey, icon: <Bell size={16} />, label: 'Notifs' },
+    { key: 'agents' as TabKey, icon: <Users size={16} />, label: 'Agents' },
+    { key: 'strategie' as TabKey, icon: <Target size={16} />, label: 'Stratégie' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50 w-full">
       <CommercialHeader
         user={user}
         onLogout={logout}
@@ -606,29 +632,23 @@ function DGDashboardInner() {
         notificationCount={unreadCount}
       />
 
-      <main className="max-w-7xl mx-auto px-2 sm:px-4 py-4 sm:py-6">
+      {/* ✅ CONTENEUR PRINCIPAL : 100% largeur, plus de max-w, plus de mx-auto */}
+      <main className="flex-1 w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 sm:py-4 md:py-6 pb-20 sm:pb-6">
         <CleanupBanner status={cleanupStatus} onRetry={() => executerNettoyage(true)} onClose={() => setCleanupStatus({ kind: 'idle' })} />
 
-        {/* Onglets */}
-        <div className="flex gap-1 sm:gap-4 mb-4 border-b border-gray-200 overflow-x-auto">
-          {[
-            { key: 'dashboard' as TabKey, icon: <LayoutDashboard size={16} />, label: 'Tableau' },
-            { key: 'catalogue' as TabKey, icon: <span>📸</span>, label: 'Catalogue' },
-            { key: 'map' as TabKey, icon: <Map size={16} />, label: 'Carte' },
-            { key: 'pending' as TabKey, icon: <Clock size={16} />, label: 'Réserv.' },
-            { key: 'proformat' as TabKey, icon: <Printer size={16} />, label: 'Proformat' },
-            { key: 'notifications' as TabKey, icon: <Bell size={16} />, label: 'Notifs' },
-            { key: 'agents' as TabKey, icon: <Users size={16} />, label: 'Agents' },
-            { key: 'strategie' as TabKey, icon: <Target size={16} />, label: 'Stratégie' },
-          ].map((tab) => (
+        {/* ============================================
+            ONGLETS — scroll horizontal sur mobile
+            ============================================ */}
+        <div className="flex gap-1 sm:gap-2 md:gap-4 mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
+          {tabs.map((tab) => (
             <button key={tab.key} onClick={() => handleTabChange(tab.key)}
-              className={`relative flex flex-col sm:flex-row items-center gap-1 sm:gap-2 px-2 sm:px-6 py-2 sm:py-3 font-bold text-[10px] sm:text-sm transition border-b-2 whitespace-nowrap ${
+              className={`relative flex flex-row items-center gap-1 sm:gap-2 px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition border-b-2 whitespace-nowrap flex-shrink-0 ${
                 activeTab === tab.key ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}>
-              {tab.icon}
+              <span className="[&>svg]:w-4 [&>svg]:h-4">{tab.icon}</span>
               <span>{tab.label}</span>
               {tab.key === 'notifications' && unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                <span className="absolute -top-1 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
@@ -636,35 +656,63 @@ function DGDashboardInner() {
           ))}
         </div>
 
+        {/* ============================================
+            ONGLET DASHBOARD
+            ============================================ */}
         {activeTab === 'dashboard' && (
           <>
+            {/* Toggle stats mobile */}
             <button onClick={() => setIsStatsExpanded((v) => !v)}
-              className="lg:hidden w-full flex items-center justify-between px-3 py-2 mb-2 bg-white border rounded-lg">
+              className="lg:hidden w-full flex items-center justify-between px-4 py-3 mb-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm">
               <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
                 <BarChart3 size={16} className="text-emerald-600" />
-                Statistiques
+                <span>Statistiques</span>
+                <span className="text-xs font-normal text-gray-500">({statsCards.length})</span>
               </div>
-              <ChevronDown size={16} className={isStatsExpanded ? 'rotate-180' : ''} />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 hidden sm:inline">
+                  {isStatsExpanded ? 'Masquer' : 'Afficher'}
+                </span>
+                <ChevronDown size={16}
+                  className={`text-emerald-600 transition-transform ${isStatsExpanded ? 'rotate-180' : ''}`} />
+              </div>
             </button>
 
-            <div className={`stats-grid-6 mb-3 ${isStatsExpanded ? 'grid' : 'hidden'} lg:grid lg:!grid`}>
-              {statsCards.map((card, i) => (
-                <StatCard key={i} label={card.label} value={card.value} icon={card.icon} color={card.color} loading={loading} />
-              ))}
+            {/* ✅ Stats centrées dans un max-w-6xl */}
+            <div className="w-full max-w-6xl mx-auto mb-4 sm:mb-6">
+              <div className={`stats-grid-6 ${isStatsExpanded ? 'grid' : 'hidden lg:grid'}`}>
+                {statsCards.map((card, i) => (
+                  <StatCard key={i} label={card.label} value={card.value}
+                    icon={card.icon} color={card.color} loading={loading} />
+                ))}
+              </div>
             </div>
 
-            <PanneauFilters filters={filters} onFiltersChange={setFilters}
-              totalResults={panneauxFiltres.length} totalPanneaux={transformedPanneaux.length} />
+            {/* ✅ Filtres + Table : 100% largeur */}
+            <div className="w-full">
+              <PanneauFilters filters={filters} onFiltersChange={setFilters}
+                totalResults={panneauxFiltres.length} totalPanneaux={transformedPanneaux.length} />
 
-            <PanneauxTable panneaux={panneauxFiltres as any}
-              onFaceClick={openFaceDetails} onReserveClick={handleReserveClick} loading={loading} />
+              <PanneauxTable panneaux={panneauxFiltres as any}
+                onFaceClick={openFaceDetails} onReserveClick={handleReserveClick} loading={loading} />
+            </div>
           </>
         )}
 
-        {activeTab === 'catalogue' && <CatalogueContent user={user} />}
+        {/* ============================================
+            ONGLET CATALOGUE — 100% largeur
+            ============================================ */}
+        {activeTab === 'catalogue' && (
+          <div className="w-full">
+            <CatalogueContent user={user} />
+          </div>
+        )}
 
+        {/* ============================================
+            ONGLET CARTE — 100% largeur + hauteur fluide
+            ============================================ */}
         {activeTab === 'map' && (
-          <div className="h-[50vh] sm:h-[60vh] lg:h-[70vh] rounded-xl overflow-hidden border-2 border-gray-200">
+          <div className="w-full h-[55vh] sm:h-[60vh] md:h-[65vh] lg:h-[70vh] xl:h-[75vh] 2xl:h-[80vh] rounded-lg sm:rounded-xl overflow-hidden border-2 border-gray-200">
             <MapComponent panneaux={transformedPanneaux} reservationsMap={reservationsMap}
               userLocation={userLocation} locationError={locationError}
               onMarkerClick={handleMapMarkerClick} onReserveClick={handleMapReserveClick}
@@ -672,14 +720,38 @@ function DGDashboardInner() {
           </div>
         )}
 
-        {activeTab === 'pending' && <PendingReservationsTab user={user} />}
+        {/* ============================================
+            ONGLET PENDING — 100% largeur
+            ============================================ */}
+        {activeTab === 'pending' && (
+          <div className="w-full">
+            <PendingReservationsTab user={user} />
+          </div>
+        )}
 
-        {activeTab === 'proformat' && <ProformatTab user={user} panneaux={transformedPanneaux} />}
+        {/* ============================================
+            ONGLET PROFORMAT — 100% largeur
+            ============================================ */}
+        {activeTab === 'proformat' && (
+          <div className="w-full">
+            <ProformatTab user={user} panneaux={transformedPanneaux} />
+          </div>
+        )}
 
-        {activeTab === 'notifications' && <NotificationsTab user={user} />}
+        {/* ============================================
+            ONGLET NOTIFICATIONS — 100% largeur
+            ============================================ */}
+        {activeTab === 'notifications' && (
+          <div className="w-full">
+            <NotificationsTab user={user} />
+          </div>
+        )}
 
+        {/* ============================================
+            ONGLET AGENTS — 100% largeur
+            ============================================ */}
         {activeTab === 'agents' && (
-          <div className="bg-white rounded-2xl shadow-lg border border-emerald-100 p-6">
+          <div className="w-full bg-white rounded-2xl shadow-lg border border-emerald-100 p-4 sm:p-6">
             <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
               <Award className="w-5 h-5 text-emerald-600" /> Gestion des agents
             </h3>
@@ -687,9 +759,12 @@ function DGDashboardInner() {
           </div>
         )}
 
+        {/* ============================================
+            ONGLET STRATÉGIE — 100% largeur
+            ============================================ */}
         {activeTab === 'strategie' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-6 border border-emerald-200">
+          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-4 sm:p-6 border border-emerald-200">
               <div className="flex items-center gap-2 mb-4">
                 <Target className="w-6 h-6 text-emerald-600" />
                 <h3 className="font-bold text-emerald-700">Objectifs 2026</h3>
@@ -700,7 +775,7 @@ function DGDashboardInner() {
                 <li>🎯 Innovation digitale</li>
               </ul>
             </div>
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-6 border border-blue-200">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-4 sm:p-6 border border-blue-200">
               <div className="flex items-center gap-2 mb-4">
                 <PieChart className="w-6 h-6 text-blue-600" />
                 <h3 className="font-bold text-blue-700">Indicateurs</h3>
@@ -715,7 +790,9 @@ function DGDashboardInner() {
         )}
       </main>
 
-      {/* Modals */}
+      {/* ============================================
+          MODALES
+          ============================================ */}
       {isPanneauReservationsModalOpen && selectedPanneauForReservations && (
         <PanneauReservationsModal isOpen={isPanneauReservationsModalOpen}
           onClose={() => { setIsPanneauReservationsModalOpen(false); setSelectedPanneauForReservations(null); }}
@@ -744,11 +821,17 @@ function DGDashboardInner() {
   );
 }
 
+// ============================================
+// ✅ EXPORT PAR DÉFAUT AVEC SUSPENSE
+// ============================================
 export default function DGDashboard() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-emerald-600 animate-spin mx-auto" />
+          <p className="mt-4 text-sm text-gray-500">Chargement du tableau de bord...</p>
+        </div>
       </div>
     }>
       <DGDashboardInner />
