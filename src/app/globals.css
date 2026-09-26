@@ -1,97 +1,167 @@
-﻿@tailwind base;
+﻿/* ============================================================
+   TAILWIND DIRECTIVES
+   ============================================================ */
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+
+/* ============================================================
+   VARIABLES GLOBALES
+   ============================================================ */
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-rgb: 248, 250, 252;
 }
 
 
-
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
 }
-.animate-fadeIn { animation: fadeIn 0.25s ease-out; }
 
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-.animate-slideUp { animation: slideUp 0.3s ease-out; }
+
+/* Support safe-area iOS (encoche) */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* Éviter les débordements de texte longs */
+.break-words {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Éviter le débordement des médias */
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Améliorer le rendu tactile */
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
 
 /* ============================================================
-   SCROLLBARS PERSONNALISÉES
+   1. SCROLLBARS PERSONNALISÉES
    ============================================================ */
 
-/* --- Scrollbar générique (custom-scrollbar) --- */
+/* --- Scrollbar générique --- */
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(59, 130, 246, 0.4) rgba(0, 0, 0, 0.05);
 }
-
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 .custom-scrollbar::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.05);
   border-radius: 6px;
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(59, 130, 246, 0.4);
   border-radius: 6px;
   transition: background 0.2s ease;
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(59, 130, 246, 0.6);
 }
 
-/* --- Scrollbars fines (notifications + dropdown profil) --- */
+/* --- Scrollbar fine (notifications + dropdown profil) --- */
 .notification-scroll,
 .profile-dropdown-scroll {
   scrollbar-width: thin;
   scrollbar-color: #e2e8f0 transparent;
 }
-
 .notification-scroll::-webkit-scrollbar,
 .profile-dropdown-scroll::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 .notification-scroll::-webkit-scrollbar-track,
 .profile-dropdown-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
-
 .notification-scroll::-webkit-scrollbar-thumb,
 .profile-dropdown-scroll::-webkit-scrollbar-thumb {
   background: #e2e8f0;
   border-radius: 3px;
   transition: background 0.2s ease;
 }
-
 .notification-scroll::-webkit-scrollbar-thumb:hover,
 .profile-dropdown-scroll::-webkit-scrollbar-thumb:hover {
   background: #cbd5e1;
 }
-
 .notification-scroll::-webkit-scrollbar-corner,
 .profile-dropdown-scroll::-webkit-scrollbar-corner {
   background: transparent;
 }
 
+/* --- Scrollbar cachée (onglets mobiles) --- */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+
 /* ============================================================
-   ANIMATIONS
+   2. ANIMATIONS
    ============================================================ */
 
-/* Pulsation pour les marqueurs */
+/* Fade in */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Slide up (modales bottom-sheet) */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+.animate-slideUp {
+  animation: slideUp 0.3s ease-out;
+}
+
+/* Pulsation pour les marqueurs de carte */
 @keyframes pulse-ring {
   0% {
     transform: scale(1);
@@ -106,62 +176,49 @@
     opacity: 0.8;
   }
 }
-
 .pulse-ring {
   animation: pulse-ring 2s ease-in-out infinite;
 }
 
-/* Fade in */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+/* Réduire les animations si l'utilisateur le demande */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
-.animate-fadeIn {
-  animation: fadeIn 0.3s ease-out;
-}
 
 /* ============================================================
-   LEAFLET (SSR SAFE)
+   3. LEAFLET (SSR SAFE)
    ============================================================ */
 .leaflet-container {
   height: 100%;
   width: 100%;
   z-index: 1;
 }
-
 .leaflet-popup-content-wrapper {
   border-radius: 12px !important;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2) !important;
 }
-
 .leaflet-popup-tip {
   background: white !important;
 }
 
-/* ============================================================
-   BODY
-   ============================================================ */
-body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
-}
 
 /* ============================================================
-   STATS CARDS — TAILLES FLUIDES AVEC BREAKPOINTS
+   4. STATS CARDS — TAILLES FLUIDES (320px → 4K)
    ============================================================ */
 
-/* ─── Base (mobile < 400px) ─── */
+/* ─── Base (mobile < 480px) ─── */
 .stat-card {
-  min-height: 30px;
-  padding: 3px 5px;
-  gap: 3px;
+  min-height: 56px;
+  padding: 10px 12px;
+  gap: 6px;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -169,38 +226,44 @@ body {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  border-radius: 8px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .stat-card-label {
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  line-height: 1;
+  line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .stat-card-value {
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 800;
-  line-height: 1;
-  margin-top: 2px;
+  line-height: 1.1;
+  margin-top: 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .stat-card-icon {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-
 .stat-card-icon > svg {
   width: 100% !important;
   height: 100% !important;
@@ -209,58 +272,156 @@ body {
 
 /* ─── Petit mobile (≥ 400px) ─── */
 @media (min-width: 400px) {
-  .stat-card { min-height: 34px; padding: 4px 6px; gap: 4px; }
-  .stat-card-label { font-size: 8px; }
-  .stat-card-value { font-size: 13px; }
-  .stat-card-icon  { width: 13px; height: 13px; }
+  .stat-card        { min-height: 60px; padding: 11px 13px; gap: 6px; }
+  .stat-card-label  { font-size: 9.5px; }
+  .stat-card-value  { font-size: 19px; }
+  .stat-card-icon   { width: 17px; height: 17px; }
 }
 
-/* ─── Mobile large / Phablette (≥ 480px) ─── */
+/* ─── Mobile large (≥ 480px) ─── */
 @media (min-width: 480px) {
-  .stat-card { min-height: 38px; padding: 5px 8px; gap: 5px; }
-  .stat-card-label { font-size: 9px; }
-  .stat-card-value { font-size: 15px; }
-  .stat-card-icon  { width: 15px; height: 15px; }
+  .stat-card        { min-height: 68px; padding: 12px 14px; gap: 7px; }
+  .stat-card-label  { font-size: 10px; }
+  .stat-card-value  { font-size: 22px; }
+  .stat-card-icon   { width: 18px; height: 18px; }
 }
 
 /* ─── Tablette portrait (≥ 640px) ─── */
 @media (min-width: 640px) {
-  .stat-card { min-height: 46px; padding: 7px 10px; gap: 6px; }
-  .stat-card-label { font-size: 10px; }
-  .stat-card-value { font-size: 18px; }
-  .stat-card-icon  { width: 18px; height: 18px; }
+  .stat-card        { min-height: 80px; padding: 14px 16px; gap: 8px; }
+  .stat-card-label  { font-size: 11px; }
+  .stat-card-value  { font-size: 26px; }
+  .stat-card-icon   { width: 20px; height: 20px; }
 }
 
-/* ─── Tablette paysage / petit desktop (≥ 768px) ─── */
+/* ─── Tablette paysage (≥ 768px) ─── */
 @media (min-width: 768px) {
-  .stat-card { min-height: 52px; padding: 8px 12px; gap: 7px; }
-  .stat-card-label { font-size: 10.5px; }
-  .stat-card-value { font-size: 20px; }
-  .stat-card-icon  { width: 20px; height: 20px; }
+  .stat-card        { min-height: 88px; padding: 16px 18px; gap: 9px; }
+  .stat-card-label  { font-size: 11.5px; }
+  .stat-card-value  { font-size: 28px; }
+  .stat-card-icon   { width: 22px; height: 22px; }
 }
 
-/* ─── Desktop (≥ 1024px) ─── */
+/* ─── Desktop (≥ 1024px) — CARTES PLUS GRANDES ─── */
 @media (min-width: 1024px) {
-  .stat-card { min-height: 58px; padding: 10px 14px; gap: 8px; }
-  .stat-card-label { font-size: 11px; }
-  .stat-card-value { font-size: 22px; }
-  .stat-card-icon  { width: 22px; height: 22px; }
+  .stat-card        { min-height: 100px; padding: 18px 20px; gap: 10px; }
+  .stat-card-label  { font-size: 12px; }
+  .stat-card-value  { font-size: 32px; }
+  .stat-card-icon   { width: 26px; height: 26px; }
 }
+
+/* ─── Grand écran (≥ 1280px) ─── */
+@media (min-width: 1280px) {
+  .stat-card        { min-height: 112px; padding: 20px 24px; gap: 12px; }
+  .stat-card-label  { font-size: 13px; }
+  .stat-card-value  { font-size: 36px; }
+  .stat-card-icon   { width: 28px; height: 28px; }
+}
+
+/* ─── Ultra-wide (≥ 1536px) ─── */
+@media (min-width: 1536px) {
+  .stat-card        { min-height: 124px; padding: 22px 26px; gap: 14px; }
+  .stat-card-label  { font-size: 14px; }
+  .stat-card-value  { font-size: 40px; }
+  .stat-card-icon   { width: 32px; height: 32px; }
+}
+
+/* ─── 4K (≥ 1920px) ─── */
+@media (min-width: 1920px) {
+  .stat-card        { min-height: 144px; padding: 26px 30px; gap: 16px; }
+  .stat-card-label  { font-size: 15px; }
+  .stat-card-value  { font-size: 46px; }
+  .stat-card-icon   { width: 36px; height: 36px; }
+}
+
+/* ─── 5K / 8K (≥ 2560px) ─── */
+@media (min-width: 2560px) {
+  .stat-card        { min-height: 164px; padding: 30px 36px; gap: 18px; }
+  .stat-card-label  { font-size: 17px; }
+  .stat-card-value  { font-size: 54px; }
+  .stat-card-icon   { width: 42px; height: 42px; }
+}
+
 
 /* ============================================================
-   GRILLE STATS : 6 colonnes FORCÉES sur tous les écrans
+   5. GRILLE STATS — RESPONSIVE (2 → 3 → 6 colonnes)
    ============================================================ */
+
+/* Mobile (320–479px) : 2 colonnes */
 .stats-grid-6 {
-  display: grid !important;
-  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
   width: 100%;
 }
 
-@media (min-width: 640px) {
+/* Petit mobile (≥ 400px) */
+@media (min-width: 400px) {
   .stats-grid-6 { gap: 8px; }
 }
 
+/* Mobile large (≥ 480px) : 3 colonnes */
+@media (min-width: 480px) {
+  .stats-grid-6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+/* Tablette portrait (≥ 640px) */
+@media (min-width: 640px) {
+  .stats-grid-6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+/* Tablette paysage (≥ 768px) */
+@media (min-width: 768px) {
+  .stats-grid-6 { gap: 14px; }
+}
+
+/* Desktop moyen (≥ 1024px) : 3 colonnes (cartes plus lisibles) */
 @media (min-width: 1024px) {
-  .stats-grid-6 { gap: 12px; }
+  .stats-grid-6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+/* Grand écran (≥ 1280px) : 6 colonnes */
+@media (min-width: 1280px) {
+  .stats-grid-6 {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+/* Ultra-wide (≥ 1536px) */
+@media (min-width: 1536px) {
+  .stats-grid-6 { gap: 20px; }
+}
+
+/* 4K (≥ 1920px) */
+@media (min-width: 1920px) {
+  .stats-grid-6 { gap: 24px; }
+}
+
+/* 5K / 8K (≥ 2560px) */
+@media (min-width: 2560px) {
+  .stats-grid-6 { gap: 28px; }
+}
+
+
+/* ============================================================
+   6. CONTENEUR PRINCIPAL — LARGEURS FLUIDES
+   ============================================================ */
+
+/* Conteneur 4K centré */
+@media (min-width: 1920px) {
+  .container-4k {
+    max-width: 1800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
 }
