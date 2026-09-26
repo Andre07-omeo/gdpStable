@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/comptable/layout.tsximport React, { useState, useEffect } from 'react';
+// src/app/dashboard/comptable/layout.tsx
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import { ComptableSidebar } from './components/ComptableSidebar';
@@ -79,7 +80,7 @@ export default function ComptableLayout({ children }: ComptableLayoutProps) {
   // ✅ 4. Écran de chargement pendant le SSR (évite le mismatch)
   if (!mounted) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
+      <div className="h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-gray-500 font-medium">Chargement...</p>
@@ -89,7 +90,7 @@ export default function ComptableLayout({ children }: ComptableLayoutProps) {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-gray-50">
+    <div className="h-screen flex flex-col overflow-hidden bg-gray-50 w-full">
       <div className="flex-shrink-0 z-40">
         <ComptableHeader
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -121,7 +122,8 @@ export default function ComptableLayout({ children }: ComptableLayoutProps) {
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 min-h-0">
+        {/* ✅ CONTENEUR PRINCIPAL — 100% largeur restante + paddings progressifs */}
+        <div className="flex-1 w-full min-w-0 overflow-y-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 sm:py-4 md:py-6 min-h-0">
           {children}
         </div>
 
