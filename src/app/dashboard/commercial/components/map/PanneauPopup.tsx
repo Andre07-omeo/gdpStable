@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/map/PanneauPopup.tsx
-
 'use client';
 
-import { PanneauMap } from './types';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/map/PanneauPopup.tsximport { PanneauMap } from './types';
 
 interface PanneauPopupProps {
   panneau: PanneauMap;

@@ -1,7 +1,6 @@
-// src/app/dashboard/commercial/components/map/GoogleMapProvider.tsx
 'use client';
 
-import { APIProvider } from '@vis.gl/react-google-maps';
+// src/app/dashboard/commercial/components/map/GoogleMapProvider.tsximport { APIProvider } from '@vis.gl/react-google-maps';
 import { ReactNode } from 'react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';

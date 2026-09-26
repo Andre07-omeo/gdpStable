@@ -1,8 +1,8 @@
-// src/app/dashboard/superviseur/components/PanneauModal.tsx
-
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/superviseur/components/PanneauModal.tsximport { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   X, MapPin, Calendar, Users, Building, ChevronRight, 

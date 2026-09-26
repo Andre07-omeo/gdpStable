@@ -1,8 +1,8 @@
-// src/components/layout/LayoutWrapper.tsx
-
 'use client';
 
-import { ReactNode } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/components/layout/LayoutWrapper.tsximport { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from './Header';
 import Footer from './Footer';

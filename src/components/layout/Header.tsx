@@ -1,8 +1,8 @@
-﻿// src/components/layout/Header.tsx
-
 'use client';
 
-import Link from 'next/link';
+export const dynamic = 'force-dynamic';
+
+// src/components/layout/Header.tsximport Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Menu, X, LogOut, MapPin } from 'lucide-react';
 import { useState } from 'react';

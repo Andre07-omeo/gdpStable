@@ -1,8 +1,11 @@
-﻿// ============================================
+'use client';
+
+export const dynamic = 'force-dynamic';
+
+// ============================================
 // PAGE - GESTION DES UTILISATEURS
 // ============================================
 
-'use client';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';

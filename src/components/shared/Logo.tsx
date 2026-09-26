@@ -1,7 +1,6 @@
-// src/components/shared/Logo.tsx
 'use client';
 
-interface LogoProps {
+// src/components/shared/Logo.tsxinterface LogoProps {
   className?: string;
   showText?: boolean;
 }

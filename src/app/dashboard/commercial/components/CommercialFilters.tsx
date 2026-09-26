@@ -1,4 +1,6 @@
-﻿'use client';
+'use client';
+
+export const dynamic = 'force-dynamic';
 
 import { ChevronDown, ChevronUp, Filter, Search, XCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';

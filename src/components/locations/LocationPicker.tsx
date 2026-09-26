@@ -1,7 +1,8 @@
-// src/components/locations/LocationPickerSimple.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/components/locations/LocationPickerSimple.tsximport { useState, useEffect } from 'react';
 import {
     MapPin, Satellite, Loader2,
     CheckCircle, AlertCircle, Globe

@@ -1,7 +1,8 @@
-// src/app/dashboard/comptable/components/FactureCard.tsx
 'use client';
 
-import React from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/comptable/components/FactureCard.tsximport React from 'react';
 import { Eye, Check, X, Trash2, Building2, User, Calendar, AlertCircle, CreditCard } from 'lucide-react';
 
 interface FactureCardProps {

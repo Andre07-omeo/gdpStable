@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/filters/FilterButton.tsx
-
 'use client';
 
-import { useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/filters/FilterButton.tsximport { useState } from 'react';
 import { Filter, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PanneauFilters } from './PanneauFilters';

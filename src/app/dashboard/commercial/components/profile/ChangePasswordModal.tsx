@@ -1,7 +1,8 @@
-// src/app/dashboard/commercial/components/profile/ChangePasswordModal.tsx
 'use client';
 
-import { useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/profile/ChangePasswordModal.tsximport { useState } from 'react';
 import { X, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 interface Props {

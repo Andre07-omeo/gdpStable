@@ -1,7 +1,6 @@
-// src/app/dashboard/commercial/components/MapComponentWrapper.tsx
 'use client';
 
-import MapComponent from './MapComponent';
+// src/app/dashboard/commercial/components/MapComponentWrapper.tsximport MapComponent from './MapComponent';
 import { PanneauMap } from './map/types';
 import { ReservationsMap } from './filters/reservationsLoader';
 

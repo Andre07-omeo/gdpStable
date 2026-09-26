@@ -1,3 +1,7 @@
+'use client';
+
+export const dynamic = 'force-dynamic';
+
 // src/lib/notifications/notificationSound.ts
 
 export function playNotificationFeedback(priority: 'low' | 'normal' | 'high' | 'urgent' = 'normal') {

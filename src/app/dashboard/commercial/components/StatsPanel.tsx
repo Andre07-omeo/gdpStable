@@ -1,4 +1,6 @@
-﻿'use client';
+'use client';
+
+export const dynamic = 'force-dynamic';
 
 import { X, LayoutDashboard, Calendar, Users, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';

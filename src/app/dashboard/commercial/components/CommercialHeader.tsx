@@ -1,6 +1,8 @@
-// src/app/dashboard/commercial/components/CommercialHeader.tsx
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/CommercialHeader.tsx
 import Image from 'next/image';
 import {
   Bell, RefreshCw, User,

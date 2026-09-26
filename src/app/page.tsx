@@ -1,6 +1,6 @@
-﻿// src/app/page.tsx
-
 'use client';
+
+// src/app/page.tsx
 
 import { useEffect, useState } from 'react';
 import LayoutWrapper from '@/components/layout/LayoutWrapper';

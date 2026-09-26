@@ -1,7 +1,8 @@
-// src/app/dashboard/commercial/components/filters/PanneauFilters.tsx
 'use client';
 
-import React, { useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/filters/PanneauFilters.tsximport React, { useState } from 'react';
 import {
   Search,
   XCircle,

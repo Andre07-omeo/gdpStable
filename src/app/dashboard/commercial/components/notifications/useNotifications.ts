@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/notifications/useNotifications.ts
-
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/notifications/useNotifications.tsimport { useState, useEffect, useCallback, useRef } from 'react';
 import { AppNotification, NOTIFICATION_PRIORITY } from '@/lib/notifications/types';
 import {
   playNotificationFeedback,

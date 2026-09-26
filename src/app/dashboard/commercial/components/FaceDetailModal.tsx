@@ -1,6 +1,8 @@
-﻿// src/app/dashboard/commercial/components/FaceDetailModal.tsx
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/FaceDetailModal.tsx
 import { useState, useEffect } from 'react';
 import { 
   X, Calendar, User, Building2, MapPin, 

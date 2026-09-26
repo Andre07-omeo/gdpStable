@@ -1,7 +1,8 @@
-// components/locations/SimpleLocationSelector.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// components/locations/SimpleLocationSelector.tsximport { useState, useEffect } from 'react';
 
 interface SimpleLocationSelectorProps {
     value?: {

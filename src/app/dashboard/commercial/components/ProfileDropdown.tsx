@@ -1,7 +1,8 @@
-// src/app/dashboard/commercial/components/ProfileDropdown.tsx
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/ProfileDropdown.tsximport { useState, useRef, useEffect } from 'react';
 import {
   User, Lock, LogOut, Settings, ChevronDown,
   HelpCircle, BarChart3,

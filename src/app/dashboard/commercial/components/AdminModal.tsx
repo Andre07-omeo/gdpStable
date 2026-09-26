@@ -1,4 +1,6 @@
-﻿'use client';
+'use client';
+
+export const dynamic = 'force-dynamic';
 
 import { X, Users, Calendar, Clock, UserCheck } from 'lucide-react';
 import { motion } from 'framer-motion';

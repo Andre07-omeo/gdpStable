@@ -7,6 +7,21 @@
   --background-rgb: 248, 250, 252;
 }
 
+
+
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeIn { animation: fadeIn 0.25s ease-out; }
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.animate-slideUp { animation: slideUp 0.3s ease-out; }
+
 /* ============================================================
    SCROLLBARS PERSONNALISÉES
    ============================================================ */

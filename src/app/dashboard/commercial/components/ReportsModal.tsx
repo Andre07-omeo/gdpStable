@@ -1,4 +1,6 @@
-﻿'use client';
+'use client';
+
+export const dynamic = 'force-dynamic';
 
 import { X, BarChart3, TrendingUp, Users, MapPin, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';

@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/TeamManagementModal.tsx
-
 'use client';
 
-import React, { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/TeamManagementModal.tsximport React, { useState, useEffect } from 'react';
 import {
   X,
   Users,

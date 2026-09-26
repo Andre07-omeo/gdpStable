@@ -1,8 +1,8 @@
-// src/app/dashboard/superviseur/components/PanneauForm.tsx
-
 'use client';
 
-import { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/superviseur/components/PanneauForm.tsximport { useState, useEffect } from 'react';
 import {
     X, Plus, Trash2, Save, Loader2,
     ChevronRight, ChevronLeft, Layout, Ruler

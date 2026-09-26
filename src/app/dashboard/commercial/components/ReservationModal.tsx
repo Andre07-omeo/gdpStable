@@ -1,7 +1,8 @@
-// src/app/dashboard/commercial/components/ReservationModal.tsx
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/ReservationModal.tsximport { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Loader2, Search, Calendar, Check, AlertCircle,
   User, Phone, Clock, FileText, Building2, AlertTriangle,

@@ -1,6 +1,8 @@
-﻿// components/locations/LocationSelector.tsx
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// components/locations/LocationSelector.tsx
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface Location {

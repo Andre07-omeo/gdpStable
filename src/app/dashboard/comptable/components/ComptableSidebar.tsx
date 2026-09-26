@@ -1,7 +1,8 @@
-// src/app/dashboard/comptable/components/ComptableSidebar.tsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/comptable/components/ComptableSidebar.tsximport React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,

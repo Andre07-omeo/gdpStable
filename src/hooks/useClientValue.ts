@@ -1,7 +1,8 @@
-// src/hooks/useClientValue.ts
 'use client';
 
-import { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/hooks/useClientValue.tsimport { useState, useEffect } from 'react';
 
 /**
  * Retourne la valeur uniquement après le montage côté client

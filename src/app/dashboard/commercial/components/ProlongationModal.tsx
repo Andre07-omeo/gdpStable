@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/ProlongationModal.tsx
-
 'use client';
 
-import React, { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/ProlongationModal.tsximport React, { useState, useEffect } from 'react';
 import {
   X,
   Calendar,

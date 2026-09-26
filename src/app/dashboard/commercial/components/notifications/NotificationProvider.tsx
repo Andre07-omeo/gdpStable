@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/notifications/NotificationProvider.tsx
-
 'use client';
 
-import { createContext, useContext, ReactNode } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/notifications/NotificationProvider.tsximport { createContext, useContext, ReactNode } from 'react';
 import { useNotifications } from './useNotifications';
 import { useAuth } from '@/context/AuthContext';
 

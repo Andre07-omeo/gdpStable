@@ -1,7 +1,8 @@
-// src/app/dashboard/commercial/components/profile/StatsModal.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/profile/StatsModal.tsximport { useEffect, useState } from 'react';
 import { X, TrendingUp, FileCheck, Calendar, User } from 'lucide-react';
 
 interface Stats {

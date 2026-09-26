@@ -1,6 +1,8 @@
 // src/app/api/commercials/reservations/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
+import type { RowDataPacket } from 'mysql2';
 import { onReservationCreated } from '@/lib/notifications/triggers/onReservationCreated';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +17,9 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+// ============================================
 // ✅ Calcul expiration 72h ouvrables
+// ============================================
 function calculateExpirationWorkingHours(startDate: Date): Date {
   const expirationDate = new Date(startDate);
   let heuresAjoutees = 0;
@@ -31,7 +35,8 @@ function calculateExpirationWorkingHours(startDate: Date): Date {
 // POST : Créer une réservation + notifier
 // ============================================
 export async function POST(request: NextRequest) {
-  let connection;
+  let connection: mysql.PoolConnection | null = null;
+
   try {
     const body = await request.json();
     const {
@@ -73,68 +78,91 @@ export async function POST(request: NextRequest) {
     await connection.beginTransaction();
 
     // 1. Vérifier la face
-    const [faceCheck] = await connection.query(
+    const [faceCheck] = await connection.query<RowDataPacket[]>(
       `SELECT id_face, id_panneau, est_active FROM face WHERE id_face = ?`,
       [id_face]
     );
-    if ((faceCheck as any[]).length === 0) {
+    if (faceCheck.length === 0) {
       await connection.rollback();
       return NextResponse.json({ error: "Cette face n'existe pas" }, { status: 404 });
     }
-    const face = (faceCheck as any[])[0];
+    const face = faceCheck[0];
     if (face.est_active === 0) {
       await connection.rollback();
       return NextResponse.json({ error: "Cette face n'est pas active" }, { status: 400 });
     }
 
-    // 2. Chevauchements
-    const [overlapCheck] = await connection.query(
-      `SELECT id_ligne, date_debut, date_fin 
-       FROM ligne_reservation 
-       WHERE id_face = ? 
-       AND statut_diffusion IN ('En attente', 'Validée', 'Diffusée')
-       AND (
-         (date_debut <= ? AND date_fin >= ?) OR
-         (date_debut <= ? AND date_fin >= ?) OR
-         (date_debut >= ? AND date_fin <= ?)
-       )`,
-      [id_face, date_debut, date_debut, date_fin, date_fin, date_debut, date_fin]
+    // 2. ✅ Vérification de chevauchement selon la NOUVELLE LOGIQUE (Option B)
+    //    → Conflit si date_debut de la nouvelle campagne tombe DANS une campagne ACTIVE
+    //    → Les réservations "En attente" NE bloquent PAS
+    //    → Les réservations "Terminée" / "Expirée" NE bloquent PAS
+    const [overlapCheck] = await connection.query<RowDataPacket[]>(
+      `SELECT 
+         lr.id_ligne,
+         lr.date_debut,
+         lr.date_fin,
+         r.statut,
+         r.numero_commande
+       FROM ligne_reservation lr
+       JOIN reservation r ON r.id_reservation = lr.id_reservation
+       WHERE lr.id_face = ?
+         AND r.statut IN ('ACTIVE', 'Confirmée', 'En cours')
+         AND ? >= lr.date_debut
+         AND ? <  lr.date_fin`,
+      [id_face, date_debut, date_debut]
     );
-    if ((overlapCheck as any[]).length > 0) {
+
+    if (overlapCheck.length > 0) {
       await connection.rollback();
+      const conflit = overlapCheck[0];
       return NextResponse.json(
-        { error: 'Cette période est déjà réservée pour cette face', overlapping: overlapCheck },
+        {
+          error: `Cette face est déjà occupée sur la période du ${new Date(
+            conflit.date_debut
+          ).toLocaleDateString('fr-FR')} au ${new Date(
+            conflit.date_fin
+          ).toLocaleDateString('fr-FR')} (${conflit.numero_commande})`,
+          overlapping: overlapCheck,
+        },
         { status: 409 }
       );
     }
 
     // 3. Numéro de commande
-    const [countResult] = await connection.query(
+    const [countResult] = await connection.query<RowDataPacket[]>(
       `SELECT COUNT(*) as total FROM reservation`
     );
-    const total = (countResult as any[])[0].total;
+    const total = countResult[0].total;
     const numero_commande = `CMD-${String(total + 1).padStart(4, '0')}`;
 
     // 4. Créer la réservation
-    const [reservationResult] = await connection.query(
+    const [reservationResult] = await connection.query<mysql.ResultSetHeader>(
       `INSERT INTO reservation 
        (id_client, id_commercial, numero_commande, date_creation, date_debut_campagne, date_fin_campagne, statut, notes, date_expiration) 
        VALUES (?, ?, ?, NOW(), ?, ?, 'En attente', ?, ?)`,
-      [id_client, commercialId, numero_commande, date_debut, date_fin, notes || null, expirationMySQL]
+      [
+        id_client,
+        commercialId,
+        numero_commande,
+        date_debut,
+        date_fin,
+        notes || null,
+        expirationMySQL,
+      ]
     );
-    const id_reservation = (reservationResult as any).insertId;
+    const id_reservation = reservationResult.insertId;
 
     // 5. Créer la ligne
-    const [ligneResult] = await connection.query(
+    const [ligneResult] = await connection.query<mysql.ResultSetHeader>(
       `INSERT INTO ligne_reservation 
        (id_reservation, id_face, date_debut, date_fin, prix_vente_net, statut_diffusion) 
        VALUES (?, ?, ?, ?, ?, 'En attente')`,
       [id_reservation, id_face, date_debut, date_fin, prix_vente_net || 0]
     );
-    const id_ligne = (ligneResult as any).insertId;
+    const id_ligne = ligneResult.insertId;
 
-    // 6. Récupérer infos panneau + client + commercial POUR LA NOTIF
-    const [infosResult] = await connection.query(
+    // 6. ✅ CORRIGÉ : utiliser "user" (singulier) au lieu de "users"
+    const [infosResult] = await connection.query<RowDataPacket[]>(
       `SELECT 
          p.nom AS panneauNom,
          f.orientation AS faceOrientation,
@@ -143,11 +171,11 @@ export async function POST(request: NextRequest) {
        FROM face f
        JOIN panneau p ON f.id_panneau = p.id_panneau
        JOIN client cl ON cl.id_client = ?
-       LEFT JOIN users u ON u.id_user = ?
+       LEFT JOIN user u ON u.id_user = ?
        WHERE f.id_face = ?`,
       [id_client, commercialId, id_face]
     );
-    const infos = (infosResult as any[])[0] || {};
+    const infos = infosResult[0] || {};
 
     await connection.commit();
     connection.release();
@@ -156,7 +184,6 @@ export async function POST(request: NextRequest) {
     // ============================================
     // ✅ APPEL DU TRIGGER APRÈS COMMIT
     // ============================================
-    // Nombre de mois (arrondi supérieur)
     const diffMs = fin.getTime() - debut.getTime();
     const nombreMois = Math.max(
       1,
@@ -176,7 +203,6 @@ export async function POST(request: NextRequest) {
       });
       console.log('✅ Notification envoyée pour réservation', id_reservation);
     } catch (notifErr) {
-      // ⚠️ On ne bloque PAS la réservation si la notif échoue
       console.error('❌ Erreur notification (réservation OK):', notifErr);
     }
 
@@ -190,7 +216,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     if (connection) {
-      await connection.rollback();
+      try {
+        await connection.rollback();
+      } catch {}
       connection.release();
     }
     console.error('❌ Erreur création réservation:', error);
@@ -205,6 +233,8 @@ export async function POST(request: NextRequest) {
 // GET : Récupérer les réservations
 // ============================================
 export async function GET(request: NextRequest) {
+  let connection: mysql.PoolConnection | null = null;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const id_face = searchParams.get('id_face');
@@ -219,6 +249,9 @@ export async function GET(request: NextRequest) {
         r.notes,
         r.date_creation as dateCreation,
         r.date_expiration,
+        r.photoCampagneUrl,
+        r.validation_chef_commercial,
+        r.validation_superviseur,
         cl.raison_sociale as client_nom,
         cl.id_client,
         cl.telephone as client_telephone,
@@ -238,7 +271,7 @@ export async function GET(request: NextRequest) {
       JOIN face f ON lr.id_face = f.id_face
       JOIN panneau p ON f.id_panneau = p.id_panneau
       JOIN client cl ON r.id_client = cl.id_client
-      LEFT JOIN users u ON r.id_commercial = u.id_user
+      LEFT JOIN user u ON r.id_commercial = u.id_user
       WHERE 1=1
     `;
 
@@ -249,9 +282,8 @@ export async function GET(request: NextRequest) {
     }
     query += ` ORDER BY r.date_creation DESC`;
 
-    const connection = await pool.getConnection();
-    const [rows] = await connection.query(query, params);
-    connection.release();
+    connection = await pool.getConnection();
+    const [rows] = await connection.query<RowDataPacket[]>(query, params);
 
     const options: Intl.DateTimeFormatOptions = {
       weekday: 'long',
@@ -262,10 +294,13 @@ export async function GET(request: NextRequest) {
       minute: '2-digit',
     };
 
-    const processedData = (rows as any[]).map((row) => {
+    const processedData = rows.map((row) => {
       const now = new Date();
-      const expirationDate = row.date_expiration ? new Date(row.date_expiration) : null;
-      const isExpired = expirationDate && now > expirationDate && row.statut === 'En attente';
+      const expirationDate = row.date_expiration
+        ? new Date(row.date_expiration)
+        : null;
+      const isExpired =
+        expirationDate && now > expirationDate && row.statut === 'En attente';
 
       return {
         ...row,
@@ -291,5 +326,7 @@ export async function GET(request: NextRequest) {
       { error: 'Erreur lors de la récupération des réservations' },
       { status: 500 }
     );
+  } finally {
+    if (connection) connection.release();
   }
 }

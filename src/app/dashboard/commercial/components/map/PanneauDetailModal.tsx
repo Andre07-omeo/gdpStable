@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/map/PanneauDetailModal.tsx
-
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/map/PanneauDetailModal.tsximport React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X, Building2, MapPin, Calendar, ShoppingCart,
   Loader2, AlertTriangle,

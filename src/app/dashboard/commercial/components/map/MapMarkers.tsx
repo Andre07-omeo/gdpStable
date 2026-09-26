@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/map/MapMarkers.tsx
-
 'use client';
 
-import { AdvancedMarker, InfoWindow, Pin } from '@vis.gl/react-google-maps';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/map/MapMarkers.tsximport { AdvancedMarker, InfoWindow, Pin } from '@vis.gl/react-google-maps';
 import { useState } from 'react';
 import { PanneauPopup } from './PanneauPopup';
 import { PanneauMap } from './types';

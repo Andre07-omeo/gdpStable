@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/map/MapControls.tsx
-
 'use client';
 
-import { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/map/MapControls.tsximport { useState, useEffect } from 'react';
 import { RefreshCw, ChevronDown } from 'lucide-react';
 
 interface MapControlsProps {

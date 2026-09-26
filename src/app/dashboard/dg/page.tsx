@@ -1,8 +1,8 @@
-// src/app/dashboard/dg/page.tsx
-
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/dg/page.tsximport React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import dynamicImport from 'next/dynamic';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';

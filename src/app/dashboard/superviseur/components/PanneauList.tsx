@@ -1,8 +1,8 @@
-// src/app/dashboard/superviseur/components/PanneauList.tsx
-
 'use client';
 
-import { useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/superviseur/components/PanneauList.tsximport { useState } from 'react';
 import { 
   Search, AlertTriangle, CheckCircle, 
   ChevronDown, ChevronUp, MapPin, Building, 

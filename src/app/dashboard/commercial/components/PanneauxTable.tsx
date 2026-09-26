@@ -1,6 +1,8 @@
-﻿// src/app/dashboard/commercial/components/PanneauxTable.tsx
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/PanneauxTable.tsx
 import React, { useState, useEffect } from 'react';
 import {
   Eye, Calendar, Building2, User, AlertTriangle, AlertCircle, XCircle, Timer,

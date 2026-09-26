@@ -1,6 +1,6 @@
-// src/app/dashboard/comptable/stats/page.tsx
 'use client';
-export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/comptable/stats/page.tsxexport const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
 import { Loader2, TrendingUp, TrendingDown, DollarSign, CreditCard, FileText, Calendar, ArrowUp, ArrowDown } from 'lucide-react';

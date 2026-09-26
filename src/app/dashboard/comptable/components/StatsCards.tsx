@@ -1,7 +1,6 @@
-// src/app/dashboard/comptable/components/StatsCards.tsx
 'use client';
 
-import React from 'react';
+// src/app/dashboard/comptable/components/StatsCards.tsximport React from 'react';
 import { FileText, Clock, CheckCircle, XCircle, CreditCard, DollarSign } from 'lucide-react';
 
 interface StatsCardsProps {

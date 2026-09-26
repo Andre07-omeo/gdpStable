@@ -1,7 +1,8 @@
-// src/app/dashboard/commercial/components/PanneauReservationsModal.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/PanneauReservationsModal.tsximport { useState, useEffect } from 'react';
 import { 
   X, Calendar, User, Building2, Loader2, 
   AlertCircle, Check, Clock, AlertTriangle, MapPin

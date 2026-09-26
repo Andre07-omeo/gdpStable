@@ -1,6 +1,6 @@
-﻿// src/components/shared/StatCard.tsx
 'use client';
 
+// src/components/shared/StatCard.tsx
 import React from 'react';
 
 type ColorType =

@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/MapComponent.tsx
-
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/MapComponent.tsximport { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 // ✅ Map renommé en GoogleMap pour éviter le conflit avec `new Map()` JavaScript
 import { Map as GoogleMap, useMap } from '@vis.gl/react-google-maps';
 import { MapMarkers } from './map/MapMarkers';

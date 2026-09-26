@@ -1,7 +1,6 @@
-// src/app/dashboard/commercial/components/profile/ProfileView.tsx
 'use client';
 
-import {
+// src/app/dashboard/commercial/components/profile/ProfileView.tsximport {
   User, Mail, Phone, MapPin, Briefcase, Building2,
   Calendar, ShieldCheck, UserCircle2,
 } from 'lucide-react';

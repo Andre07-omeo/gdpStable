@@ -1,4 +1,6 @@
-﻿'use client';
+'use client';
+
+export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, MapPin, Users, Calendar, Layers, TrendingUp, DollarSign, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
