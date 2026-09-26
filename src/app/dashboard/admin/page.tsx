@@ -144,7 +144,7 @@ export default function AdminDashboard() {
   if (isLoading) {
     return (
       <LayoutWrapper>
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto" />
         </div>
       </LayoutWrapper>
@@ -183,26 +183,33 @@ export default function AdminDashboard() {
 
   return (
     <LayoutWrapper>
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-gradient-to-r from-blue-800 to-blue-900 shadow-2xl sticky top-0 z-50 border-b border-white/10">
-          <div className="px-4 py-3 flex justify-between items-center">
-            <div className="flex items-center gap-3">
+      {/* ✅ RACINE : flex-col + w-full pour pousser le footer et occuper tout l'espace */}
+      <div className="min-h-screen flex flex-col bg-gray-50 w-full">
+        
+        {/* ============================================
+            HEADER — pleine largeur, sticky
+            ============================================ */}
+        <header className="bg-gradient-to-r from-blue-800 to-blue-900 shadow-2xl sticky top-0 z-50 border-b border-white/10 w-full">
+          <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 flex justify-between items-center">
+            <div className="flex items-center gap-3 min-w-0">
               <button 
-                className="lg:hidden text-white hover:bg-white/10 p-2 rounded-lg" 
+                className="lg:hidden text-white hover:bg-white/10 p-2 rounded-lg flex-shrink-0" 
                 onClick={() => setSidebarOpen(!sidebarOpen)}
               >
                 <Menu size={20} />
               </button>
-              <div>
-                <h1 className="text-lg font-bold text-white">GDP <span className="text-amber-400">Admin</span></h1>
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-lg font-bold text-white truncate">
+                  GDP <span className="text-amber-400">Admin</span>
+                </h1>
                 <p className="text-[10px] text-blue-200">Administration</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-white/80 hidden sm:inline">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              <span className="text-sm text-white/80 hidden sm:inline truncate max-w-[150px]">
                 {user?.nom || ''} {user?.prenom || ''}
               </span>
-              <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-1 rounded-full hidden sm:inline">
+              <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-1 rounded-full hidden sm:inline whitespace-nowrap">
                 {user?.profil || 'Admin'}
               </span>
               <button 
@@ -215,9 +222,12 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        <div className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4">
-            <div className="flex gap-1 overflow-x-auto py-2">
+        {/* ============================================
+            BARRE DE NAVIGATION — pleine largeur, scroll mobile
+            ============================================ */}
+        <div className="bg-white border-b border-gray-200 shadow-sm w-full">
+          <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12">
+            <div className="flex gap-1 sm:gap-2 overflow-x-auto py-2 -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
               {menuItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeModule === item.id;
@@ -225,14 +235,14 @@ export default function AdminDashboard() {
                   <button
                     key={item.id}
                     onClick={() => setActiveModule(item.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition whitespace-nowrap ${
+                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition whitespace-nowrap flex-shrink-0 ${
                       isActive
                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
                         : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
                     }`}
                   >
-                    <Icon size={16} />
-                    {item.label}
+                    <Icon size={16} className="flex-shrink-0" />
+                    <span>{item.label}</span>
                   </button>
                 );
               })}
@@ -240,9 +250,13 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <main className="max-w-7xl mx-auto px-4 py-6">
+        {/* ============================================
+            ✅ CONTENU PRINCIPAL — 100% largeur
+            ============================================ */}
+        <main className="flex-1 w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 sm:py-4 md:py-6 pb-20 sm:pb-6">
           {renderContent()}
         </main>
+
       </div>
     </LayoutWrapper>
   );
