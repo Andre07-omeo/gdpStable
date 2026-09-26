@@ -1,6 +1,8 @@
-// src/context/AuthContext.tsx
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// src/context/AuthContext.tsx
 import {
   createContext,
   useContext,

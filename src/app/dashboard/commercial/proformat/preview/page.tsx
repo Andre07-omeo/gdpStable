@@ -1,6 +1,9 @@
+'use client';
+
+export const dynamic = 'force-dynamic';
+
 // src/app/dashboard/commercial/proformat/preview/page.tsx
 
-'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';

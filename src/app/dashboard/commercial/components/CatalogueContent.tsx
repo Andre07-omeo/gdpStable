@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/CatalogueContent.tsx
-
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/CatalogueContent.tsximport React, { useState, useEffect, useRef } from 'react';
 import {
   Search, Grid, List, RefreshCw, Eye,
   Download, Camera, Video, Image, Calendar, Loader2,

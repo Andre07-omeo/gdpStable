@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/PendingReservationsTab.tsx
-
 'use client';
 
-import { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/PendingReservationsTab.tsximport { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Clock, Calendar, Building2, User,

@@ -1,7 +1,8 @@
-﻿// src/app/dashboard/admin/users/components/UserForm.tsx
-
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/admin/users/components/UserForm.tsx
 import { useState, useEffect } from 'react';
 import { X, Save, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';

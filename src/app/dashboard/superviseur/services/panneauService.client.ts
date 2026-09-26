@@ -1,8 +1,6 @@
-// src/app/dashboard/superviseur/services/panneauService.client.ts
-
 'use client';
 
-import { Panneau, ReservationWithDetails } from '../types/panneau.types';
+// src/app/dashboard/superviseur/services/panneauService.client.tsimport { Panneau, ReservationWithDetails } from '../types/panneau.types';
 
 // ✅ Service utilisant les API routes (qui utilisent les requêtes SQL brutes)
 export class PanneauServiceClient {

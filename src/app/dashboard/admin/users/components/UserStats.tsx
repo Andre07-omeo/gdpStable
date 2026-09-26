@@ -1,10 +1,8 @@
-// ============================================
-// COMPOSANT - STATISTIQUES UTILISATEURS
-// ============================================
-
 'use client';
 
-import { Users, UserCheck, UserX, UserPlus } from 'lucide-react';
+// ============================================
+// COMPOSANT - STATISTIQUES UTILISATEURS
+// ============================================import { Users, UserCheck, UserX, UserPlus } from 'lucide-react';
 import { UserStats } from '../types/user.types';
 
 interface UserStatsProps {

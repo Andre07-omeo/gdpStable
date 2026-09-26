@@ -1,8 +1,8 @@
-// src/app/dashboard/superviseur/components/MapComponent.tsx
-
 'use client';
 
-import { useEffect, useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/superviseur/components/MapComponent.tsximport { useEffect, useState } from 'react';
 import {
   Map as GoogleMap,
   AdvancedMarker,

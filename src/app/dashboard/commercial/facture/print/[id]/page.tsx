@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/facture/print/[id]/page.tsx
-
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/facture/print/[id]/page.tsximport React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Printer, ArrowLeft, CreditCard, Loader2, AlertCircle } from 'lucide-react';
 

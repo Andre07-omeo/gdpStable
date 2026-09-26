@@ -1,3 +1,7 @@
+'use client';
+
+export const dynamic = 'force-dynamic';
+
 // src/app/dashboard/superviseur/hooks/useSupervisorData.ts
 
 import { useState, useEffect, useCallback } from 'react';

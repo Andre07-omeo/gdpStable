@@ -1,7 +1,8 @@
-// src/app/dashboard/comptable/components/ComptableHeader.tsx
 'use client';
 
-import React, { useEffect, useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/comptable/components/ComptableHeader.tsximport React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Menu, X, Bell } from 'lucide-react';
 

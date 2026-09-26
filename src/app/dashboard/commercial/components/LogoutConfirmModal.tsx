@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/LogoutConfirmModal.tsx
-
 'use client';
 
-import React from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/LogoutConfirmModal.tsximport React from 'react';
 import { LogOut, X, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 

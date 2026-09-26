@@ -1,7 +1,8 @@
-﻿// src/app/dashboard/admin/components/AdminPanneauxList.tsx
-
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/admin/components/AdminPanneauxList.tsx
 import React, { useState } from 'react';
 import { MapPin, Edit2, Trash2, Search, Plus } from 'lucide-react';
 

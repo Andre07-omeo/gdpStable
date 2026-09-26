@@ -1,4 +1,8 @@
-﻿// src/app/dashboard/commercial/hooks/useCommercialData.ts
+'use client';
+
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/hooks/useCommercialData.ts
 import { useState, useEffect, useCallback } from 'react';
 import { CommercialPanneau, CommercialPanneauxResponse } from '../types/commercial.types';
 

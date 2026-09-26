@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/ModificationModal.tsx
-
 'use client';
 
-import { useEffect, useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/ModificationModal.tsximport { useEffect, useState } from 'react';
 import { X, Loader2, Save, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 

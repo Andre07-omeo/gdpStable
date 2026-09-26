@@ -1,6 +1,8 @@
-// src/app/dashboard/commercial/components/CartPanel.tsx
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/CartPanel.tsx
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 

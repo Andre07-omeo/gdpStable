@@ -1,10 +1,10 @@
-// ============================================
-// COMPOSANT - LISTE DES UTILISATEURS
-// ============================================
-
 'use client';
 
-import { Edit2, Trash2, UserCheck, UserX, Mail, Phone, MapPin, Building2, Briefcase } from 'lucide-react';
+export const dynamic = 'force-dynamic';
+
+// ============================================
+// COMPOSANT - LISTE DES UTILISATEURS
+// ============================================import { Edit2, Trash2, UserCheck, UserX, Mail, Phone, MapPin, Building2, Briefcase } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { User } from '../types/user.types';
 

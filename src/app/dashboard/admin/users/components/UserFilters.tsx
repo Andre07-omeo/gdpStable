@@ -1,10 +1,10 @@
-// ============================================
-// COMPOSANT - FILTRES UTILISATEURS
-// ============================================
-
 'use client';
 
-import { Search, X } from 'lucide-react';
+export const dynamic = 'force-dynamic';
+
+// ============================================
+// COMPOSANT - FILTRES UTILISATEURS
+// ============================================import { Search, X } from 'lucide-react';
 import { UserFilters } from '../types/user.types';
 
 interface UserFiltersProps {

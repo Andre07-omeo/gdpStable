@@ -1,6 +1,6 @@
-// src/app/dashboard/comptable/paiements/page.tsx
 'use client';
-export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/comptable/paiements/page.tsxexport const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
 import { Loader2, CreditCard, Calendar, User, Building2, CheckCircle, XCircle, Search, Filter, DollarSign } from 'lucide-react';

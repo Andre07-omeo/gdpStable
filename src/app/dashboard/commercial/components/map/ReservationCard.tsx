@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/map/ReservationCard.tsx
-
 'use client';
 
-import React from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/map/ReservationCard.tsximport React from 'react';
 import {
   Calendar,
   User,

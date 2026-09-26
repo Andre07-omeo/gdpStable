@@ -1,7 +1,8 @@
-// src/app/dashboard/commercial/components/profile/ProfileEditForm.tsx
 'use client';
 
-import { useState } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/profile/ProfileEditForm.tsximport { useState } from 'react';
 import { Save, X, Lock } from 'lucide-react';
 import type { UserProfile } from './ProfileModal';
 

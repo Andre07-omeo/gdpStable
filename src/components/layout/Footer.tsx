@@ -1,8 +1,6 @@
-// src/components/layout/Footer.tsx
-
 'use client';
 
-export default function Footer() {
+// src/components/layout/Footer.tsxexport default function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (

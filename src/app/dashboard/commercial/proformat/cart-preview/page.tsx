@@ -1,6 +1,6 @@
-// src/app/dashboard/commercial/proformat/cart-preview/page.tsx
 'use client';
-export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/proformat/cart-preview/page.tsxexport const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';

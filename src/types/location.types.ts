@@ -1,4 +1,8 @@
-﻿export interface Pays {
+'use client';
+
+export const dynamic = 'force-dynamic';
+
+export interface Pays {
   id_pays: number;
   code: string;
   nom: string;

@@ -1,8 +1,8 @@
-// src/app/dashboard/commercial/components/map/ReservationList.tsx
-
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/components/map/ReservationList.tsximport React, { useState, useCallback, useMemo } from 'react';
 import { Building2 } from 'lucide-react';
 import { FaceMap } from './types';
 import { ReservationCard } from './ReservationCard';

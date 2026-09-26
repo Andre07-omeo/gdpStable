@@ -1,7 +1,8 @@
-// src/context/CartContext.tsx
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/context/CartContext.tsximport React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type Currency = 'CDF' | 'USD';
 

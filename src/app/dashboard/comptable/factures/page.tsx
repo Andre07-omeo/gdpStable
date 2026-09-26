@@ -1,6 +1,6 @@
-// src/app/dashboard/comptable/factures/page.tsx
 'use client';
-export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/comptable/factures/page.tsxexport const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';

@@ -1,6 +1,8 @@
-﻿// src/app/dashboard/commercial/hooks/usePanneauxFilters.ts
 'use client';
 
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/commercial/hooks/usePanneauxFilters.ts
 import { useMemo, useState } from 'react';
 import { CommercialPanneau, CommercialFace } from '../types/commercial.types';
 

@@ -1,7 +1,8 @@
-// src/app/dashboard/comptable/components/FacturePagination.tsx
 'use client';
 
-import React from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/comptable/components/FacturePagination.tsximport React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface FacturePaginationProps {

@@ -1,8 +1,8 @@
-// src/app/dashboard/superviseur/components/ReservationEnCoursModal.tsx
-
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/superviseur/components/ReservationEnCoursModal.tsximport { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Calendar, Users, User, MapPin, Camera, Upload, 

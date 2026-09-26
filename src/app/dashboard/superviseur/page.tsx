@@ -1,7 +1,6 @@
-// src/app/dashboard/superviseur/page.tsx
-
 'use client';
-export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/superviseur/page.tsxexport const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -11,16 +10,20 @@ import { AnimatePresence } from 'framer-motion';
 import {
   MapPin, LayoutDashboard, Calendar, Users, BarChart3,
   TrendingUp, Activity, Eye, ChevronRight, AlertCircle,
-  CheckCircle, Clock, Building, List, Grid, RefreshCw, Plus
+  CheckCircle, Clock, Building, List, Grid, RefreshCw, Plus,
+  ImageIcon
 } from 'lucide-react';
 
-import SupervisorHeader from './components/SupervisorHeader';
+import SupervisorHeader, { SupervisorView } from './components/SupervisorHeader';
 import { useSupervisorData } from './hooks/useSupervisorData';
 import GPSIndicator from './components/GPSIndicator';
 import PanneauModal from './components/PanneauModal';
 import ReservationDetailModal from './components/ReservationDetailModal';
 import PanneauList from './components/PanneauList';
 import PanneauForm from './components/PanneauForm';
+import LocalisationManager from './components/LocalisationManager';
+// ✨ AJOUT : import du composant AffichagesManager
+import AffichagesManager from './components/AffichagesManager';
 
 const MapComponent = nextDynamic(() => import('./components/MapComponent'), {
   ssr: false,
@@ -42,10 +45,10 @@ export default function SupervisorPage() {
 
   const [isPanneauModalOpen, setIsPanneauModalOpen] = useState(false);
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'dashboard' | 'map' | 'panneaux'>('dashboard');
+  // ✨ AJOUT : 'affichages' dans le type (déjà déclaré dans SupervisorView)
+  const [activeView, setActiveView] = useState<SupervisorView>('dashboard');
   const [isFormOpen, setIsFormOpen] = useState(false);
 
-  // ✅ Garde-fou anti-boucle : on ne redirige qu'UNE seule fois
   const hasRedirected = useRef(false);
 
   const {
@@ -63,13 +66,12 @@ export default function SupervisorPage() {
     isRefreshing,
   } = useSupervisorData();
 
-  // ✅ Redirection déléguée à AuthContext — on suit uniquement son état
   useEffect(() => {
-    if (authLoading) return;              // AuthContext charge encore → on attend
-    if (hasRedirected.current) return;    // déjà redirigé → on ne refait pas
-    if (!user) {                          // AuthContext a fini ET pas de user
+    if (authLoading) return;
+    if (hasRedirected.current) return;
+    if (!user) {
       hasRedirected.current = true;
-      console.log('🔒 Redirection vers /login (authLoading=false, user=null)');
+      console.log('🔒 Redirection vers /login');
       router.replace('/login');
     }
   }, [user, authLoading, router]);
@@ -77,16 +79,12 @@ export default function SupervisorPage() {
   // ✅ Restauration de la vue active
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedView = localStorage.getItem('superviseur_active_view') as
-        | 'dashboard'
-        | 'map'
-        | 'panneaux'
-        | null;
+      const savedView = localStorage.getItem('superviseur_active_view') as SupervisorView | null;
       if (savedView) setActiveView(savedView);
     }
   }, []);
 
-  const handleViewChange = (view: 'dashboard' | 'map' | 'panneaux') => {
+  const handleViewChange = (view: SupervisorView) => {
     setActiveView(view);
     if (typeof window !== 'undefined') {
       localStorage.setItem('superviseur_active_view', view);
@@ -127,11 +125,7 @@ export default function SupervisorPage() {
     }
   };
 
-  const handleFaceProblem = async (
-    panneauId: number,
-    faceId: number,
-    raison: string
-  ) => {
+  const handleFaceProblem = async (panneauId: number, faceId: number, raison: string) => {
     try {
       const res = await fetch('/api/superviseurs/panneau-probleme', {
         method: 'POST',
@@ -171,7 +165,6 @@ export default function SupervisorPage() {
     }
   };
 
-  // ✅ 1. AuthContext charge encore
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950">
@@ -185,7 +178,6 @@ export default function SupervisorPage() {
     );
   }
 
-  // ✅ 2. AuthContext a fini ET pas de user → redirection en cours
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950">
@@ -199,7 +191,6 @@ export default function SupervisorPage() {
     );
   }
 
-  // ✅ 3. User présent → on continue
   if (loading && !isRefreshing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950">
@@ -222,7 +213,7 @@ export default function SupervisorPage() {
           </div>
           <h3 className="text-xl font-bold text-gray-800 mb-2">Erreur de chargement</h3>
           <p className="text-gray-600 text-sm mb-6">
-            {error || 'Impossible de charger les panneaux. Veuillez réessayer.'}
+            {error || 'Impossible de charger les panneaux.'}
           </p>
           <div className="space-y-3">
             <button
@@ -255,17 +246,14 @@ export default function SupervisorPage() {
   const panneauxData = Array.isArray(panneaux) ? panneaux : [];
 
   const totalPanneaux = panneauxData.length || 0;
-  const totalFaces =
-    panneauxData.reduce((acc, p) => acc + (p.faces?.length || 0), 0) || 0;
-  const panneauxActifs =
-    panneauxData.filter((p) => p.etat === 'Actif').length || 0;
+  const totalFaces = panneauxData.reduce((acc, p) => acc + (p.faces?.length || 0), 0) || 0;
+  const panneauxActifs = panneauxData.filter((p) => p.etat === 'Actif').length || 0;
   const tauxOccupation =
     totalPanneaux > 0 && totalPanneaux * 4 > 0
       ? Math.round((totalFaces / (totalPanneaux * 4)) * 100)
       : 0;
   const panneauxAvecProblemes =
-    panneauxData.filter((p) => p.etat === 'En panne' || p.etat === 'Inactif')
-      .length || 0;
+    panneauxData.filter((p) => p.etat === 'En panne' || p.etat === 'Inactif').length || 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-slate-100">
@@ -276,164 +264,165 @@ export default function SupervisorPage() {
         panneaux={panneauxData}
       />
 
-      <div className="p-4 sm:p-6">
+      <div className="p-3 sm:p-4 md:p-6">
         {activeView === 'dashboard' && (
           <div className="space-y-6 animate-fadeIn">
             {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-6 hover:shadow-xl transition transform hover:-translate-y-0.5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-4 sm:p-6 hover:shadow-xl transition">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 font-bold uppercase">
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 font-bold uppercase truncate">
                       Panneaux
                     </p>
-                    <p className="text-3xl font-bold text-blue-800">
-                      {totalPanneaux}
-                    </p>
-                    <p className="text-xs text-emerald-600">
-                      {panneauxActifs} actifs
-                    </p>
+                    <p className="text-2xl sm:text-3xl font-bold text-blue-800">{totalPanneaux}</p>
+                    <p className="text-xs text-emerald-600 truncate">{panneauxActifs} actifs</p>
                   </div>
-                  <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center">
-                    <MapPin size={24} className="text-blue-600" />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-blue-100 flex items-center justify-center shrink-0">
+                    <MapPin size={20} className="text-blue-600" />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-6 hover:shadow-xl transition transform hover:-translate-y-0.5">
+              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-4 sm:p-6 hover:shadow-xl transition">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 font-bold uppercase">
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 font-bold uppercase truncate">
                       Faces
                     </p>
-                    <p className="text-3xl font-bold text-blue-800">
-                      {totalFaces}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {totalPanneaux} panneau(x)
-                    </p>
+                    <p className="text-2xl sm:text-3xl font-bold text-blue-800">{totalFaces}</p>
+                    <p className="text-xs text-gray-400 truncate">{totalPanneaux} panneau(x)</p>
                   </div>
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center">
-                    <LayoutDashboard size={24} className="text-emerald-600" />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-emerald-100 flex items-center justify-center shrink-0">
+                    <LayoutDashboard size={20} className="text-emerald-600" />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-6 hover:shadow-xl transition transform hover:-translate-y-0.5">
+              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-4 sm:p-6 hover:shadow-xl transition">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 font-bold uppercase">
-                      Taux occupation
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 font-bold uppercase truncate">
+                      Occupation
                     </p>
-                    <p className="text-3xl font-bold text-purple-600">
-                      {tauxOccupation}%
-                    </p>
-                    <p className="text-xs text-gray-400">Global</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-purple-600">{tauxOccupation}%</p>
+                    <p className="text-xs text-gray-400 truncate">Global</p>
                   </div>
-                  <div className="w-12 h-12 rounded-2xl bg-purple-100 flex items-center justify-center">
-                    <TrendingUp size={24} className="text-purple-600" />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-purple-100 flex items-center justify-center shrink-0">
+                    <TrendingUp size={20} className="text-purple-600" />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-6 hover:shadow-xl transition transform hover:-translate-y-0.5">
+              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-4 sm:p-6 hover:shadow-xl transition">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 font-bold uppercase">
+                  <div className="min-w-0">
+                    <p className="text-xs sm:text-sm text-gray-500 font-bold uppercase truncate">
                       Problèmes
                     </p>
-                    <p className="text-3xl font-bold text-red-600">
-                      {panneauxAvecProblemes}
-                    </p>
-                    <p className="text-xs text-red-500">À résoudre</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-red-600">{panneauxAvecProblemes}</p>
+                    <p className="text-xs text-red-500 truncate">À résoudre</p>
                   </div>
-                  <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center">
-                    <AlertCircle size={24} className="text-red-600" />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
+                    <AlertCircle size={20} className="text-red-600" />
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Actions rapides */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
               <div
                 onClick={() => handleViewChange('panneaux')}
-                className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl shadow-lg p-6 text-white hover:shadow-xl transition cursor-pointer group"
+                className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl shadow-lg p-4 sm:p-6 text-white hover:shadow-xl transition cursor-pointer group"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition">
-                    <Building size={28} className="text-amber-400" />
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                    <Building size={22} className="text-amber-400" />
                   </div>
-                  <div>
-                    <p className="font-bold text-lg">Gestion panneaux</p>
-                    <p className="text-sm text-blue-200">Voir et déclarer</p>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm sm:text-lg truncate">Panneaux</p>
+                    <p className="text-xs sm:text-sm text-blue-200 truncate">Voir et déclarer</p>
                   </div>
-                  <ChevronRight
-                    size={20}
-                    className="ml-auto opacity-0 group-hover:opacity-100 transition"
-                  />
                 </div>
               </div>
 
-              <div className="bg-gradient-to-r from-amber-600 to-amber-700 rounded-2xl shadow-lg p-6 text-white hover:shadow-xl transition cursor-pointer group">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition">
-                    <Eye size={28} className="text-white" />
+              <div
+                onClick={() => handleViewChange('localisation')}
+                className="bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-2xl shadow-lg p-4 sm:p-6 text-white hover:shadow-xl transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                    <List size={22} className="text-white" />
                   </div>
-                  <div>
-                    <p className="font-bold text-lg">Valider</p>
-                    <p className="text-sm text-amber-200">Vérifier et approuver</p>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm sm:text-lg truncate">Enregistrement</p>
+                    <p className="text-xs sm:text-sm text-emerald-200 truncate">Pays, provinces...</p>
                   </div>
-                  <ChevronRight
-                    size={20}
-                    className="ml-auto opacity-0 group-hover:opacity-100 transition"
-                  />
                 </div>
               </div>
 
-              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-2xl shadow-lg p-6 text-white hover:shadow-xl transition cursor-pointer group">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition">
-                    <Calendar size={28} className="text-white" />
+              {/* ✨ NOUVELLE CARTE : Affichages */}
+              <div
+                onClick={() => handleViewChange('affichages')}
+                className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-2xl shadow-lg p-4 sm:p-6 text-white hover:shadow-xl transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                    <ImageIcon size={22} className="text-white" />
                   </div>
-                  <div>
-                    <p className="font-bold text-lg">Réservations</p>
-                    <p className="text-sm text-emerald-200">Voir toutes</p>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm sm:text-lg truncate">Affichages</p>
+                    <p className="text-xs sm:text-sm text-purple-200 truncate">Campagnes validées</p>
                   </div>
-                  <ChevronRight
-                    size={20}
-                    className="ml-auto opacity-0 group-hover:opacity-100 transition"
-                  />
                 </div>
               </div>
 
-              <div className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-2xl shadow-lg p-6 text-white hover:shadow-xl transition cursor-pointer group">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition">
-                    <BarChart3 size={28} className="text-white" />
+              <div className="bg-gradient-to-r from-amber-600 to-amber-700 rounded-2xl shadow-lg p-4 sm:p-6 text-white hover:shadow-xl transition cursor-pointer group">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                    <Eye size={22} className="text-white" />
                   </div>
-                  <div>
-                    <p className="font-bold text-lg">Rapports</p>
-                    <p className="text-sm text-purple-200">Générer un rapport</p>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm sm:text-lg truncate">Valider</p>
+                    <p className="text-xs sm:text-sm text-amber-200 truncate">Vérifier</p>
                   </div>
-                  <ChevronRight
-                    size={20}
-                    className="ml-auto opacity-0 group-hover:opacity-100 transition"
-                  />
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-slate-600 to-slate-700 rounded-2xl shadow-lg p-4 sm:p-6 text-white hover:shadow-xl transition cursor-pointer group">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                    <BarChart3 size={22} className="text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm sm:text-lg truncate">Rapports</p>
+                    <p className="text-xs sm:text-sm text-slate-200 truncate">Générer</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         )}
 
+        {/* ✨ NOUVELLE SECTION : Enregistrement */}
+        {activeView === 'localisation' && (
+          <LocalisationManager />
+        )}
+
+        {/* ✨ NOUVELLE SECTION : Affichages */}
+        {activeView === 'affichages' && (
+          <AffichagesManager user={user} />
+        )}
+
         {activeView === 'panneaux' && (
           <div className="animate-fadeIn">
             <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
               <div>
-                <h2 className="text-xl font-bold text-gray-800">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-800">
                   📋 Gestion des panneaux
                 </h2>
-                <p className="text-sm text-gray-500">
+                <p className="text-xs sm:text-sm text-gray-500">
                   {totalPanneaux} panneau(x) • {panneauxAvecProblemes} problème(s)
                 </p>
               </div>
@@ -441,23 +430,18 @@ export default function SupervisorPage() {
                 <button
                   onClick={refreshPanneaux}
                   disabled={isRefreshing}
-                  className="px-4 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300 transition flex items-center gap-2 disabled:opacity-50"
+                  className="px-3 sm:px-4 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300 transition flex items-center gap-2 disabled:opacity-50 text-sm"
                 >
-                  <RefreshCw
-                    size={18}
-                    className={isRefreshing ? 'animate-spin' : ''}
-                  />
-                  {isRefreshing ? '...' : 'Actualiser'}
+                  <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                  <span className="hidden sm:inline">{isRefreshing ? '...' : 'Actualiser'}</span>
                 </button>
                 <button
                   onClick={() => setIsFormOpen(true)}
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-black rounded-xl font-bold hover:shadow-lg hover:shadow-amber-500/30 transition flex items-center gap-2 group"
+                  className="px-3 sm:px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-black rounded-xl font-bold hover:shadow-lg transition flex items-center gap-2 group text-sm"
                 >
-                  <Plus
-                    size={18}
-                    className="group-hover:rotate-90 transition-transform duration-300"
-                  />
-                  Nouveau panneau
+                  <Plus size={16} className="group-hover:rotate-90 transition-transform duration-300" />
+                  <span className="hidden sm:inline">Nouveau panneau</span>
+                  <span className="sm:hidden">Nouveau</span>
                 </button>
               </div>
             </div>
@@ -470,19 +454,17 @@ export default function SupervisorPage() {
                 onResoudreProblem={handleResoudreProblem}
               />
             ) : (
-              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-12 text-center">
-                <div className="w-24 h-24 mx-auto bg-blue-50 rounded-full flex items-center justify-center mb-4">
-                  <MapPin size={40} className="text-blue-300" />
+              <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-8 sm:p-12 text-center">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto bg-blue-50 rounded-full flex items-center justify-center mb-4">
+                  <MapPin size={36} className="text-blue-300" />
                 </div>
-                <p className="font-bold text-gray-700 text-lg">
-                  Aucun panneau disponible
-                </p>
-                <p className="text-sm text-gray-500 mb-6">
+                <p className="font-bold text-gray-700 text-base sm:text-lg">Aucun panneau disponible</p>
+                <p className="text-xs sm:text-sm text-gray-500 mb-6">
                   Créez votre premier panneau en cliquant sur "Nouveau panneau"
                 </p>
                 <button
                   onClick={() => setIsFormOpen(true)}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-2 mx-auto"
+                  className="px-5 sm:px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-2 mx-auto text-sm"
                 >
                   <Plus size={18} />
                   Ajouter un panneau
@@ -493,14 +475,10 @@ export default function SupervisorPage() {
         )}
 
         {activeView === 'map' && (
-          <div className="bg-white rounded-2xl shadow-2xl border border-blue-100 overflow-hidden h-[75vh] min-h-[500px] relative">
+          <div className="bg-white rounded-2xl shadow-2xl border border-blue-100 overflow-hidden h-[70vh] sm:h-[75vh] min-h-[400px] sm:min-h-[500px] relative">
             <div className="absolute top-4 left-4 z-[1000]">
-              <GPSIndicator
-                userLocation={userLocation}
-                locationError={locationError}
-              />
+              <GPSIndicator userLocation={userLocation} locationError={locationError} />
             </div>
-
             <div className="w-full h-full">
               <MapComponent
                 panneaux={panneauxData}
@@ -508,8 +486,6 @@ export default function SupervisorPage() {
                 onMarkerClick={handleMarkerClick}
               />
             </div>
-
-            {/* La légende est désormais gérée dans MapComponent.tsx (SupervisorLegend) */}
           </div>
         )}
       </div>

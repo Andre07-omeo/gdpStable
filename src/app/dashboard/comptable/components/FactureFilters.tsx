@@ -1,7 +1,8 @@
-// src/app/dashboard/comptable/components/FactureFilters.tsx
 'use client';
 
-import React from 'react';
+export const dynamic = 'force-dynamic';
+
+// src/app/dashboard/comptable/components/FactureFilters.tsximport React from 'react';
 import { Filter, Search, RefreshCw } from 'lucide-react';
 
 interface FactureFiltersProps {

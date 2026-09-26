@@ -1,6 +1,9 @@
 // src/app/api/commercials/faces/[id]/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
+import type { RowDataPacket } from 'mysql2';
+
 export const dynamic = 'force-dynamic';
 
 const pool = mysql.createPool({
@@ -10,21 +13,33 @@ const pool = mysql.createPool({
   database: process.env.MYSQL_DATABASE || 'gestion_panneaux_pro',
   waitForConnections: true,
   connectionLimit: 20,
-  queueLimit: 0
+  queueLimit: 0,
 });
 
+// ============================================
+// GET : Détails d'une face + réservations
+// ============================================
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  let connection: mysql.PoolConnection | null = null;
+
   try {
-    const faceId = parseInt(params.id);
+    // ✅ Next.js 15+ : await params
+    const { id } = await params;
+    const faceId = parseInt(id, 10);
+
+    if (!faceId || isNaN(faceId)) {
+      return NextResponse.json({ error: 'ID face invalide' }, { status: 400 });
+    }
+
     console.log(`🔍 Récupération des détails de la face ID: ${faceId}`);
 
-    const connection = await pool.getConnection();
+    connection = await pool.getConnection();
 
     // ✅ 1. Récupérer les informations de la face et du panneau
-    const [faceData] = await connection.query(
+    const [faceData] = await connection.query<RowDataPacket[]>(
       `SELECT 
         f.id_face,
         f.id_panneau,
@@ -57,19 +72,17 @@ export async function GET(
       [faceId]
     );
 
-    if ((faceData as any[]).length === 0) {
-      connection.release();
+    if (faceData.length === 0) {
       return NextResponse.json(
         { error: 'Face non trouvée' },
         { status: 404 }
       );
     }
 
-    const face = (faceData as any[])[0];
+    const face = faceData[0];
 
     // ✅ 2. Récupérer toutes les réservations de cette face
-    // ✅ Correction: Utiliser "user" au lieu de "users"
-    const [reservations] = await connection.query(
+    const [reservations] = await connection.query<RowDataPacket[]>(
       `SELECT 
         r.id_reservation,
         r.numero_commande,
@@ -81,6 +94,7 @@ export async function GET(
         r.date_expiration,
         r.est_verrouille,
         r.date_verrouillage,
+        r.photoCampagneUrl,
         cl.raison_sociale as client_nom,
         cl.id_client,
         cl.telephone as client_telephone,
@@ -89,8 +103,7 @@ export async function GET(
         u.email as commercial_email,
         lr.id_ligne,
         lr.prix_vente_net,
-        lr.statut_diffusion,
-        r.photoCampagneUrl
+        lr.statut_diffusion
       FROM reservation r
       JOIN ligne_reservation lr ON r.id_reservation = lr.id_reservation
       LEFT JOIN client cl ON r.id_client = cl.id_client
@@ -100,16 +113,15 @@ export async function GET(
       [faceId]
     );
 
-    connection.release();
-
-    // ✅ 3. Calculer la surface en m² pour la face
+    // ✅ 3. Calculer la surface en m²
     const hauteurCm = face.hauteur_cm || 0;
     const largeurCm = face.largeur_cm || 0;
-    const surfaceM2 = hauteurCm && largeurCm 
-      ? ((hauteurCm * largeurCm) / 10000).toFixed(2) 
-      : '0';
+    const surfaceM2 =
+      hauteurCm && largeurCm
+        ? ((hauteurCm * largeurCm) / 10000).toFixed(2)
+        : '0';
 
-    // ✅ 4. Construire la réponse
+    // ✅ 4. Réponse
     const response = {
       success: true,
       data: {
@@ -126,12 +138,11 @@ export async function GET(
             libelle: face.type_face_libelle || 'Standard',
             hauteur_cm: hauteurCm,
             largeur_cm: largeurCm,
-            est_scroller: face.est_scroller === 1
+            est_scroller: face.est_scroller === 1,
           },
-          dimension: hauteurCm && largeurCm 
-            ? `${hauteurCm}×${largeurCm} cm` 
-            : 'N/A',
-          surface_m2: surfaceM2
+          dimension:
+            hauteurCm && largeurCm ? `${hauteurCm}×${largeurCm} cm` : 'N/A',
+          surface_m2: surfaceM2,
         },
         panneau: {
           id_panneau: face.id_panneau,
@@ -144,22 +155,28 @@ export async function GET(
           etat: face.panneau_etat || 'Actif',
           commune: face.commune,
           province: face.province,
-          ville: face.ville
+          ville: face.ville,
         },
         reservations: reservations || [],
-        total_reservations: (reservations as any[]).length
-      }
+        total_reservations: reservations.length,
+      },
     };
 
-    console.log(`✅ Détails de la face ${faceId} récupérés avec ${response.data.total_reservations} réservation(s)`);
+    console.log(
+      `✅ Détails de la face ${faceId} récupérés avec ${response.data.total_reservations} réservation(s)`
+    );
 
     return NextResponse.json(response);
-
   } catch (error) {
     console.error('❌ Erreur récupération détails face:', error);
     return NextResponse.json(
-      { error: 'Erreur lors de la récupération des détails de la face' },
+      {
+        error: 'Erreur lors de la récupération des détails de la face',
+        details: error instanceof Error ? error.message : 'Erreur inconnue',
+      },
       { status: 500 }
     );
+  } finally {
+    if (connection) connection.release();
   }
 }
