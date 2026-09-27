@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/commercial/components/MapComponent.tsximport { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+// src/app/dashboard/commercial/components/MapComponent.tsx
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 // ✅ Map renommé en GoogleMap pour éviter le conflit avec `new Map()` JavaScript
 import { Map as GoogleMap, useMap } from '@vis.gl/react-google-maps';
 import { MapMarkers } from './map/MapMarkers';
@@ -227,12 +228,19 @@ export default function MapComponent({
     return filterPanneaux(panneaux, filters, reservationsMap);
   }, [panneaux, filters, reservationsMap]);
 
+  // ✅ CONTAINER RESPONSIVE UNIVERSELLEMENT
+  // h-[100dvh] = dynamic viewport height (s'adapte à la barre d'adresse mobile)
+  // h-full = prend toute la hauteur du parent si défini
+  // min-h-[500px] sur desktop pour éviter un écran trop petit
+  const containerClassName =
+    'relative w-full h-[100dvh] min-h-[500px] sm:h-full sm:min-h-[600px] lg:min-h-[700px] xl:min-h-[800px] 2xl:min-h-[900px]';
+
   if (!isMounted || loading) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950">
-        <div className="text-center">
-          <div className="w-20 h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-white/80 text-lg font-bold uppercase tracking-wider">
+      <div className={`${containerClassName} flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950`}>
+        <div className="text-center px-4">
+          <div className="w-14 h-14 sm:w-20 sm:h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white/80 text-sm sm:text-lg font-bold uppercase tracking-wider">
             {loading ? 'Chargement des panneaux...' : 'Chargement de la carte...'}
           </p>
         </div>
@@ -248,16 +256,16 @@ export default function MapComponent({
 
   if (panneauxAvecCoordonnees.length === 0) {
     return (
-      <div className="h-full w-full relative" style={{ minHeight: '400px' }}>
+      <div className={containerClassName}>
         <div className="h-full w-full flex items-center justify-center bg-gray-100 rounded-xl">
-          <div className="text-center p-8 max-w-lg">
-            <div className="text-6xl mb-4">🗺️</div>
-            <p className="text-gray-500 font-bold text-lg">
+          <div className="text-center p-4 sm:p-8 max-w-lg">
+            <div className="text-5xl sm:text-6xl mb-4">🗺️</div>
+            <p className="text-gray-500 font-bold text-base sm:text-lg">
               {panneaux.length === 0
                 ? 'Aucun panneau trouvé'
                 : 'Aucun panneau ne correspond aux filtres'}
             </p>
-            <p className="text-gray-400 text-sm mt-1">
+            <p className="text-gray-400 text-xs sm:text-sm mt-1">
               {panneaux.length === 0
                 ? 'La base de données ne contient aucun panneau'
                 : `${panneauxFiltres.length} / ${panneaux.length} panneau(x) affiché(s)`}
@@ -282,7 +290,7 @@ export default function MapComponent({
 
   return (
     <GoogleMapProvider>
-      <div className="h-full w-full relative" style={{ minHeight: '400px' }}>
+      <div className={containerClassName}>
         <GoogleMap
           mapId={GOOGLE_MAPS_MAP_ID}
           defaultCenter={center}
@@ -318,7 +326,7 @@ export default function MapComponent({
         {userLocation && (
           <button
             onClick={handleRecenterOnUser}
-            className="absolute bottom-24 right-4 z-[10] w-11 h-11 bg-white hover:bg-blue-50 text-blue-600 rounded-full shadow-lg border border-gray-200 flex items-center justify-center transition"
+            className="absolute bottom-20 right-3 sm:bottom-24 sm:right-4 z-[10] w-10 h-10 sm:w-11 sm:h-11 bg-white hover:bg-blue-50 text-blue-600 rounded-full shadow-lg border border-gray-200 flex items-center justify-center transition active:scale-95"
             title="Recentrer sur ma position"
           >
             <svg
@@ -331,6 +339,7 @@ export default function MapComponent({
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+              className="w-5 h-5 sm:w-5 sm:h-5"
             >
               <circle cx="12" cy="12" r="3" />
               <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />

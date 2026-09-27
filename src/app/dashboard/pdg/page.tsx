@@ -296,53 +296,6 @@ function CleanupBanner({ status, onRetry, onClose }: {
   );
 }
 
-// ============================================
-// Onglet PROFORMAT
-// ============================================
-function ProformatTab({ user, panneaux }: { user: any; panneaux: any[] }) {
-  return (
-    <div className="w-full space-y-6">
-      <div className="bg-white rounded-2xl shadow-lg border border-emerald-100 p-4 sm:p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <FileCheck className="w-6 h-6 text-emerald-600" />
-          <h2 className="text-lg sm:text-xl font-bold text-gray-800">Gestion des Proformats</h2>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">
-          Sélectionnez des réservations dans le panier pour générer un proformat imprimable.
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
-            <p className="text-xs font-bold text-emerald-600 uppercase">Proformats disponibles</p>
-            <p className="text-2xl font-bold text-emerald-700 mt-1">{panneaux.length}</p>
-            <p className="text-xs text-emerald-600">Panneaux actifs</p>
-          </div>
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
-            <p className="text-xs font-bold text-blue-600 uppercase">Statut</p>
-            <p className="text-lg font-bold text-blue-700 mt-1">Prêt</p>
-            <p className="text-xs text-blue-600">Accès complet</p>
-          </div>
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200">
-            <p className="text-xs font-bold text-amber-600 uppercase">Impressions</p>
-            <p className="text-lg font-bold text-amber-700 mt-1">Illimitées</p>
-            <p className="text-xs text-amber-600">Autorisation DG</p>
-          </div>
-        </div>
-
-        <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
-          <p className="text-sm font-bold text-emerald-800 mb-2">💡 Comment créer un proformat :</p>
-          <ol className="list-decimal list-inside text-sm text-emerald-700 space-y-1">
-            <li>Allez dans l'onglet <strong>Catalogue</strong> ou <strong>Tableau</strong></li>
-            <li>Cliquez sur une face libre → <strong>Ajouter au panier</strong></li>
-            <li>Ouvrez le <strong>Panier</strong> (icône en haut à droite)</li>
-            <li>Cliquez sur <strong>Générer Proformat</strong></li>
-            <li>Vous serez redirigé vers la page d'impression ✅</li>
-          </ol>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ============================================
 // DGDashboardInner
@@ -716,15 +669,7 @@ function DGDashboardInner() {
           </div>
         )}
 
-        {/* ============================================
-            ONGLET PROFORMAT — 100% largeur
-            ============================================ */}
-        {activeTab === 'proformat' && (
-          <div className="w-full">
-            <ProformatTab user={user} panneaux={transformedPanneaux} />
-          </div>
-        )}
-
+        
         {/* ============================================
             ONGLET NOTIFICATIONS — 100% largeur
             ============================================ */}
