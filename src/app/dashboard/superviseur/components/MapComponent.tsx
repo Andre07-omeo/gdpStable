@@ -49,6 +49,7 @@ function MapCenter({
   return null;
 }
 
+
 function SupervisorLegend() {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -62,33 +63,31 @@ function SupervisorLegend() {
   ];
 
   return (
-    <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-[10] w-[160px] sm:w-[200px] md:w-[220px] max-w-[calc(100vw-1rem)]">
+    <div className="absolute top-4 right-4 z-[10] max-w-[220px]">
       <div className="bg-black/70 backdrop-blur-md rounded-xl border border-white/15 shadow-2xl overflow-hidden">
         {/* Header cliquable */}
         <button
           onClick={() => setCollapsed((c) => !c)}
-          className="w-full flex items-center justify-between px-2.5 py-2 sm:px-3 sm:py-2.5 hover:bg-white/5 transition"
+          className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/5 transition"
         >
-          <span className="text-[10px] sm:text-[11px] font-bold text-white/90 uppercase tracking-wider">
+          <span className="text-[11px] font-bold text-white/90 uppercase tracking-wider">
             📊 Légende
           </span>
-          <span className="text-white/50 text-[10px] sm:text-xs">
+          <span className="text-white/50 text-xs">
             {collapsed ? '▼' : '▲'}
           </span>
         </button>
 
         {/* Contenu */}
         {!collapsed && (
-          <div className="px-2.5 pb-2.5 sm:px-3 sm:pb-3 space-y-1 sm:space-y-1.5">
+          <div className="px-3 pb-3 space-y-1.5">
             {items.map((item) => (
               <div
                 key={item.label}
-                className="flex items-center gap-2 text-[9px] sm:text-[10px] text-white/70"
+                className="flex items-center gap-2 text-[10px] text-white/70"
               >
-                <div
-                  className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${item.color} shadow shrink-0`}
-                />
-                <span className="truncate">{item.label}</span>
+                <div className={`w-3 h-3 rounded-full ${item.color} shadow`} />
+                <span>{item.label}</span>
               </div>
             ))}
           </div>
@@ -116,16 +115,12 @@ export default function MapComponent({
     }
   }, [userLocation]);
 
-  // ✅ CONTAINER RESPONSIVE UNIVERSELLEMENT (mobile → 4K)
-  const containerClassName =
-    'relative w-full h-[100dvh] min-h-[500px] sm:h-full sm:min-h-[600px] lg:min-h-[700px] xl:min-h-[800px] 2xl:min-h-[900px]';
-
   if (!isMounted) {
     return (
-      <div className={`${containerClassName} flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950`}>
-        <div className="text-center px-4">
-          <div className="w-14 h-14 sm:w-20 sm:h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-white/80 text-sm sm:text-lg font-bold uppercase tracking-wider">
+      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950">
+        <div className="text-center">
+          <div className="w-20 h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white/80 text-lg font-bold uppercase tracking-wider">
             Chargement de la carte...
           </p>
         </div>
@@ -137,7 +132,7 @@ export default function MapComponent({
 
   return (
     <GoogleMapProvider>
-      <div className={containerClassName}>
+      <div className="h-full w-full relative" style={{ minHeight: '400px' }}>
         <GoogleMap
           mapId={GOOGLE_MAPS_MAP_ID}
           defaultCenter={DEFAULT_CENTER}
@@ -152,7 +147,8 @@ export default function MapComponent({
           rotateControl={true}        // 🔄 Rotation
           tiltControl={true}          // 🏔️ 3D / Inclinaison
 
-          // 📍 Positions
+          // 📍 Positions (⚠️ NE PAS METTRE de contrôle en bas à droite
+          //    pour éviter le conflit avec l'ancienne légende)
           zoomControlOptions={{ position: 6 /* RIGHT_BOTTOM */ }}
           fullscreenControlOptions={{ position: 3 /* TOP_RIGHT */ }}
           mapTypeControlOptions={{ position: 8 /* LEFT_BOTTOM */ }}
@@ -221,16 +217,16 @@ export default function MapComponent({
               }}
               pixelOffset={[0, -40]}
             >
-              <div className="p-1 w-[200px] sm:w-[240px] md:max-w-[280px] font-sans">
-                <h3 className="font-bold text-blue-800 text-xs sm:text-sm">
+              <div className="p-1 max-w-[280px] font-sans">
+                <h3 className="font-bold text-blue-800 text-sm">
                   {openPanneau.idPan ||
                     openPanneau.nom ||
                     `Panneau #${openPanneau.id_panneau}`}
                 </h3>
-                <p className="text-[10px] sm:text-[11px] text-gray-600 mt-1 line-clamp-2">
+                <p className="text-[11px] text-gray-600 mt-1 line-clamp-2">
                   {openPanneau.adresse}
                 </p>
-                <div className="mt-2 flex flex-wrap items-center gap-1 text-[9px] sm:text-[10px]">
+                <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px]">
                   <span
                     className={`px-1.5 py-0.5 rounded-full font-medium ${
                       openPanneau.etat === 'Actif'
@@ -251,7 +247,7 @@ export default function MapComponent({
                     setOpenId(null);
                     onMarkerClick(openPanneau);
                   }}
-                  className="mt-2 w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-[11px] font-bold rounded-lg transition active:scale-95"
+                  className="mt-2 w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition"
                 >
                   Voir les réservations →
                 </button>
