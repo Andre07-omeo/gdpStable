@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/superviseur/components/SupervisorHeader.tsximport { useState } from 'react';
+// src/app/dashboard/superviseur/components/SupervisorHeader.tsx
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import {
@@ -84,7 +85,7 @@ export default function SupervisorHeader({
 
   return (
     <>
-      <header className="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 shadow-2xl sticky top-0 z-50 border-b border-blue-700/50">
+      <header className="bg-gradient-to-r  shrink-0 from-blue-900 via-blue-800 to-blue-900 shadow-2xl sticky top-0 z-50 border-b border-blue-700/50">
         <div className="px-3 sm:px-4 md:px-6 py-2.5 sm:py-3">
           <div className="flex items-center justify-between gap-2">
             {/* ───── Logo + Nom ───── */}

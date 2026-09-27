@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic';
 
 // src/app/dashboard/commercial/components/MapComponent.tsx
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-// ✅ Map renommé en GoogleMap pour éviter le conflit avec `new Map()` JavaScript
 import { Map as GoogleMap, useMap } from '@vis.gl/react-google-maps';
 import { MapMarkers } from './map/MapMarkers';
 import { MapControls } from './map/MapControls';
@@ -24,6 +23,60 @@ import {
 // 🎯 Centre par défaut (Kinshasa)
 const DEFAULT_CENTER = { lat: -4.325, lng: 15.322 };
 const DEFAULT_ZOOM = 12;
+
+// 🎨 Styles pour le mode NUIT (dark)
+const DARK_MAP_STYLE: any[] = [
+  { elementType: 'geometry', stylers: [{ color: '#1a1f2e' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1f2e' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8b95a8' }] },
+  {
+    featureType: 'administrative.locality',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#c4a35a' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#8b95a8' }],
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#1e2a1e' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#2c3444' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#1a1f2e' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#3d4a5e' }],
+  },
+  {
+    featureType: 'transit',
+    elementType: 'geometry',
+    stylers: [{ color: '#2c3444' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#0e1621' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#4a5a78' }],
+  },
+];
+
+type MapMode = 'plan' | 'nuit' | 'satellite';
 
 interface MapComponentProps {
   panneaux?: PanneauMap[];
@@ -77,6 +130,63 @@ function MapCenterController({
   return null;
 }
 
+/**
+ * 🎨 Applique le mode d'affichage (clair / nuit / satellite)
+ */
+function MapStyleController({ mode }: { mode: MapMode }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+    if (mode === 'nuit') {
+      map.setOptions({ mapTypeId: 'roadmap', styles: DARK_MAP_STYLE });
+    } else if (mode === 'satellite') {
+      map.setOptions({ mapTypeId: 'hybrid', styles: [] });
+    } else {
+      map.setOptions({ mapTypeId: 'roadmap', styles: [] });
+    }
+  }, [mode, map]);
+
+  return null;
+}
+
+/**
+ * 🎛️ UI du sélecteur de mode (flottant)
+ */
+function MapModeSwitcher({
+  mode,
+  onChange,
+}: {
+  mode: MapMode;
+  onChange: (m: MapMode) => void;
+}) {
+  const options: { id: MapMode; label: string; icon: string }[] = [
+    { id: 'plan', label: 'Clair', icon: '☀️' },
+    { id: 'nuit', label: 'Nuit', icon: '🌙' },
+    { id: 'satellite', label: 'Satellite', icon: '🛰️' },
+  ];
+
+  return (
+    <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-[15] flex gap-1 bg-white/95 backdrop-blur-md rounded-full shadow-lg border border-gray-200 p-1">
+      {options.map((opt) => (
+        <button
+          key={opt.id}
+          onClick={() => onChange(opt.id)}
+          className={`flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-full text-[10px] sm:text-xs font-bold transition-all active:scale-95 ${
+            mode === opt.id
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-gray-600 hover:bg-gray-100'
+          }`}
+          title={opt.label}
+        >
+          <span className="text-sm sm:text-base leading-none">{opt.icon}</span>
+          <span className="hidden xs:inline sm:inline">{opt.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function MapComponent({
   panneaux: panneauxProps = [],
   reservationsMap: reservationsMapProp,
@@ -90,6 +200,7 @@ export default function MapComponent({
   const [centerTrigger, setCenterTrigger] = useState(0);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [isMounted, setIsMounted] = useState(false);
+  const [mapMode, setMapMode] = useState<MapMode>('plan');
 
   const [panneaux, setPanneaux] = useState<PanneauMap[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +208,6 @@ export default function MapComponent({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filters, setFilters] = useState<PanneauFiltersState>(DEFAULT_FILTERS);
 
-  // ✅ CORRIGÉ : `new globalThis.Map()` pour utiliser le Map natif JavaScript
   const [reservationsMap, setReservationsMap] = useState<ReservationsMap>(
     reservationsMapProp || (new globalThis.Map() as ReservationsMap)
   );
@@ -191,12 +301,8 @@ export default function MapComponent({
     fetchPanneaux();
   }, [panneauxProps]);
 
-  // Mount
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  useEffect(() => setIsMounted(true), []);
 
-  // Centrage initial sur user
   useEffect(() => {
     if (userLocation && !hasCenteredOnUser.current) {
       hasCenteredOnUser.current = true;
@@ -228,12 +334,17 @@ export default function MapComponent({
     return filterPanneaux(panneaux, filters, reservationsMap);
   }, [panneaux, filters, reservationsMap]);
 
+  // ✅ Container : prend TOUTE la hauteur disponible du parent
+  //    Le parent DOIT avoir une hauteur définie (flex-1 min-h-0 dans un h-screen flex)
+  const containerClassName =
+    'relative w-full h-full min-h-[400px] sm:min-h-[500px] lg:min-h-[600px] xl:min-h-[700px] 2xl:min-h-[800px] overflow-hidden';
+
   if (!isMounted || loading) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950">
-        <div className="text-center">
-          <div className="w-20 h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-white/80 text-lg font-bold uppercase tracking-wider">
+      <div className={`${containerClassName} flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-950`}>
+        <div className="text-center px-4">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 lg:w-20 lg:h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white/80 text-sm sm:text-base lg:text-lg font-bold uppercase tracking-wider">
             {loading ? 'Chargement des panneaux...' : 'Chargement de la carte...'}
           </p>
         </div>
@@ -249,23 +360,23 @@ export default function MapComponent({
 
   if (panneauxAvecCoordonnees.length === 0) {
     return (
-      <div className="h-full w-full relative" style={{ minHeight: '400px' }}>
+      <div className={containerClassName}>
         <div className="h-full w-full flex items-center justify-center bg-gray-100 rounded-xl">
-          <div className="text-center p-8 max-w-lg">
-            <div className="text-6xl mb-4">🗺️</div>
-            <p className="text-gray-500 font-bold text-lg">
+          <div className="text-center p-4 sm:p-8 max-w-lg">
+            <div className="text-5xl sm:text-6xl mb-4">🗺️</div>
+            <p className="text-gray-500 font-bold text-base sm:text-lg">
               {panneaux.length === 0
                 ? 'Aucun panneau trouvé'
                 : 'Aucun panneau ne correspond aux filtres'}
             </p>
-            <p className="text-gray-400 text-sm mt-1">
+            <p className="text-gray-400 text-xs sm:text-sm mt-1">
               {panneaux.length === 0
                 ? 'La base de données ne contient aucun panneau'
                 : `${panneauxFiltres.length} / ${panneaux.length} panneau(x) affiché(s)`}
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition"
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition active:scale-95"
             >
               🔄 Recharger
             </button>
@@ -283,7 +394,8 @@ export default function MapComponent({
 
   return (
     <GoogleMapProvider>
-      <div className="h-full w-full relative" style={{ minHeight: '400px' }}>
+      <div className={containerClassName}>
+        {/* ============ CARTE GOOGLE ============ */}
         <GoogleMap
           mapId={GOOGLE_MAPS_MAP_ID}
           defaultCenter={center}
@@ -296,12 +408,8 @@ export default function MapComponent({
           fullscreenControl={false}
           style={{ width: '100%', height: '100%' }}
         >
-          <MapCenterController
-            center={center}
-            trigger={centerTrigger}
-            zoom={zoom}
-          />
-
+          <MapCenterController center={center} trigger={centerTrigger} zoom={zoom} />
+          <MapStyleController mode={mapMode} />
           <MapMarkers
             panneaux={panneauxAvecCoordonnees}
             userLocation={userLocation}
@@ -309,17 +417,24 @@ export default function MapComponent({
           />
         </GoogleMap>
 
-        <FilterButton
-          filters={filters}
-          onFiltersChange={setFilters}
-          totalResults={panneauxFiltres.length}
-          totalPanneaux={panneaux.length}
-        />
+        {/* ============ SÉLECTEUR DE MODE (top-right) ============ */}
+        <MapModeSwitcher mode={mapMode} onChange={setMapMode} />
 
+        {/* ============ FILTRES (position propre, z-index géré) ============ */}
+        <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-[12]">
+          <FilterButton
+            filters={filters}
+            onFiltersChange={setFilters}
+            totalResults={panneauxFiltres.length}
+            totalPanneaux={panneaux.length}
+          />
+        </div>
+
+        {/* ============ BOUTON RECENTRER (bottom-right) ============ */}
         {userLocation && (
           <button
             onClick={handleRecenterOnUser}
-            className="absolute bottom-24 right-4 z-[10] w-11 h-11 bg-white hover:bg-blue-50 text-blue-600 rounded-full shadow-lg border border-gray-200 flex items-center justify-center transition"
+            className="absolute bottom-20 right-3 sm:bottom-24 sm:right-4 z-[12] w-10 h-10 sm:w-11 sm:h-11 lg:w-12 lg:h-12 bg-white hover:bg-blue-50 text-blue-600 rounded-full shadow-lg border border-gray-200 flex items-center justify-center transition active:scale-95"
             title="Recentrer sur ma position"
           >
             <svg
@@ -340,6 +455,7 @@ export default function MapComponent({
           </button>
         )}
 
+        {/* ============ CONTRÔLES MAP (bottom-left via composant existant) ============ */}
         <MapControls
           userLocation={userLocation}
           locationError={locationError}
@@ -365,6 +481,7 @@ export default function MapComponent({
           }}
         />
 
+        {/* ============ MODAL DÉTAIL ============ */}
         {isModalOpen && selectedPanneau && (
           <PanneauDetailModal
             panneau={selectedPanneau}

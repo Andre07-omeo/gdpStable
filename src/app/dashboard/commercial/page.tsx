@@ -874,216 +874,244 @@ function CommercialDashboardInner() {
     );
   }
 
+  // ✅ TABS : libellés en toutes lettres + responsive
   const tabs = [
     {
       key: 'dashboard' as TabKey,
       icon: <LayoutDashboard size={16} />,
-      label: 'Tableau',
+      label: 'Tableau de bord',
+      shortLabel: 'Tableau',
     },
     {
       key: 'catalogue' as TabKey,
       icon: <span>📸</span>,
       label: 'Catalogue',
+      shortLabel: 'Catalogue',
     },
     {
       key: 'map' as TabKey,
       icon: <Map size={16} />,
-      label: 'Carte',
+      label: 'Carte interactive',
+      shortLabel: 'Carte',
     },
     {
       key: 'pending' as TabKey,
       icon: <Clock size={16} />,
-      label: 'Réserv.',
+      label: 'Réservations',
+      shortLabel: 'Réserv.',
     },
     {
       key: 'reservations' as TabKey,
       icon: <ClipboardCheck size={16} />,
-      label: 'Gestion résa',
+      label: 'Gestion des réservations',
+      shortLabel: 'Gestion',
     },
     {
       key: 'notifications' as TabKey,
       icon: <Bell size={16} />,
-      label: 'Notifs',
+      label: 'Notifications',
+      shortLabel: 'Notifs',
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 w-full overflow-x-hidden">
-      <CommercialHeader
-        user={user}
-        onLogout={logout}
-        onRefresh={refreshData}
-        onNotificationsToggle={handleNotificationsToggle}
-        onAdminToggle={
-          features?.canManageAgents
-            ? () => setIsAdminModalOpen(true)
-            : undefined
-        }
-        onCatalogueToggle={() =>
-          handleTabChange(activeTab === 'catalogue' ? 'dashboard' : 'catalogue')
-        }
-        onMapToggle={() =>
-          handleTabChange(activeTab === 'map' ? 'dashboard' : 'map')
-        }
-        onExportToggle={async () => {
-          try {
-            const { generateReportPDF } = await import(
-              './services/reportPdfService'
-            );
-            await generateReportPDF({
-              panneaux: panneauxFiltres as any,
-              stats,
-              filters,
-              user,
-            });
-          } catch (err) {
-            console.error('❌ Erreur PDF:', err);
+    // ✅ STRUCTURE : flex-col + h-[100dvh] pour que la carte (onglet map) prenne toute la hauteur
+    <div className="flex flex-col h-[100dvh] w-full bg-gray-50 overflow-hidden">
+      {/* HEADER (shrink-0) */}
+      <div className="shrink-0">
+        <CommercialHeader
+          user={user}
+          onLogout={logout}
+          onRefresh={refreshData}
+          onNotificationsToggle={handleNotificationsToggle}
+          onAdminToggle={
+            features?.canManageAgents
+              ? () => setIsAdminModalOpen(true)
+              : undefined
           }
-        }}
-        onReportsToggle={
-          features?.canViewReports ? () => setIsReportsOpen(true) : undefined
-        }
-        onPredictionsToggle={
-          features?.canViewPredictions
-            ? () => setIsPredictionsOpen(true)
-            : undefined
-        }
-        onTeamManagementToggle={
-          features?.canManageTeam
-            ? () => setIsTeamManagementOpen(true)
-            : undefined
-        }
-        onReservationsManagementToggle={
-          features?.canModifyReservations
-            ? () => setIsReservationsManagementOpen(true)
-            : undefined
-        }
-        notificationCount={unreadCount}
-      />
-
-      {/* Conteneur principal — largeur fluide du mobile au 4K */}
-      <main className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6 pb-20 sm:pb-6">
-        {/* 🧹 Bandeau de nettoyage */}
-        <CleanupBanner
-          status={cleanupStatus}
-          onRetry={() => executerNettoyage(true)}
-          onClose={() => setCleanupStatus({ kind: 'idle' })}
+          onCatalogueToggle={() =>
+            handleTabChange(activeTab === 'catalogue' ? 'dashboard' : 'catalogue')
+          }
+          onMapToggle={() =>
+            handleTabChange(activeTab === 'map' ? 'dashboard' : 'map')
+          }
+          onExportToggle={async () => {
+            try {
+              const { generateReportPDF } = await import(
+                './services/reportPdfService'
+              );
+              await generateReportPDF({
+                panneaux: panneauxFiltres as any,
+                stats,
+                filters,
+                user,
+              });
+            } catch (err) {
+              console.error('❌ Erreur PDF:', err);
+            }
+          }}
+          onReportsToggle={
+            features?.canViewReports ? () => setIsReportsOpen(true) : undefined
+          }
+          onPredictionsToggle={
+            features?.canViewPredictions
+              ? () => setIsPredictionsOpen(true)
+              : undefined
+          }
+          onTeamManagementToggle={
+            features?.canManageTeam
+              ? () => setIsTeamManagementOpen(true)
+              : undefined
+          }
+          onReservationsManagementToggle={
+            features?.canModifyReservations
+              ? () => setIsReservationsManagementOpen(true)
+              : undefined
+          }
+          notificationCount={unreadCount}
         />
+      </div>
 
-        {/* ============================================
-            ONGLETS — scroll horizontal sur mobile
-            ============================================ */}
-        <div className="flex gap-1 sm:gap-2 md:gap-4 mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => handleTabChange(tab.key)}
-              className={`relative flex flex-row items-center gap-1 sm:gap-2 px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition border-b-2 whitespace-nowrap flex-shrink-0 ${
-                activeTab === tab.key
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <span className="[&>svg]:w-4 [&>svg]:h-4">{tab.icon}</span>
-              <span>{tab.label}</span>
-              {tab.key === 'notifications' && unreadCount > 0 && (
-                <span className="absolute -top-1 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-            </button>
-          ))}
+      {/* TABS (shrink-0) — scroll horizontal sur mobile */}
+      <div className="shrink-0 bg-gray-50 border-b border-gray-200 overflow-x-auto scrollbar-hide">
+        <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
+          <div className="flex gap-1 sm:gap-2 md:gap-4">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => handleTabChange(tab.key)}
+                className={`relative flex flex-row items-center gap-1 sm:gap-2 px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition border-b-2 whitespace-nowrap flex-shrink-0 ${
+                  activeTab === tab.key
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <span className="[&>svg]:w-4 [&>svg]:h-4">{tab.icon}</span>
+                {/* Libellé court sur mobile, libellé complet sur desktop */}
+                <span className="sm:hidden">{tab.shortLabel}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
+                {tab.key === 'notifications' && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ✅ CONTENU PRINCIPAL — flex-1 min-h-0 (CRITIQUE pour que la carte prenne toute la hauteur) */}
+      <main className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden">
+        <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6">
+          {/* 🧹 Bandeau de nettoyage */}
+          <CleanupBanner
+            status={cleanupStatus}
+            onRetry={() => executerNettoyage(true)}
+            onClose={() => setCleanupStatus({ kind: 'idle' })}
+          />
+
+          {/* ============================================
+              ONGLET DASHBOARD
+              ============================================ */}
+          {activeTab === 'dashboard' && (
+            <>
+              {/* Toggle stats mobile */}
+              <button
+                onClick={() => setIsStatsExpanded((v) => !v)}
+                className="lg:hidden w-full flex items-center justify-between px-4 py-3 mb-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm"
+                aria-expanded={isStatsExpanded}
+              >
+                <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                  <BarChart3 size={16} className="text-blue-600" />
+                  <span>Statistiques</span>
+                  <span className="text-xs font-normal text-gray-500">
+                    ({statsCards.length})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 hidden sm:inline">
+                    {isStatsExpanded ? 'Masquer' : 'Afficher'}
+                  </span>
+                  {isStatsExpanded ? (
+                    <ChevronUp size={16} className="text-blue-600" />
+                  ) : (
+                    <ChevronDown size={16} className="text-blue-600" />
+                  )}
+                </div>
+              </button>
+
+              {/* Grille stats responsive */}
+              <div
+                className={`stats-grid-6 mb-4 sm:mb-6 ${
+                  isStatsExpanded ? 'grid' : 'hidden lg:grid'
+                }`}
+              >
+                {statsCards.map((card, index) => (
+                  <StatCard
+                    key={index}
+                    label={card.label}
+                    value={card.value}
+                    icon={card.icon}
+                    color={card.color}
+                    loading={loading}
+                  />
+                ))}
+              </div>
+
+              <PanneauFilters
+                filters={filters}
+                onFiltersChange={setFilters}
+                totalResults={panneauxFiltres.length}
+                totalPanneaux={transformedPanneaux.length}
+              />
+
+              <PanneauxTable
+                panneaux={panneauxFiltres as any}
+                onFaceClick={openFaceDetails}
+                onReserveClick={handleReserveClick}
+                loading={loading}
+              />
+            </>
+          )}
+
+          {/* ============================================
+              ONGLET CATALOGUE
+              ============================================ */}
+          {activeTab === 'catalogue' && (
+            <div className="w-full">
+              <CatalogueContent user={user} />
+            </div>
+          )}
+
+          {/* ============================================
+              ONGLET GESTION RÉSERVATIONS
+              ============================================ */}
+          {activeTab === 'reservations' && (
+            <ReservationsManagementModal
+              isOpen={true}
+              onClose={() => handleTabChange('dashboard')}
+              inline={true}
+            />
+          )}
+
+          {/* ============================================
+              ONGLET RÉSERVATIONS EN ATTENTE
+              ============================================ */}
+          {activeTab === 'pending' && <PendingReservationsTab user={user} />}
+
+          {/* ============================================
+              ONGLET NOTIFICATIONS
+              ============================================ */}
+          {activeTab === 'notifications' && <NotificationsTab user={user} />}
         </div>
 
         {/* ============================================
-            ONGLET DASHBOARD
-            ============================================ */}
-        {activeTab === 'dashboard' && (
-          <>
-            {/* Toggle stats mobile */}
-            <button
-              onClick={() => setIsStatsExpanded((v) => !v)}
-              className="lg:hidden w-full flex items-center justify-between px-4 py-3 mb-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm"
-              aria-expanded={isStatsExpanded}
-            >
-              <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                <BarChart3 size={16} className="text-blue-600" />
-                <span>Statistiques</span>
-                <span className="text-xs font-normal text-gray-500">
-                  ({statsCards.length})
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 hidden sm:inline">
-                  {isStatsExpanded ? 'Masquer' : 'Afficher'}
-                </span>
-                {isStatsExpanded ? (
-                  <ChevronUp size={16} className="text-blue-600" />
-                ) : (
-                  <ChevronDown size={16} className="text-blue-600" />
-                )}
-              </div>
-            </button>
-
-            {/* Grille stats responsive via CSS (voir globals.css) */}
-            <div
-              className={`stats-grid-6 mb-4 sm:mb-6 ${
-                isStatsExpanded ? 'grid' : 'hidden lg:grid'
-              }`}
-            >
-              {statsCards.map((card, index) => (
-                <StatCard
-                  key={index}
-                  label={card.label}
-                  value={card.value}
-                  icon={card.icon}
-                  color={card.color}
-                  loading={loading}
-                />
-              ))}
-            </div>
-
-            <PanneauFilters
-              filters={filters}
-              onFiltersChange={setFilters}
-              totalResults={panneauxFiltres.length}
-              totalPanneaux={transformedPanneaux.length}
-            />
-
-            <PanneauxTable
-              panneaux={panneauxFiltres as any}
-              onFaceClick={openFaceDetails}
-              onReserveClick={handleReserveClick}
-              loading={loading}
-            />
-          </>
-        )}
-
-        {/* ============================================
-            ONGLET CATALOGUE
-            ============================================ */}
-        {activeTab === 'catalogue' && (
-          <div className="w-full">
-            <CatalogueContent user={user} />
-          </div>
-        )}
-
-        {/* ============================================
-            ONGLET GESTION RÉSERVATIONS
-            ============================================ */}
-        {activeTab === 'reservations' && (
-          <ReservationsManagementModal
-            isOpen={true}
-            onClose={() => handleTabChange('dashboard')}
-            inline={true}
-          />
-        )}
-
-        {/* ============================================
-            ONGLET CARTE
+            ONGLET CARTE — PLEIN ÉCRAN (hors du container de padding)
+            Prend toute la hauteur restante (flex-1 min-h-0 sur main)
             ============================================ */}
         {activeTab === 'map' && (
-          <div className="w-full h-[55vh] sm:h-[60vh] md:h-[65vh] lg:h-[70vh] xl:h-[75vh] rounded-lg sm:rounded-xl overflow-hidden border-2 border-gray-200">
+          <div className="w-full h-full">
             <MapComponent
               panneaux={transformedPanneaux}
               reservationsMap={reservationsMap}
@@ -1095,16 +1123,6 @@ function CommercialDashboardInner() {
             />
           </div>
         )}
-
-        {/* ============================================
-            ONGLET RÉSERVATIONS EN ATTENTE
-            ============================================ */}
-        {activeTab === 'pending' && <PendingReservationsTab user={user} />}
-
-        {/* ============================================
-            ONGLET NOTIFICATIONS
-            ============================================ */}
-        {activeTab === 'notifications' && <NotificationsTab user={user} />}
       </main>
 
       {/* ============================================

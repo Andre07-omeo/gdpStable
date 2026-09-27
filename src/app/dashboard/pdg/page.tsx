@@ -14,10 +14,13 @@ import {
   Target, Award, Globe, PieChart, TrendingUp, CheckCircle2,
   Info, CheckCheck, ArrowRight, ChevronDown, RefreshCw,
   Printer, FileCheck,
+  // 👑 Imports premium (gardés pour versions futures)
+  Crown, Sparkles, Star, Trophy, Gem,
+  Briefcase, Building2, DollarSign, Zap, Shield,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// ✅ CHEMINS CORRIGÉS : '../commercial/...' au lieu de '../../commercial/...'
+// ✅ CHEMINS CORRIGÉS
 import {
   loadReservationsByFace,
   ReservationsMap,
@@ -106,6 +109,173 @@ type TabKey =
   | 'proformat'
   | 'agents'
   | 'strategie';
+
+// ============================================
+// 👑 COMPOSANTS PREMIUM — CONSERVÉS POUR VERSIONS FUTURES
+// ============================================
+// Décommenter ces composants + les appels dans activeTab === 'dashboard'
+// quand on voudra réactiver le mode PDG Prestige.
+
+/*
+// 👑 BANDEAU PRESTIGE PDG
+function PrestigeBanner({ userName }: { userName?: string }) {
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  const hour = time.getHours();
+  const greeting =
+    hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-900 via-emerald-800 to-emerald-900 border border-amber-500/30 shadow-xl mb-4 sm:mb-6"
+    >
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-amber-400 blur-3xl" />
+        <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-emerald-400 blur-3xl" />
+      </div>
+
+      <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 sm:p-6">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="relative shrink-0">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg ring-2 ring-amber-300/50">
+              <Crown className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-950" />
+            </div>
+            <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-emerald-900 rounded-full" />
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg sm:text-2xl font-serif font-bold text-white tracking-tight">
+                {greeting}, Monsieur le Président
+              </h1>
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
+            </div>
+            <p className="text-xs sm:text-sm text-amber-200/80 font-medium mt-0.5">
+              Direction Générale · {time.toLocaleDateString('fr-FR', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/20">
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[11px] font-bold text-white/90 uppercase tracking-wider">
+              Système actif
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 backdrop-blur border border-amber-400/40">
+            <Gem className="w-3.5 h-3.5 text-amber-300" />
+            <span className="text-[11px] font-bold text-amber-200 uppercase tracking-wider">
+              VIP
+            </span>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// 📊 KPI STRATÉGIQUE PDG
+function StrategicKPI({
+  label, value, unit, trend, trendUp, icon, accent, delay = 0,
+}: {
+  label: string;
+  value: string | number;
+  unit?: string;
+  trend?: string;
+  trendUp?: boolean;
+  icon: React.ReactNode;
+  accent: 'emerald' | 'amber' | 'blue' | 'purple';
+  delay?: number;
+}) {
+  const accents = {
+    emerald: { bg: 'from-emerald-500/10 to-emerald-600/5', border: 'border-emerald-300/40', icon: 'bg-emerald-100 text-emerald-700', ring: 'ring-emerald-200' },
+    amber: { bg: 'from-amber-500/10 to-amber-600/5', border: 'border-amber-300/40', icon: 'bg-amber-100 text-amber-700', ring: 'ring-amber-200' },
+    blue: { bg: 'from-blue-500/10 to-blue-600/5', border: 'border-blue-300/40', icon: 'bg-blue-100 text-blue-700', ring: 'ring-blue-200' },
+    purple: { bg: 'from-purple-500/10 to-purple-600/5', border: 'border-purple-300/40', icon: 'bg-purple-100 text-purple-700', ring: 'ring-purple-200' },
+  };
+  const a = accents[accent];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay }}
+      className={`relative bg-gradient-to-br ${a.bg} bg-white rounded-2xl border ${a.border} shadow-sm hover:shadow-md transition-shadow p-4 sm:p-5 overflow-hidden`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] sm:text-xs font-bold text-gray-500 uppercase tracking-wider truncate">
+            {label}
+          </p>
+          <p className="text-2xl sm:text-3xl font-serif font-bold text-gray-900 mt-1">
+            {value}
+            {unit && <span className="text-sm sm:text-base font-sans font-medium text-gray-500 ml-1">{unit}</span>}
+          </p>
+          {trend && (
+            <div className={`inline-flex items-center gap-1 mt-2 text-[11px] font-bold ${trendUp ? 'text-emerald-600' : 'text-red-500'}`}>
+              <TrendingUp size={12} className={trendUp ? '' : 'rotate-180'} />
+              {trend}
+            </div>
+          )}
+        </div>
+        <div className={`shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl ${a.icon} flex items-center justify-center ring-4 ${a.ring}/40`}>
+          {icon}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// 💎 CARTE INSIGHT PDG
+function InsightCard({
+  title, description, tone, icon,
+}: {
+  title: string;
+  description: string;
+  tone: 'success' | 'warning' | 'info';
+  icon: React.ReactNode;
+}) {
+  const tones = {
+    success: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800', dot: 'bg-emerald-500' },
+    warning: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', dot: 'bg-amber-500' },
+    info: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', dot: 'bg-blue-500' },
+  };
+  const t = tones[tone];
+
+  return (
+    <div className={`${t.bg} ${t.border} border rounded-xl p-3.5 sm:p-4`}>
+      <div className="flex items-start gap-3">
+        <div className={`shrink-0 w-8 h-8 rounded-lg bg-white flex items-center justify-center ${t.text} shadow-sm`}>
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`} />
+            <h4 className={`text-xs sm:text-sm font-bold ${t.text}`}>{title}</h4>
+          </div>
+          <p className="text-[11px] sm:text-xs text-gray-600 mt-1 leading-relaxed">
+            {description}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+*/
 
 // ============================================
 // NotificationsTab
@@ -296,7 +466,6 @@ function CleanupBanner({ status, onRetry, onClose }: {
   );
 }
 
-
 // ============================================
 // DGDashboardInner
 // ============================================
@@ -311,10 +480,8 @@ function DGDashboardInner() {
   const [filters, setFilters] = useState<PanneauFiltersState>(DEFAULT_FILTERS);
   const [reservationsMap, setReservationsMap] = useState<ReservationsMap>(createEmptyReservationsMap());
 
-  // ✅ features : DG = mêmes droits que CHEF_COMMERCIAL
   const features = user ? getFeaturesByProfil(user.profil) : null;
 
-  // ✅ Onglet persistant dans l'URL
   const initialTab = (searchParams.get('tab') as TabKey) || 'dashboard';
   const validTabs: TabKey[] = [
     'dashboard', 'catalogue', 'map', 'pending', 'notifications', 'proformat', 'agents', 'strategie',
@@ -355,7 +522,7 @@ function DGDashboardInner() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // ⚠️ Vérif rôle : DG UNIQUEMENT
+  // ⚠️ Vérif rôle
   useEffect(() => {
     if (user && user.profil !== 'DG' && user.profil !== 'SUPER_ADMIN') {
       router.push('/dashboard');
@@ -405,7 +572,6 @@ function DGDashboardInner() {
     };
   }, [user, loadNotifications]);
 
-  // 🧹 Nettoyage auto
   const executerNettoyage = useCallback(async (force = false) => {
     const dejaFait = sessionStorage.getItem('nettoyage_reservations_fait');
     if (!force && dejaFait) return;
@@ -485,6 +651,9 @@ function DGDashboardInner() {
     });
   };
 
+  // ============================================
+  // 📊 STATS : 6 cartes standards
+  // ============================================
   const statsCards = [
     { label: 'Panneaux', value: stats.totalPanneaux, icon: <LayoutDashboard size={12} />, color: 'blue' as const },
     { label: 'Faces', value: stats.totalFaces, icon: <MapPin size={12} />, color: 'indigo' as const },
@@ -493,6 +662,55 @@ function DGDashboardInner() {
     { label: 'Réservées', value: stats.totalReserves, icon: <Calendar size={12} />, color: 'amber' as const },
     { label: 'Rés. Futures', value: stats.totalReservationsFutures || 0, icon: <BarChart3 size={12} />, color: 'purple' as const },
   ];
+
+  const tauxOccupation = useMemo(() => {
+    const total = (stats.totalLibres || 0) + (stats.totalOccupes || 0) + (stats.totalReserves || 0);
+    if (total === 0) return 0;
+    return Math.round((((stats.totalOccupes || 0) + (stats.totalReserves || 0)) / total) * 100);
+  }, [stats]);
+
+  // ============================================
+  // 💎 KPIs STRATÉGIQUES — CONSERVÉS POUR VERSIONS FUTURES
+  // ============================================
+  /*
+  const strategicKPIs = [
+    {
+      label: 'Chiffre d\'affaires estimé',
+      value: (stats.totalReserves || 0) * 250,
+      unit: 'USD',
+      trend: '+12.5% vs mois dernier',
+      trendUp: true,
+      icon: <DollarSign className="w-5 h-5 sm:w-6 sm:h-6" />,
+      accent: 'emerald' as const,
+    },
+    {
+      label: 'Taux d\'occupation global',
+      value: tauxOccupation,
+      unit: '%',
+      trend: tauxOccupation >= 75 ? 'Objectif atteint ✓' : 'Objectif 75%',
+      trendUp: tauxOccupation >= 75,
+      icon: <PieChart className="w-5 h-5 sm:w-6 sm:h-6" />,
+      accent: 'amber' as const,
+    },
+    {
+      label: 'Réservations futures',
+      value: stats.totalReservationsFutures || 0,
+      trend: 'Pipeline commercial',
+      trendUp: true,
+      icon: <Briefcase className="w-5 h-5 sm:w-6 sm:h-6" />,
+      accent: 'blue' as const,
+    },
+    {
+      label: 'Croissance annuelle',
+      value: '+23.8',
+      unit: '%',
+      trend: 'Objectif +25%',
+      trendUp: true,
+      icon: <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />,
+      accent: 'purple' as const,
+    },
+  ];
+  */
 
   const unreadCount = useMemo(() => notifications.filter((n) => !n.isRead).length, [notifications]);
 
@@ -543,181 +761,196 @@ function DGDashboardInner() {
     );
   }
 
+  // ✅ TABS : label complet sur desktop, court sur mobile
   const tabs = [
-    { key: 'dashboard' as TabKey, icon: <LayoutDashboard size={16} />, label: 'Tableau' },
-    { key: 'catalogue' as TabKey, icon: <span>📸</span>, label: 'Catalogue' },
-    { key: 'map' as TabKey, icon: <Map size={16} />, label: 'Carte' },
-    { key: 'pending' as TabKey, icon: <Clock size={16} />, label: 'Réserv.' },
-    { key: 'proformat' as TabKey, icon: <Printer size={16} />, label: 'Proformat' },
-    { key: 'notifications' as TabKey, icon: <Bell size={16} />, label: 'Notifs' },
-    { key: 'agents' as TabKey, icon: <Users size={16} />, label: 'Agents' },
-    { key: 'strategie' as TabKey, icon: <Target size={16} />, label: 'Stratégie' },
+    { key: 'dashboard' as TabKey, icon: <LayoutDashboard size={16} />, label: 'Tableau de bord', shortLabel: 'Tableau' },
+    { key: 'catalogue' as TabKey, icon: <span>📸</span>, label: 'Catalogue', shortLabel: 'Catalogue' },
+    { key: 'map' as TabKey, icon: <Map size={16} />, label: 'Carte interactive', shortLabel: 'Carte' },
+    { key: 'pending' as TabKey, icon: <Clock size={16} />, label: 'Réservations', shortLabel: 'Réserv.' },
+    { key: 'notifications' as TabKey, icon: <Bell size={16} />, label: 'Notifications', shortLabel: 'Notifs' },
+    { key: 'agents' as TabKey, icon: <Users size={16} />, label: 'Gestion des agents', shortLabel: 'Agents' },
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 w-full">
-      <CommercialHeader
-        user={user}
-        onLogout={logout}
-        onRefresh={refreshData}
-        onNotificationsToggle={() => handleTabChange('notifications')}
-        onAdminToggle={features?.canManageAgents ? () => setIsAdminModalOpen(true) : undefined}
-        onCatalogueToggle={() => handleTabChange(activeTab === 'catalogue' ? 'dashboard' : 'catalogue')}
-        onMapToggle={() => handleTabChange(activeTab === 'map' ? 'dashboard' : 'map')}
-        onExportToggle={async () => {
-          try {
-            const { generateReportPDF } = await import('../commercial/services/reportPdfService');
-            await generateReportPDF({ panneaux: panneauxFiltres as any, stats, filters, user });
-          } catch (err) { console.error('❌ PDF:', err); }
-        }}
-        onReportsToggle={features?.canViewReports ? () => setIsReportsOpen(true) : undefined}
-        onPredictionsToggle={features?.canViewPredictions ? () => setIsPredictionsOpen(true) : undefined}
-        onTeamManagementToggle={features?.canManageTeam ? () => setIsTeamManagementOpen(true) : undefined}
-        onReservationsManagementToggle={features?.canModifyReservations ? () => setIsReservationsManagementOpen(true) : undefined}
-        notificationCount={unreadCount}
-      />
+    // ✅ STRUCTURE : flex-col + h-[100dvh]
+    <div className="flex flex-col h-[100dvh] w-full bg-gray-50 overflow-hidden">
+      {/* HEADER (shrink-0) */}
+      <div className="shrink-0">
+        <CommercialHeader
+          user={user}
+          onLogout={logout}
+          onRefresh={refreshData}
+          onNotificationsToggle={() => handleTabChange('notifications')}
+          onAdminToggle={features?.canManageAgents ? () => setIsAdminModalOpen(true) : undefined}
+          onCatalogueToggle={() => handleTabChange(activeTab === 'catalogue' ? 'dashboard' : 'catalogue')}
+          onMapToggle={() => handleTabChange(activeTab === 'map' ? 'dashboard' : 'map')}
+          onExportToggle={async () => {
+            try {
+              const { generateReportPDF } = await import('../commercial/services/reportPdfService');
+              await generateReportPDF({ panneaux: panneauxFiltres as any, stats, filters, user });
+            } catch (err) { console.error('❌ PDF:', err); }
+          }}
+          onReportsToggle={features?.canViewReports ? () => setIsReportsOpen(true) : undefined}
+          onPredictionsToggle={features?.canViewPredictions ? () => setIsPredictionsOpen(true) : undefined}
+          onTeamManagementToggle={features?.canManageTeam ? () => setIsTeamManagementOpen(true) : undefined}
+          onReservationsManagementToggle={features?.canModifyReservations ? () => setIsReservationsManagementOpen(true) : undefined}
+          notificationCount={unreadCount}
+        />
+      </div>
 
-      {/* ✅ CONTENEUR PRINCIPAL : 100% largeur */}
-      <main className="flex-1 w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 sm:py-4 md:py-6 pb-20 sm:pb-6">
-        <CleanupBanner status={cleanupStatus} onRetry={() => executerNettoyage(true)} onClose={() => setCleanupStatus({ kind: 'idle' })} />
+      {/* TABS (shrink-0) */}
+      <div className="shrink-0 bg-gray-50 border-b border-gray-200 overflow-x-auto scrollbar-hide">
+        <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12">
+          <div className="flex gap-1 sm:gap-2 md:gap-4">
+            {tabs.map((tab) => (
+              <button key={tab.key} onClick={() => handleTabChange(tab.key)}
+                className={`relative flex flex-row items-center gap-1 sm:gap-2 px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition border-b-2 whitespace-nowrap flex-shrink-0 ${
+                  activeTab === tab.key ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}>
+                <span className="[&>svg]:w-4 [&>svg]:h-4">{tab.icon}</span>
+                <span className="sm:hidden">{tab.shortLabel}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
+                {tab.key === 'notifications' && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
-        {/* ============================================
-            ONGLETS — scroll horizontal sur mobile
-            ============================================ */}
-        <div className="flex gap-1 sm:gap-2 md:gap-4 mb-4 sm:mb-6 border-b border-gray-200 overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
-          {tabs.map((tab) => (
-            <button key={tab.key} onClick={() => handleTabChange(tab.key)}
-              className={`relative flex flex-row items-center gap-1 sm:gap-2 px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 font-bold text-xs sm:text-sm transition border-b-2 whitespace-nowrap flex-shrink-0 ${
-                activeTab === tab.key ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}>
-              <span className="[&>svg]:w-4 [&>svg]:h-4">{tab.icon}</span>
-              <span>{tab.label}</span>
-              {tab.key === 'notifications' && unreadCount > 0 && (
-                <span className="absolute -top-1 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-            </button>
-          ))}
+      {/* ✅ CONTENU PRINCIPAL — flex-1 min-h-0 */}
+      <main className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden">
+        <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 sm:py-4 md:py-6">
+          <CleanupBanner status={cleanupStatus} onRetry={() => executerNettoyage(true)} onClose={() => setCleanupStatus({ kind: 'idle' })} />
+
+          {/* ============================================
+              ONGLET DASHBOARD — VERSION STANDARD
+              ============================================ */}
+          {activeTab === 'dashboard' && (
+            <>
+              {/* 👑 ZONE PREMIUM — Décommenter pour activer le mode PDG Prestige
+              <PrestigeBanner userName={user?.nom} />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+                {strategicKPIs.map((kpi, i) => (
+                  <StrategicKPI key={i} {...kpi} delay={i * 0.08} />
+                ))}
+              </div>
+
+              <div className="mb-4 sm:mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm sm:text-base font-serif font-bold text-gray-800">
+                    Insights pour la Direction
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <InsightCard
+                    tone="success"
+                    icon={<Trophy className="w-4 h-4" />}
+                    title="Performance excellente"
+                    description={`Taux d'occupation à ${tauxOccupation}% — au-dessus de l'objectif stratégique trimestriel.`}
+                  />
+                  <InsightCard
+                    tone="warning"
+                    icon={<AlertTriangle className="w-4 h-4" />}
+                    title="Points de vigilance"
+                    description={`${panneauxFiltres.filter((p: any) => p.a_probleme).length || 0} panneau(x) signalé(s) en anomalie nécessitant intervention.`}
+                  />
+                  <InsightCard
+                    tone="info"
+                    icon={<Zap className="w-4 h-4" />}
+                    title="Opportunité commerciale"
+                    description={`${stats.totalLibres || 0} face(s) libre(s) à valoriser — potentiel de croissance immédiat.`}
+                  />
+                </div>
+              </div>
+              👑 FIN ZONE PREMIUM */}
+
+              {/* Toggle stats mobile */}
+              <button onClick={() => setIsStatsExpanded((v) => !v)}
+                className="lg:hidden w-full flex items-center justify-between px-4 py-3 mb-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                  <BarChart3 size={16} className="text-emerald-600" />
+                  <span>Statistiques</span>
+                  <span className="text-xs font-normal text-gray-500">({statsCards.length})</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 hidden sm:inline">
+                    {isStatsExpanded ? 'Masquer' : 'Afficher'}
+                  </span>
+                  <ChevronDown size={16} className={`text-emerald-600 transition-transform ${isStatsExpanded ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+
+              <div className={`stats-grid-6 mb-4 sm:mb-6 ${isStatsExpanded ? 'grid' : 'hidden lg:grid'}`}>
+                {statsCards.map((card, i) => (
+                  <StatCard key={i} label={card.label} value={card.value} icon={card.icon} color={card.color} loading={loading} />
+                ))}
+              </div>
+
+              <div className="w-full">
+                <PanneauFilters filters={filters} onFiltersChange={setFilters}
+                  totalResults={panneauxFiltres.length} totalPanneaux={transformedPanneaux.length} />
+
+                <PanneauxTable panneaux={panneauxFiltres as any}
+                  onFaceClick={openFaceDetails} onReserveClick={handleReserveClick} loading={loading} />
+              </div>
+            </>
+          )}
+
+          {/* ============================================
+              ONGLET CATALOGUE
+              ============================================ */}
+          {activeTab === 'catalogue' && (
+            <div className="w-full">
+              <CatalogueContent user={user} />
+            </div>
+          )}
+
+          {/* ============================================
+              ONGLET RÉSERVATIONS EN ATTENTE
+              ============================================ */}
+          {activeTab === 'pending' && (
+            <div className="w-full">
+              <PendingReservationsTab user={user} />
+            </div>
+          )}
+
+          {/* ============================================
+              ONGLET NOTIFICATIONS
+              ============================================ */}
+          {activeTab === 'notifications' && (
+            <div className="w-full">
+              <NotificationsTab user={user} />
+            </div>
+          )}
+
+          {/* ============================================
+              ONGLET AGENTS
+              ============================================ */}
+          {activeTab === 'agents' && (
+            <div className="w-full bg-white rounded-2xl shadow-lg border border-emerald-100 p-4 sm:p-6">
+              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Award className="w-5 h-5 text-emerald-600" /> Gestion des agents
+              </h3>
+              <TeamManagementModal isOpen={true} onClose={() => handleTabChange('dashboard')} />
+            </div>
+          )}
         </div>
 
         {/* ============================================
-            ONGLET DASHBOARD
-            ============================================ */}
-        {activeTab === 'dashboard' && (
-          <>
-            <button onClick={() => setIsStatsExpanded((v) => !v)}
-              className="lg:hidden w-full flex items-center justify-between px-4 py-3 mb-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm">
-              <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                <BarChart3 size={16} className="text-emerald-600" />
-                <span>Statistiques</span>
-                <span className="text-xs font-normal text-gray-500">({statsCards.length})</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 hidden sm:inline">
-                  {isStatsExpanded ? 'Masquer' : 'Afficher'}
-                </span>
-                <ChevronDown size={16} className={`text-emerald-600 transition-transform ${isStatsExpanded ? 'rotate-180' : ''}`} />
-              </div>
-            </button>
-
-            {/* ✅ CORRECTION : Stats 100% largeur (comme le Commercial) — plus de max-w-6xl */}
-            <div className={`stats-grid-6 mb-4 sm:mb-6 ${isStatsExpanded ? 'grid' : 'hidden lg:grid'}`}>
-              {statsCards.map((card, i) => (
-                <StatCard key={i} label={card.label} value={card.value} icon={card.icon} color={card.color} loading={loading} />
-              ))}
-            </div>
-
-            {/* ✅ Filtres + Table : 100% largeur */}
-            <div className="w-full">
-              <PanneauFilters filters={filters} onFiltersChange={setFilters}
-                totalResults={panneauxFiltres.length} totalPanneaux={transformedPanneaux.length} />
-
-              <PanneauxTable panneaux={panneauxFiltres as any}
-                onFaceClick={openFaceDetails} onReserveClick={handleReserveClick} loading={loading} />
-            </div>
-          </>
-        )}
-
-        {/* ============================================
-            ONGLET CATALOGUE — 100% largeur
-            ============================================ */}
-        {activeTab === 'catalogue' && (
-          <div className="w-full">
-            <CatalogueContent user={user} />
-          </div>
-        )}
-
-        {/* ============================================
-            ONGLET CARTE — 100% largeur
+            ONGLET CARTE — PLEIN ÉCRAN
             ============================================ */}
         {activeTab === 'map' && (
-          <div className="w-full h-[55vh] sm:h-[60vh] md:h-[65vh] lg:h-[70vh] xl:h-[75vh] 2xl:h-[80vh] rounded-lg sm:rounded-xl overflow-hidden border-2 border-gray-200">
+          <div className="w-full h-full">
             <MapComponent panneaux={transformedPanneaux} reservationsMap={reservationsMap}
               userLocation={userLocation} locationError={locationError}
               onMarkerClick={handleMapMarkerClick} onReserveClick={handleMapReserveClick}
               onAddToCart={handleMapAddToCart} />
-          </div>
-        )}
-
-        {/* ============================================
-            ONGLET PENDING — 100% largeur
-            ============================================ */}
-        {activeTab === 'pending' && (
-          <div className="w-full">
-            <PendingReservationsTab user={user} />
-          </div>
-        )}
-
-        
-        {/* ============================================
-            ONGLET NOTIFICATIONS — 100% largeur
-            ============================================ */}
-        {activeTab === 'notifications' && (
-          <div className="w-full">
-            <NotificationsTab user={user} />
-          </div>
-        )}
-
-        {/* ============================================
-            ONGLET AGENTS — 100% largeur
-            ============================================ */}
-        {activeTab === 'agents' && (
-          <div className="w-full bg-white rounded-2xl shadow-lg border border-emerald-100 p-4 sm:p-6">
-            <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Award className="w-5 h-5 text-emerald-600" /> Gestion des agents
-            </h3>
-            <TeamManagementModal isOpen={true} onClose={() => handleTabChange('dashboard')} />
-          </div>
-        )}
-
-        {/* ============================================
-            ONGLET STRATÉGIE — 100% largeur
-            ============================================ */}
-        {activeTab === 'strategie' && (
-          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl p-4 sm:p-6 border border-emerald-200">
-              <div className="flex items-center gap-2 mb-4">
-                <Target className="w-6 h-6 text-emerald-600" />
-                <h3 className="font-bold text-emerald-700">Objectifs 2026</h3>
-              </div>
-              <ul className="space-y-2 text-sm text-gray-700">
-                <li>🎯 Croissance: +25%</li>
-                <li>🎯 Nouveaux clients: 15</li>
-                <li>🎯 Innovation digitale</li>
-              </ul>
-            </div>
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-4 sm:p-6 border border-blue-200">
-              <div className="flex items-center gap-2 mb-4">
-                <PieChart className="w-6 h-6 text-blue-600" />
-                <h3 className="font-bold text-blue-700">Indicateurs</h3>
-              </div>
-              <ul className="space-y-2 text-sm text-gray-700">
-                <li>• Taux d'occupation: 85%</li>
-                <li>• Satisfaction: 95%</li>
-                <li>• ROI: 30%</li>
-              </ul>
-            </div>
           </div>
         )}
       </main>
