@@ -1,17 +1,20 @@
+// src/app/dashboard/comptable/page.tsx
+
 'use client';
 
-// src/app/dashboard/comptable/page.tsx
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
 import {
-  FileText, Clock, CheckCircle, XCircle, CreditCard,
-  DollarSign, TrendingUp, ArrowUp, ArrowDown, Calendar,
-  Loader2, RefreshCw, Eye, Building2, User
+  FileText, Clock, CheckCircle, XCircle, CreditCard, DollarSign,
+  TrendingUp, RefreshCw, Eye, Building2, User, BarChart3,
+  Wallet, Calendar, AlertCircle, ChevronRight, Banknote, Coins,
+  Percent,
 } from 'lucide-react';
+import { AdaptiveStatCard } from './components/AdaptiveStatCard';
 
+// ─── TYPES ──────────────────────────────────────────
 interface Facture {
   id_facture: number;
   numero_facture: string;
@@ -23,149 +26,215 @@ interface Facture {
   total_ht: number;
   montant_paye: number;
   created_at: string;
+  date_creation: string;
   date_echeance: string;
   motif_rejet?: string;
 }
 
-export default function ComptableDashboard() {
-  const router = useRouter();
-  const { getUserName } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    total: 0,
-    en_attente: 0,
-    validees: 0,
-    rejetees: 0,
-    payees: 0,
-    total_ttc: 0,
-    total_paye: 0,
-    total_restant: 0
-  });
-  const [recentFactures, setRecentFactures] = useState<Facture[]>([]);
+// ─── BADGE DE STATUT ────────────────────────────────
+function StatusBadge({ statut }: { statut: string }) {
+  const n = (statut || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const s: Record<string, { c: string; l: string; d: string }> = {
+    EN_ATTENTE: { c: 'bg-amber-50 text-amber-700 border-amber-200', l: 'En attente', d: 'bg-amber-500' },
+    VALIDE: { c: 'bg-emerald-50 text-emerald-700 border-emerald-200', l: 'Validée', d: 'bg-emerald-500' },
+    REJETEE: { c: 'bg-red-50 text-red-700 border-red-200', l: 'Rejetée', d: 'bg-red-500' },
+    PAYEE: { c: 'bg-blue-50 text-blue-700 border-blue-200', l: 'Payée', d: 'bg-blue-500' },
+  };
+  const st = s[n] || { c: 'bg-gray-50 text-gray-700 border-gray-200', l: statut || 'Inconnu', d: 'bg-gray-400' };
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-bold border whitespace-nowrap ${st.c}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${st.d}`} />
+      {st.l}
+    </span>
+  );
+}
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
+// ─── LIGNE DE FACTURE ───────────────────────────────
+function FactureRow({ facture, onView, formatPrice, formatDate }: any) {
+  const paye = facture.montant_paye || 0;
+  const total = facture.total_ttc || facture.total_ht || 0;
+  const reste = Math.max(0, total - paye);
+  const prog = total > 0 ? Math.round((paye / total) * 100) : 0;
+
+  return (
+    <div className="p-3 sm:p-4 hover:bg-gray-50/80 transition-colors border-b border-gray-100 last:border-0">
+      <div className="flex flex-col gap-2 sm:gap-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-bold text-xs sm:text-sm text-gray-800 truncate">
+              {facture.numero_facture}
+            </span>
+            <StatusBadge statut={facture.statut} />
+          </div>
+          <span className="text-[10px] sm:text-xs text-gray-400 whitespace-nowrap">
+            {formatDate(facture.created_at || facture.date_creation)}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] sm:text-xs text-gray-600">
+          <span className="flex items-center gap-1 min-w-0">
+            <Building2 size={12} className="text-gray-400 flex-shrink-0" />
+            <span className="truncate font-medium">
+              {facture.client_nom || 'Client N/A'}
+            </span>
+          </span>
+          <span className="text-gray-300 hidden sm:inline">|</span>
+          <span className="flex items-center gap-1 min-w-0">
+            <User size={12} className="text-gray-400 flex-shrink-0" />
+            <span className="truncate">
+              {facture.commercial_prenom || facture.commercial_nom || 'Commercial N/A'}
+            </span>
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className="font-bold text-sm sm:text-base text-blue-600">
+                {formatPrice(total)}
+              </span>
+              {paye > 0 && (
+                <span className="text-[10px] sm:text-xs text-emerald-600 font-medium">
+                  Payé: {formatPrice(paye)}
+                </span>
+              )}
+              {reste > 0 && (
+                <span className="text-[10px] sm:text-xs text-orange-500 font-medium">
+                  Reste: {formatPrice(reste)}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-1.5">
+              <div className="flex-1 max-w-[120px] sm:max-w-[180px] bg-gray-200 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all duration-500 ${
+                    prog >= 100 ? 'bg-emerald-500' : 'bg-blue-500'
+                  }`}
+                  style={{ width: `${Math.min(prog, 100)}%` }}
+                />
+              </div>
+              <span className="text-[9px] sm:text-[10px] font-bold text-gray-500">
+                {prog}%
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => onView(facture)}
+            className="p-2 sm:p-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg sm:rounded-xl transition-all flex-shrink-0 hover:scale-105"
+            title="Voir détails"
+          >
+            <Eye size={14} className="sm:w-4 sm:h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PAGE PRINCIPALE ────────────────────────────────
+export default function ComptableDashboardPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [stats, setStats] = useState<any>({
+    global: {
+      total_factures: 0, en_attente: 0, validees: 0, rejetees: 0, payees: 0,
+      total_ttc: 0, total_paye: 0, total_restant: 0,
+    },
+    mois: {
+      total_factures: 0, payees: 0, validees: 0, en_attente: 0, rejetees: 0,
+      total_ttc: 0, total_paye: 0, total_restant: 0,
+    },
+    devise: { total_fc: 0, total_usd: 0 },
+  });
+  const [dernieresFactures, setDernieresFactures] = useState<Facture[]>([]);
+
+  // ─── FETCH DATA ─────────────────────────────────────
+  const fetchData = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
     try {
-      const response = await fetch('/api/facture?limit=50', {
-        credentials: 'include'
+      const res = await fetch('/api/comptable/stats', {
+        credentials: 'include',
+        cache: 'no-store',
       });
-      const data = await response.json();
+      const data = await res.json();
 
       if (data.success) {
-        let factures: Facture[] = Array.isArray(data.data) ? data.data : [data.data].filter(Boolean);
-
-        // ✅ Trier par date de création (plus récent d'abord)
-        factures = factures.sort((a: Facture, b: Facture) => {
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        });
-
-        // ✅ Récupérer les 5 dernières factures (48h)
-        const now = new Date();
-        const quaranteHuitHeures = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-        const factures48h = factures.filter((f: Facture) => {
-          const dateCreation = new Date(f.created_at);
-          return dateCreation >= quaranteHuitHeures;
-        });
-
-        setRecentFactures(factures48h.slice(0, 5));
-
-        // Calculer les stats
-        const totalFactures = factures.length;
-        const enAttente = factures.filter((f: Facture) => f.statut === 'EN_ATTENTE').length;
-        const validees = factures.filter((f: Facture) => f.statut === 'VALIDE').length;
-        const rejetees = factures.filter((f: Facture) => f.statut === 'REJETEE').length;
-        const payees = factures.filter((f: Facture) => f.statut === 'PAYEE').length;
-
-        let totalTTC = 0;
-        let totalPaye = 0;
-        factures.forEach((f: Facture) => {
-          const ttc = f.total_ttc || f.total_ht || 0;
-          totalTTC += ttc;
-          totalPaye += f.montant_paye || 0;
-        });
-
         setStats({
-          total: totalFactures,
-          en_attente: enAttente,
-          validees: validees,
-          rejetees: rejetees,
-          payees: payees,
-          total_ttc: totalTTC,
-          total_paye: totalPaye,
-          total_restant: totalTTC - totalPaye
+          global: data.data.global,
+          mois: data.data.mois,
+          devise: data.data.devise,
         });
+        setDernieresFactures(data.data.dernieresFactures || []);
       }
-    } catch (error) {
-      console.error('Erreur:', error);
+    } catch (e) {
+      console.error('❌ Erreur fetch dashboard:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    fetchDashboardData();
   }, []);
 
-  const formatPrice = (price: number) => {
-    if (typeof price !== 'number' || isNaN(price)) return '0 FC';
-    return price.toLocaleString() + ' FC';
-  };
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const formatDate = (dateStr: string) => {
+  useEffect(() => {
+    const h = () => fetchData(true);
+    window.addEventListener('comptable-refresh', h);
+    return () => window.removeEventListener('comptable-refresh', h);
+  }, [fetchData]);
+
+  // ─── FORMATTERS ─────────────────────────────────────
+  const formatPrice = (p: number, c = 'FC') =>
+    (!p || isNaN(p)) ? `0 ${c}` : `${p.toLocaleString('fr-FR')} ${c}`;
+
+  const formatNumber = (n: number) => (n || 0).toLocaleString('fr-FR');
+
+  const formatDate = (d: string) => {
     try {
-      return new Date(dateStr).toLocaleDateString('fr-FR', {
+      return new Date(d).toLocaleDateString('fr-FR', {
         day: '2-digit', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
       });
     } catch {
-      return dateStr;
+      return d;
     }
   };
 
-  const getStatusBadge = (statut: string) => {
-    const normalized = (statut || '')
-      .toUpperCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
-
-    const styles: Record<string, { color: string; label: string }> = {
-      EN_ATTENTE: { color: 'bg-amber-100 text-amber-700', label: '⏳ En attente' },
-      VALIDE: { color: 'bg-green-100 text-green-700', label: '✅ Validée' },
-      REJETEE: { color: 'bg-red-100 text-red-700', label: '❌ Rejetée' },
-      PAYEE: { color: 'bg-blue-100 text-blue-700', label: '💰 Payée' },
-    };
-
-    const style = styles[normalized] || {
-      color: 'bg-gray-100 text-gray-700',
-      label: statut || 'Inconnu',
-    };
-
-    return (
-      <span className={`px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${style.color}`}>
-        {style.label}
-      </span>
-    );
-  };
-
+  // ─── LOADING ────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 px-4">
-        <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-        <p className="mt-4 text-sm sm:text-base text-gray-500 text-center">
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
+          <Wallet className="absolute inset-0 m-auto text-blue-600" size={24} />
+        </div>
+        <p className="mt-4 text-sm sm:text-base text-gray-500 font-medium text-center">
           Chargement du tableau de bord...
         </p>
       </div>
     );
   }
 
+  const g = stats.global;
+  const m = stats.mois;
+  const dv = stats.devise;
+  const taux = g.total_ttc > 0 ? Math.round((g.total_paye / g.total_ttc) * 100) : 0;
+
+  // ─── RENDER ─────────────────────────────────────────
   return (
-    <div className="w-full space-y-4 sm:space-y-6">
-      {/* ============================================
-          EN-TÊTE
-          ============================================ */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
+    <div className="w-full space-y-5 sm:space-y-6 animate-fadeIn">
+
+      {/* ═══════════════════════════════════════════════════
+          TITRE + RAFRAÎCHIR
+          ═══════════════════════════════════════════════════ */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800">
             Tableau de bord
           </h1>
           <p className="text-xs sm:text-sm text-gray-500">
@@ -173,191 +242,383 @@ export default function ComptableDashboard() {
           </p>
         </div>
         <button
-          onClick={fetchDashboardData}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition flex items-center gap-2 w-full sm:w-auto justify-center whitespace-nowrap"
+          onClick={() => fetchData(true)}
+          disabled={refreshing}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold transition-all disabled:opacity-50 shadow-md hover:shadow-lg"
         >
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          Rafraîchir
+          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          <span>Rafraîchir</span>
         </button>
       </div>
 
-      {/* ============================================
-          STATISTIQUES — grille responsive
-          2 cols mobile → 3 cols sm → 6 cols lg
-          ============================================ */}
-      <div className="w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3 lg:gap-4">
-        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-gray-200 shadow-sm min-w-0">
-          <div className="flex items-center justify-between mb-2">
-            <FileText size={16} className="text-gray-500 sm:w-[18px] sm:h-[18px]" />
+      {/* ═══════════════════════════════════════════════════
+          STATISTIQUES GLOBALES (6 KPIs)
+          ═══════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="p-1.5 bg-blue-100 rounded-lg">
+            <BarChart3 size={16} className="text-blue-600" />
           </div>
-          <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 truncate">
-            {stats.total}
-          </p>
-          <p className="text-[10px] sm:text-xs text-gray-500 truncate">Total factures</p>
+          <h2 className="text-sm sm:text-base font-bold text-gray-800">
+            Statistiques globales
+          </h2>
+          <span className="text-[10px] sm:text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            Toutes périodes
+          </span>
         </div>
 
-        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-amber-200 bg-amber-50 shadow-sm min-w-0">
-          <div className="flex items-center justify-between mb-2">
-            <Clock size={16} className="text-amber-600 sm:w-[18px] sm:h-[18px]" />
-          </div>
-          <p className="text-lg sm:text-xl lg:text-2xl font-bold text-amber-600 truncate">
-            {stats.en_attente}
-          </p>
-          <p className="text-[10px] sm:text-xs text-amber-600 truncate">En attente</p>
-        </div>
-
-        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-green-200 bg-green-50 shadow-sm min-w-0">
-          <div className="flex items-center justify-between mb-2">
-            <CheckCircle size={16} className="text-green-600 sm:w-[18px] sm:h-[18px]" />
-          </div>
-          <p className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 truncate">
-            {stats.validees}
-          </p>
-          <p className="text-[10px] sm:text-xs text-green-600 truncate">Validées</p>
-        </div>
-
-        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-red-200 bg-red-50 shadow-sm min-w-0">
-          <div className="flex items-center justify-between mb-2">
-            <XCircle size={16} className="text-red-600 sm:w-[18px] sm:h-[18px]" />
-          </div>
-          <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 truncate">
-            {stats.rejetees}
-          </p>
-          <p className="text-[10px] sm:text-xs text-red-600 truncate">Rejetées</p>
-        </div>
-
-        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-blue-200 bg-blue-50 shadow-sm min-w-0">
-          <div className="flex items-center justify-between mb-2">
-            <CreditCard size={16} className="text-blue-600 sm:w-[18px] sm:h-[18px]" />
-          </div>
-          <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 truncate">
-            {stats.payees}
-          </p>
-          <p className="text-[10px] sm:text-xs text-blue-600 truncate">Payées</p>
-        </div>
-
-        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-purple-200 bg-purple-50 shadow-sm min-w-0 col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between mb-2">
-            <DollarSign size={16} className="text-purple-600 sm:w-[18px] sm:h-[18px]" />
-          </div>
-          <p className="text-sm sm:text-base lg:text-lg font-bold text-purple-600 truncate">
-            {formatPrice(stats.total_ttc)}
-          </p>
-          <p className="text-[10px] sm:text-xs text-purple-600 truncate">Montant total</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-3 sm:gap-4">
+          <AdaptiveStatCard
+            label="Total factures"
+            value={formatNumber(g.total_factures)}
+            icon={<FileText size={20} className="text-slate-600" />}
+            color="text-slate-700"
+            bgColor="bg-white"
+            borderColor="border-slate-200"
+            accentBar="bg-slate-400"
+          />
+          <AdaptiveStatCard
+            label="En attente"
+            value={formatNumber(g.en_attente)}
+            icon={<Clock size={20} className="text-amber-600" />}
+            color="text-amber-600"
+            bgColor="bg-amber-50/60"
+            borderColor="border-amber-200"
+            accentBar="bg-amber-500"
+          />
+          <AdaptiveStatCard
+            label="Validées"
+            value={formatNumber(g.validees)}
+            icon={<CheckCircle size={20} className="text-emerald-600" />}
+            color="text-emerald-600"
+            bgColor="bg-emerald-50/60"
+            borderColor="border-emerald-200"
+            accentBar="bg-emerald-500"
+          />
+          <AdaptiveStatCard
+            label="Rejetées"
+            value={formatNumber(g.rejetees)}
+            icon={<XCircle size={20} className="text-red-600" />}
+            color="text-red-600"
+            bgColor="bg-red-50/60"
+            borderColor="border-red-200"
+            accentBar="bg-red-500"
+          />
+          <AdaptiveStatCard
+            label="Payées"
+            value={formatNumber(g.payees)}
+            icon={<CreditCard size={20} className="text-blue-600" />}
+            color="text-blue-600"
+            bgColor="bg-blue-50/60"
+            borderColor="border-blue-200"
+            accentBar="bg-blue-500"
+          />
+          <AdaptiveStatCard
+            label="Total TTC"
+            value={formatPrice(g.total_ttc)}
+            icon={<DollarSign size={20} className="text-purple-600" />}
+            color="text-purple-600"
+            bgColor="bg-purple-50/60"
+            borderColor="border-purple-200"
+            accentBar="bg-purple-500"
+          />
         </div>
       </div>
 
-      {/* ============================================
-          DÉTAILS FINANCIERS — 1 → 2 → 3 cols
-          ============================================ */}
-      <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        <div className="bg-white rounded-lg sm:rounded-xl p-4 border border-gray-200 shadow-sm min-w-0">
-          <p className="text-xs sm:text-sm text-gray-500">Total encaissé</p>
-          <p className="text-xl sm:text-2xl font-bold text-green-600 truncate">
-            {formatPrice(stats.total_paye)}
-          </p>
-          <p className="text-[10px] sm:text-xs text-gray-400">
-            {stats.payees} factures payées
-          </p>
+      {/* ═══════════════════════════════════════════════════
+          RÉPARTITION PAR DEVISE (FC / USD)
+          ═══════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="p-1.5 bg-emerald-100 rounded-lg">
+            <Coins size={16} className="text-emerald-600" />
+          </div>
+          <h2 className="text-sm sm:text-base font-bold text-gray-800">
+            Répartition par devise
+          </h2>
         </div>
 
-        <div className="bg-white rounded-lg sm:rounded-xl p-4 border border-gray-200 shadow-sm min-w-0">
-          <p className="text-xs sm:text-sm text-gray-500">Reste à encaisser</p>
-          <p className="text-xl sm:text-2xl font-bold text-orange-600 truncate">
-            {formatPrice(stats.total_restant)}
-          </p>
-          <p className="text-[10px] sm:text-xs text-gray-400">
-            {stats.en_attente + stats.validees} factures en attente
-          </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+          {/* FC */}
+          <div className="relative overflow-hidden rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-emerald-50/80 to-white shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-500" />
+            <div className="flex items-center gap-4 p-4 sm:p-5">
+              <div className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-emerald-600 flex items-center justify-center shadow-md">
+                <Banknote size={22} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xs sm:text-sm font-bold text-emerald-800">
+                    Francs Congolais
+                  </p>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-200 text-emerald-800 font-bold">
+                    CDF
+                  </span>
+                  <span className="ml-auto text-xl sm:text-2xl">🇨🇩</span>
+                </div>
+                <p
+                  className="font-black text-emerald-700 leading-tight break-all tabular-nums"
+                  style={{
+                    fontSize: `clamp(0.9rem, ${Math.max(
+                      1.2,
+                      3.2 - String(formatPrice(dv.total_fc, 'FC')).length * 0.12
+                    )}vw, 2rem)`,
+                    overflowWrap: 'anywhere',
+                  }}
+                  title={formatPrice(dv.total_fc, 'FC')}
+                >
+                  {formatPrice(dv.total_fc, 'FC')}
+                </p>
+                <p className="text-[10px] sm:text-xs text-emerald-600 mt-1">
+                  Total encaissé en francs congolais
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* USD */}
+          <div className="relative overflow-hidden rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 via-blue-50/80 to-white shadow-sm hover:shadow-md transition-all duration-300">
+            <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-blue-500" />
+            <div className="flex items-center gap-4 p-4 sm:p-5">
+              <div className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-blue-600 flex items-center justify-center shadow-md">
+                <DollarSign size={22} className="text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-xs sm:text-sm font-bold text-blue-800">
+                    Dollars US
+                  </p>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-200 text-blue-800 font-bold">
+                    USD
+                  </span>
+                  <span className="ml-auto text-xl sm:text-2xl">🇺🇸</span>
+                </div>
+                <p
+                  className="font-black text-blue-700 leading-tight break-all tabular-nums"
+                  style={{
+                    fontSize: `clamp(0.9rem, ${Math.max(
+                      1.2,
+                      3.2 - String(formatPrice(dv.total_usd, '$')).length * 0.12
+                    )}vw, 2rem)`,
+                    overflowWrap: 'anywhere',
+                  }}
+                  title={formatPrice(dv.total_usd, '$')}
+                >
+                  {formatPrice(dv.total_usd, '$')}
+                </p>
+                <p className="text-[10px] sm:text-xs text-blue-600 mt-1">
+                  Total encaissé en dollars américains
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════
+          MOIS EN COURS (4 KPIs)
+          ═══════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="p-1.5 bg-purple-100 rounded-lg">
+            <Calendar size={16} className="text-purple-600" />
+          </div>
+          <h2 className="text-sm sm:text-base font-bold text-gray-800">
+            Mois en cours
+          </h2>
+          <span className="text-[10px] sm:text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            {new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+          </span>
         </div>
 
-        <div className="bg-white rounded-lg sm:rounded-xl p-4 border border-gray-200 shadow-sm min-w-0 sm:col-span-2 lg:col-span-1">
-          <p className="text-xs sm:text-sm text-gray-500">Taux d'encaissement</p>
-          <p className="text-xl sm:text-2xl font-bold text-blue-600">
-            {stats.total_ttc > 0 ? Math.round((stats.total_paye / stats.total_ttc) * 100) : 0}%
-          </p>
-          <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <AdaptiveStatCard
+            label="Factures créées"
+            value={formatNumber(m.total_factures)}
+            icon={<FileText size={20} className="text-purple-600" />}
+            color="text-purple-600"
+            bgColor="bg-purple-50/60"
+            borderColor="border-purple-200"
+            accentBar="bg-purple-500"
+          />
+          <AdaptiveStatCard
+            label="Total TTC mois"
+            value={formatPrice(m.total_ttc)}
+            icon={<TrendingUp size={20} className="text-indigo-600" />}
+            color="text-indigo-600"
+            bgColor="bg-indigo-50/60"
+            borderColor="border-indigo-200"
+            accentBar="bg-indigo-500"
+          />
+          <AdaptiveStatCard
+            label="Validées mois"
+            value={formatNumber(m.validees)}
+            icon={<CheckCircle size={20} className="text-emerald-600" />}
+            color="text-emerald-600"
+            bgColor="bg-emerald-50/60"
+            borderColor="border-emerald-200"
+            accentBar="bg-emerald-500"
+          />
+          <AdaptiveStatCard
+            label="Payées mois"
+            value={formatNumber(m.payees)}
+            icon={<CreditCard size={20} className="text-blue-600" />}
+            color="text-blue-600"
+            bgColor="bg-blue-50/60"
+            borderColor="border-blue-200"
+            accentBar="bg-blue-500"
+          />
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════
+          SYNTHÈSE FINANCIÈRE (4 KPIs + barre de progression)
+          ═══════════════════════════════════════════════════ */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <div className="p-1.5 bg-orange-100 rounded-lg">
+            <Wallet size={16} className="text-orange-600" />
+          </div>
+          <h2 className="text-sm sm:text-base font-bold text-gray-800">
+            Synthèse financière
+          </h2>
+          <span className="text-[10px] sm:text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            4 indicateurs clés
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <AdaptiveStatCard
+            label="Total TTC global"
+            value={formatPrice(g.total_ttc)}
+            icon={<DollarSign size={20} className="text-purple-600" />}
+            color="text-purple-600"
+            bgColor="bg-purple-50/60"
+            borderColor="border-purple-200"
+            accentBar="bg-purple-500"
+          />
+          <AdaptiveStatCard
+            label="Total encaissé"
+            value={formatPrice(g.total_paye)}
+            icon={<TrendingUp size={20} className="text-emerald-600" />}
+            color="text-emerald-600"
+            bgColor="bg-emerald-50/60"
+            borderColor="border-emerald-200"
+            accentBar="bg-emerald-500"
+          />
+          <AdaptiveStatCard
+            label="Reste à encaisser"
+            value={formatPrice(g.total_restant)}
+            icon={<AlertCircle size={20} className="text-orange-600" />}
+            color="text-orange-600"
+            bgColor="bg-orange-50/60"
+            borderColor="border-orange-200"
+            accentBar="bg-orange-500"
+          />
+          <AdaptiveStatCard
+            label="Taux d'encaissement"
+            value={`${taux}%`}
+            icon={<Percent size={20} className="text-blue-600" />}
+            color="text-blue-600"
+            bgColor="bg-blue-50/60"
+            borderColor="border-blue-200"
+            accentBar="bg-blue-500"
+          />
+        </div>
+
+        {/* Barre de progression */}
+        <div className="mt-3 bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs sm:text-sm text-gray-600 font-semibold">
+              Progression de l'encaissement
+            </span>
+            <span className="text-sm sm:text-base font-bold text-blue-600 tabular-nums">
+              {taux}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-              style={{ width: `${stats.total_ttc > 0 ? (stats.total_paye / stats.total_ttc) * 100 : 0}%` }}
+              className="bg-gradient-to-r from-blue-500 to-blue-600 h-2.5 rounded-full transition-all duration-700"
+              style={{ width: `${Math.min(100, taux)}%` }}
             />
           </div>
+          <div className="flex items-center justify-between mt-2 text-[10px] sm:text-xs text-gray-400">
+            <span>
+              Encaissé :{' '}
+              <span className="font-bold text-emerald-600">
+                {formatPrice(g.total_paye)}
+              </span>
+            </span>
+            <span>
+              Objectif :{' '}
+              <span className="font-bold text-purple-600">
+                {formatPrice(g.total_ttc)}
+              </span>
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* ============================================
-          DERNIÈRES FACTURES (48h) — 100% largeur
-          ============================================ */}
-      <div className="w-full bg-white rounded-lg sm:rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-3 sm:p-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <div className="min-w-0">
-            <h3 className="font-bold text-gray-800 text-sm sm:text-base">
-              📋 Dernières factures (48h)
-            </h3>
-            <p className="text-[10px] sm:text-xs text-gray-400">
-              Factures émises dans les dernières 48 heures
-            </p>
+      {/* ═══════════════════════════════════════════════════
+          DERNIÈRES FACTURES (5 plus récentes)
+          ═══════════════════════════════════════════════════ */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="p-3 sm:p-4 lg:p-5 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-blue-100 rounded-lg">
+              <Clock size={16} className="text-blue-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800 text-sm sm:text-base">
+                Dernières factures
+              </h3>
+              <p className="text-[10px] sm:text-xs text-gray-400">
+                Les 5 factures les plus récentes
+              </p>
+            </div>
           </div>
           <button
-            onClick={() => router.push('/dashboard/comptable/factures?status=TOUS')}
-            className="text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 whitespace-nowrap"
+            onClick={() => router.push('/dashboard/comptable/factures')}
+            className="text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1 transition-colors self-end sm:self-auto"
           >
-            Voir tout →
+            Voir tout <ChevronRight size={14} />
           </button>
         </div>
 
-        <div className="divide-y divide-gray-100">
-          {recentFactures.length === 0 ? (
-            <div className="p-6 sm:p-8 text-center text-gray-500 text-sm">
-              Aucune facture récente
+        <div>
+          {dernieresFactures.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 sm:py-16 px-4">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4 text-gray-400">
+                <FileText size={28} />
+              </div>
+              <p className="text-sm sm:text-base text-gray-500 text-center font-medium">
+                Aucune facture récente
+              </p>
             </div>
           ) : (
-            recentFactures.map((facture) => (
-              <div
+            dernieresFactures.map((facture) => (
+              <FactureRow
                 key={facture.id_facture}
-                className="p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between hover:bg-gray-50 transition gap-3"
-              >
-                <div className="flex-1 min-w-0 w-full sm:w-auto">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-xs sm:text-sm break-words">
-                      {facture.numero_facture}
-                    </span>
-                    {getStatusBadge(facture.statut)}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 mt-1 flex-wrap">
-                    <span className="flex items-center gap-1 min-w-0">
-                      <Building2 size={14} className="text-gray-400 flex-shrink-0" />
-                      <span className="truncate">{facture.client_nom || 'Client'}</span>
-                    </span>
-                    <span className="text-gray-300 hidden sm:inline">|</span>
-                    <span className="flex items-center gap-1 min-w-0">
-                      <User size={14} className="text-gray-400 flex-shrink-0" />
-                      <span className="truncate">{facture.commercial_nom || 'Commercial'}</span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 flex-shrink-0 w-full sm:w-auto justify-between sm:justify-end">
-                  <div className="text-right">
-                    <p className="font-bold text-blue-600 text-sm sm:text-base">
-                      {formatPrice(facture.total_ttc || facture.total_ht || 0)}
-                    </p>
-                    <p className="text-[10px] sm:text-xs text-gray-400 whitespace-nowrap">
-                      {formatDate(facture.created_at)}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => router.push(`/dashboard/comptable/factures?status=TOUS`)}
-                    className="p-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition flex-shrink-0"
-                  >
-                    <Eye size={16} />
-                  </button>
-                </div>
-              </div>
+                facture={facture}
+                onView={() => router.push('/dashboard/comptable/factures')}
+                formatPrice={formatPrice}
+                formatDate={formatDate}
+              />
             ))
           )}
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════
+          STYLES
+          ═══════════════════════════════════════════════════ */}
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+      `}</style>
     </div>
   );
 }

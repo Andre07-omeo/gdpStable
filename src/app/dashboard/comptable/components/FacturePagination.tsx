@@ -1,8 +1,8 @@
+// src/app/dashboard/comptable/components/FacturePagination.tsx
+
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-// src/app/dashboard/comptable/components/FacturePagination.tsximport React from 'react';
+import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface FacturePaginationProps {
@@ -12,34 +12,87 @@ interface FacturePaginationProps {
   onPageChange: (page: number) => void;
 }
 
-export function FacturePagination({ 
-  currentPage, 
-  totalPages, 
-  totalItems, 
-  onPageChange 
+export function FacturePagination({
+  currentPage,
+  totalPages,
+  totalItems,
+  onPageChange,
 }: FacturePaginationProps) {
-  if (totalPages <= 1) return null;
+  if (totalPages <= 1) {
+    return (
+      <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-gray-200">
+        <span className="text-xs sm:text-sm text-gray-500 font-medium">
+          {totalItems} facture(s)
+        </span>
+      </div>
+    );
+  }
+
+  // Pages visibles autour de la page actuelle
+  const pages: number[] = [];
+  const start = Math.max(1, currentPage - 2);
+  const end = Math.min(totalPages, currentPage + 2);
+  for (let i = start; i <= end; i++) pages.push(i);
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-gray-200 flex-shrink-0">
-      <div className="text-sm text-gray-500">
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-white rounded-xl border border-gray-200">
+      <span className="text-xs sm:text-sm text-gray-500 font-medium">
         {totalItems} facture(s)
-      </div>
-      <div className="flex gap-2 items-center">
+      </span>
+
+      <div className="flex items-center gap-1.5">
         <button
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage === 1}
-          className="px-3 py-1 rounded-lg border border-gray-300 text-sm disabled:opacity-50 hover:bg-gray-50 transition"
+          className="p-2 rounded-lg border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition"
         >
           <ChevronLeft size={16} />
         </button>
-        <span className="px-3 py-1 text-sm font-medium">
-          {currentPage} / {totalPages}
-        </span>
+
+        {start > 1 && (
+          <>
+            <button
+              onClick={() => onPageChange(1)}
+              className="w-8 h-8 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100"
+            >
+              1
+            </button>
+            {start > 2 && <span className="text-gray-400 text-xs">…</span>}
+          </>
+        )}
+
+        {pages.map((p) => (
+          <button
+            key={p}
+            onClick={() => onPageChange(p)}
+            className={`
+              w-8 h-8 rounded-lg text-xs font-bold transition
+              ${p === currentPage
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-gray-600 hover:bg-gray-100'
+              }
+            `}
+          >
+            {p}
+          </button>
+        ))}
+
+        {end < totalPages && (
+          <>
+            {end < totalPages - 1 && <span className="text-gray-400 text-xs">…</span>}
+            <button
+              onClick={() => onPageChange(totalPages)}
+              className="w-8 h-8 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100"
+            >
+              {totalPages}
+            </button>
+          </>
+        )}
+
         <button
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage === totalPages}
-          className="px-3 py-1 rounded-lg border border-gray-300 text-sm disabled:opacity-50 hover:bg-gray-50 transition"
+          className="p-2 rounded-lg border border-gray-300 text-gray-600 disabled:opacity-40 hover:bg-gray-50 transition"
         >
           <ChevronRight size={16} />
         </button>

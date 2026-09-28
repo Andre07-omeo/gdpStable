@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/comptable/components/FactureValidationModal.tsximport React, { useState, useEffect } from 'react';
+// src/app/dashboard/comptable/components/FactureValidationModal.tsx
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Check,
