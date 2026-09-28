@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v2.0.0';
+const CACHE_VERSION = 'v2.1.0';
 const CACHE_NAME = `gestion-panneaux-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -7,6 +7,36 @@ const PRECACHE_URLS = [
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
 ];
+
+/* ================================
+   DÉTECTION ENVIRONNEMENT
+================================ */
+
+// Détecte si on est dans un contexte où le cache est utilisable.
+// En navigation privée (Firefox, Safari), caches peut exister mais échouer.
+let CACHE_AVAILABLE = true;
+
+async function checkCacheAvailability() {
+  try {
+    if (!('caches' in self)) {
+      CACHE_AVAILABLE = false;
+      return false;
+    }
+    // Test réel : on ouvre et on ferme un cache temporaire.
+    const testCache = await caches.open('__test__');
+    await testCache.put('/__test__', new Response('ok'));
+    await caches.delete('__test__');
+    CACHE_AVAILABLE = true;
+    return true;
+  } catch {
+    CACHE_AVAILABLE = false;
+    return false;
+  }
+}
+
+/* ================================
+   HELPERS
+================================ */
 
 const isStaticAsset = (pathname) => {
   return (
@@ -17,15 +47,78 @@ const isStaticAsset = (pathname) => {
   );
 };
 
-const isApiRequest = (pathname) => {
-  return pathname.startsWith('/api/');
-};
+const isApiRequest = (pathname) => pathname.startsWith('/api/');
 
-const isNavigationRequest = (request) => {
-  return request.mode === 'navigate';
-};
+const isUploadRequest = (pathname) => pathname.startsWith('/uploads/');
+
+const isNavigationRequest = (request) => request.mode === 'navigate';
+
+const isRangeRequest = (request) =>
+  request.headers.has('range') || request.headers.has('Range');
+
+const isSameOrigin = (url) => url.origin === self.location.origin;
+
+/* ================================
+   SMART ROUTING (petite recherche)
+================================ */
+
+/**
+ * Analyse la requête et retourne la stratégie à appliquer.
+ * Cette "petite recherche" permet de router intelligemment
+ * chaque requête sans erreur, même en mode dégradé.
+ */
+function resolveStrategy(request, url) {
+  // 1. Requêtes non-GET → laisser passer
+  if (request.method !== 'GET') return 'passthrough';
+
+  // 2. Cross-origin → laisser passer
+  if (!isSameOrigin(url)) return 'passthrough';
+
+  // 3. API → réseau uniquement
+  if (isApiRequest(url.pathname)) return 'passthrough';
+
+  // 4. Range requests (vidéos, PDF) → réseau uniquement
+  if (isRangeRequest(request)) return 'passthrough';
+
+  // 5. Navigation HTML → network-first
+  if (isNavigationRequest(request)) return 'navigation';
+
+  // 6. Uploads → network-first sans cache
+  if (isUploadRequest(url.pathname)) return 'network-only';
+
+  // 7. Assets statiques → cache-first
+  if (isStaticAsset(url.pathname)) return 'static';
+
+  // 8. Par défaut → network-first avec fallback cache
+  return 'network-first';
+}
+
+/* ================================
+   CACHE HELPERS
+================================ */
+
+async function safeCacheOpen() {
+  if (!CACHE_AVAILABLE) return null;
+  try {
+    return await caches.open(CACHE_NAME);
+  } catch {
+    CACHE_AVAILABLE = false;
+    return null;
+  }
+}
+
+async function safeCacheMatch(request) {
+  if (!CACHE_AVAILABLE) return null;
+  try {
+    return await caches.match(request);
+  } catch {
+    return null;
+  }
+}
 
 async function saveResponse(requestOrUrl, response) {
+  if (!CACHE_AVAILABLE) return;
+
   if (
     !response ||
     !response.ok ||
@@ -35,52 +128,22 @@ async function saveResponse(requestOrUrl, response) {
     return;
   }
 
-  const cache = await caches.open(CACHE_NAME);
-  await cache.put(requestOrUrl, response.clone());
+  try {
+    const cache = await safeCacheOpen();
+    if (!cache) return;
+    await cache.put(requestOrUrl, response.clone());
+  } catch {
+    // Silencieux : en privé, put peut échouer.
+  }
 }
 
-async function networkFirstNavigation(request) {
-  try {
-    // Important :
-    // on force "follow" pour éviter le problème des réponses redirigées.
-    const networkRequest = new Request(request, {
-      redirect: 'follow',
-      cache: 'no-store',
-    });
+/* ================================
+   FALLBACK HTML
+================================ */
 
-    const response = await fetch(networkRequest);
-
-    // Ne jamais cacher une redirection comme document.
-    // Si / redirige vers /login, on évite donc de mettre /login
-    // sous la clé "/".
-    if (response.ok && !response.redirected) {
-      await saveResponse(request, response);
-    }
-
-    return response;
-  } catch (error) {
-    const cached = await caches.match(request);
-
-    if (cached) {
-      return cached;
-    }
-
-    // Si la navigation hors ligne porte sur "/", utiliser
-    // la page /login déjà précachée.
-    const url = new URL(request.url);
-
-    if (url.pathname === '/') {
-      const loginCache = await caches.match(
-        new URL('/login', self.location.origin).toString()
-      );
-
-      if (loginCache) {
-        return loginCache;
-      }
-    }
-
-    return new Response(
-      `<!doctype html>
+function offlineHTML(message = 'Connexion momentanément indisponible') {
+  return new Response(
+    `<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
@@ -95,36 +158,98 @@ async function networkFirstNavigation(request) {
       padding:40px 20px;
       text-align:center;
       line-height:1.6;
+      color:#0f172a;
+    }
+    .card{
+      background:#f8fafc;
+      border-radius:12px;
+      padding:24px;
+      box-shadow:0 2px 8px rgba(0,0,0,.05);
+    }
+    h1{font-size:1.4rem}
+    button{
+      margin-top:16px;
+      padding:10px 18px;
+      border:none;
+      border-radius:8px;
+      background:#0f172a;
+      color:#fff;
+      font-size:1rem;
+      cursor:pointer;
     }
   </style>
 </head>
 <body>
-  <h1>Connexion momentanément indisponible</h1>
-  <p>Vérifiez votre connexion Internet puis rechargez la page.</p>
+  <div class="card">
+    <h1>${message}</h1>
+    <p>Vérifiez votre connexion Internet puis rechargez la page.</p>
+    <button onclick="location.reload()">Recharger</button>
+  </div>
 </body>
 </html>`,
-      {
-        status: 503,
-        headers: {
-          'Content-Type': 'text/html; charset=UTF-8',
-          'Cache-Control': 'no-store',
-        },
+    {
+      status: 503,
+      headers: {
+        'Content-Type': 'text/html; charset=UTF-8',
+        'Cache-Control': 'no-store',
+      },
+    }
+  );
+}
+
+/* ================================
+   STRATÉGIES
+================================ */
+
+async function networkFirstNavigation(request) {
+  try {
+    const networkRequest = new Request(request, {
+      redirect: 'follow',
+      cache: 'no-store',
+    });
+
+    const response = await fetch(networkRequest);
+
+    if (response.ok && !response.redirected) {
+      await saveResponse(request, response);
+    }
+
+    return response;
+  } catch {
+    // Fallback 1 : cache direct
+    const cached = await safeCacheMatch(request);
+    if (cached) return cached;
+
+    // Fallback 2 : si on navigue vers "/", utiliser /login précaché
+    try {
+      const url = new URL(request.url);
+      if (url.pathname === '/') {
+        const loginCache = await safeCacheMatch(
+          new URL('/login', self.location.origin).toString()
+        );
+        if (loginCache) return loginCache;
       }
-    );
+    } catch {
+      // ignore
+    }
+
+    // Fallback 3 : page HTML minimale
+    return offlineHTML();
   }
 }
 
 async function cacheFirstStatic(request, event) {
-  const cached = await caches.match(request);
+  const cached = await safeCacheMatch(request);
 
   if (cached) {
-    // Mise à jour en arrière-plan.
-    event.waitUntil(
-      fetch(request)
-        .then((response) => saveResponse(request, response))
-        .catch(() => {})
-    );
-
+    // Mise à jour en arrière-plan (si possible)
+    if (CACHE_AVAILABLE) {
+      event.waitUntil(
+        fetch(request)
+          .then((response) => saveResponse(request, response))
+          .catch(() => {})
+      );
+    }
     return cached;
   }
 
@@ -132,14 +257,18 @@ async function cacheFirstStatic(request, event) {
     const response = await fetch(request);
 
     if (response.ok && !response.redirected) {
-      event.waitUntil(saveResponse(request, response));
+      if (CACHE_AVAILABLE) {
+        event.waitUntil(saveResponse(request, response));
+      }
     }
 
     return response;
   } catch {
+    // Fallback : réponse vide mais valide
     return new Response('', {
       status: 503,
       statusText: 'Offline',
+      headers: { 'Content-Type': 'text/plain' },
     });
   }
 }
@@ -153,17 +282,34 @@ async function networkFirst(request) {
       })
     );
 
+    if (response.ok && !response.redirected) {
+      await saveResponse(request, response);
+    }
+
     return response;
   } catch {
-    const cached = await caches.match(request);
+    const cached = await safeCacheMatch(request);
 
     return (
       cached ||
       new Response('', {
         status: 503,
         statusText: 'Offline',
+        headers: { 'Content-Type': 'text/plain' },
       })
     );
+  }
+}
+
+async function networkOnly(request) {
+  try {
+    return await fetch(request);
+  } catch {
+    return new Response('', {
+      status: 503,
+      statusText: 'Offline',
+      headers: { 'Content-Type': 'text/plain' },
+    });
   }
 }
 
@@ -173,13 +319,32 @@ async function networkFirst(request) {
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-  );
+    (async () => {
+      const available = await checkCacheAvailability();
 
-  // On conserve ton mécanisme de mise à jour contrôlée.
-  // Le client peut envoyer SKIP_WAITING quand il le souhaite.
+      if (!available) {
+        // En navigation privée : on n'échoue pas, on skip le precache.
+        console.warn(
+          '[SW] Cache indisponible (navigation privée ?). Precache ignoré.'
+        );
+        return;
+      }
+
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        // addAll échoue si UNE seule URL échoue → on utilise add() individuel
+        await Promise.all(
+          PRECACHE_URLS.map((url) =>
+            cache.add(url).catch((err) => {
+              console.warn('[SW] Precache échoué pour', url, err);
+            })
+          )
+        );
+      } catch (err) {
+        console.warn('[SW] Precache global échoué', err);
+      }
+    })()
+  );
 });
 
 /* ================================
@@ -188,16 +353,41 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => key !== CACHE_NAME)
-            .map((key) => caches.delete(key))
-        )
-      )
-      .then(() => self.clients.claim())
+    (async () => {
+      // Nettoyage des anciens caches (si possible)
+      if (CACHE_AVAILABLE) {
+        try {
+          const keys = await caches.keys();
+          await Promise.all(
+            keys
+              .filter((key) => key !== CACHE_NAME)
+              .map((key) => caches.delete(key))
+          );
+        } catch {
+          // ignore
+        }
+      }
+
+      // Prise de contrôle
+      try {
+        await self.clients.claim();
+      } catch {
+        // ignore
+      }
+
+      // Notification de version
+      try {
+        const clients = await self.clients.matchAll();
+        clients.forEach((client) => {
+          client.postMessage({
+            type: 'NEW_VERSION_AVAILABLE',
+            version: CACHE_VERSION,
+          });
+        });
+      } catch {
+        // ignore
+      }
+    })()
   );
 });
 
@@ -207,37 +397,32 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-
-  if (request.method !== 'GET') {
-    return;
-  }
-
   const url = new URL(request.url);
 
-  // Seulement les ressources du domaine.
-  if (url.origin !== self.location.origin) {
-    return;
-  }
+  const strategy = resolveStrategy(request, url);
 
-  // Les API/authentification ne doivent pas être mises en cache.
-  if (isApiRequest(url.pathname)) {
-    return;
-  }
+  switch (strategy) {
+    case 'navigation':
+      event.respondWith(networkFirstNavigation(request));
+      break;
 
-  // Les navigations HTML doivent privilégier le réseau.
-  if (isNavigationRequest(request)) {
-    event.respondWith(networkFirstNavigation(request));
-    return;
-  }
+    case 'static':
+      event.respondWith(cacheFirstStatic(request, event));
+      break;
 
-  // Ressources statiques : cache-first + mise à jour en arrière-plan.
-  if (isStaticAsset(url.pathname) && !url.pathname.startsWith('/uploads/')) {
-    event.respondWith(cacheFirstStatic(request, event));
-    return;
-  }
+    case 'network-only':
+      event.respondWith(networkOnly(request));
+      break;
 
-  // Autres ressources : réseau prioritaire.
-  event.respondWith(networkFirst(request));
+    case 'network-first':
+      event.respondWith(networkFirst(request));
+      break;
+
+    case 'passthrough':
+    default:
+      // On ne fait rien : le navigateur gère nativement.
+      break;
+  }
 });
 
 /* ================================
@@ -255,19 +440,4 @@ self.addEventListener('message', (event) => {
       version: CACHE_VERSION,
     });
   }
-});
-
-/* ================================
-   NOTIFICATION DE VERSION
-================================ */
-
-self.addEventListener('activate', () => {
-  self.clients.matchAll().then((clients) => {
-    clients.forEach((client) => {
-      client.postMessage({
-        type: 'NEW_VERSION_AVAILABLE',
-        version: CACHE_VERSION,
-      });
-    });
-  });
 });
