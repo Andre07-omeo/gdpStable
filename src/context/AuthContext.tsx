@@ -1,7 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 // src/context/AuthContext.tsx
 import {
   createContext,
@@ -93,6 +91,34 @@ function normalizeUser(raw: any): User {
   };
 }
 
+/** ✅ Accès sécurisé à localStorage (navigation privée Safari) */
+function safeGetItem(key: string): string | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(key, value);
+  } catch {
+    // Navigation privée : silencieux
+  }
+}
+
+function safeRemoveItem(key: string): void {
+  try {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(key);
+  } catch {
+    // Navigation privée : silencieux
+  }
+}
+
 // ============================================
 // PROVIDER
 // ============================================
@@ -105,40 +131,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Persistance localStorage
   // --------------------------------------------
   const saveUserToStorage = useCallback((userData: User) => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(userData));
-      localStorage.setItem(STORAGE_KEYS.email, userData.email || '');
-      localStorage.setItem(STORAGE_KEYS.profil, userData.profil || '');
-      localStorage.setItem(STORAGE_KEYS.prenom, userData.prenom || '');
-      localStorage.setItem(STORAGE_KEYS.nom, userData.nom || '');
+    safeSetItem(STORAGE_KEYS.user, JSON.stringify(userData));
+    safeSetItem(STORAGE_KEYS.email, userData.email || '');
+    safeSetItem(STORAGE_KEYS.profil, userData.profil || '');
+    safeSetItem(STORAGE_KEYS.prenom, userData.prenom || '');
+    safeSetItem(STORAGE_KEYS.nom, userData.nom || '');
 
-      const nomComplet = `${userData.prenom || ''} ${userData.nom || ''}`.trim();
-      localStorage.setItem(
-        STORAGE_KEYS.nomComplet,
-        nomComplet || 'Commercial'
-      );
-    } catch (err) {
-      console.error('❌ Erreur sauvegarde localStorage:', err);
-    }
+    const nomComplet = `${userData.prenom || ''} ${userData.nom || ''}`.trim();
+    safeSetItem(STORAGE_KEYS.nomComplet, nomComplet || 'Commercial');
   }, []);
 
   const clearUserStorage = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      Object.values(STORAGE_KEYS).forEach((key) =>
-        localStorage.removeItem(key)
-      );
-    } catch (err) {
-      console.error('❌ Erreur nettoyage localStorage:', err);
-    }
+    Object.values(STORAGE_KEYS).forEach((key) => safeRemoveItem(key));
   }, []);
 
   const loadUserFromStorage = useCallback((): User | null => {
-    if (typeof window === 'undefined') return null;
+    const raw = safeGetItem(STORAGE_KEYS.user);
+    if (!raw) return null;
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS.user);
-      if (!raw) return null;
       return JSON.parse(raw) as User;
     } catch {
       return null;
@@ -149,20 +159,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Helpers exposés
   // --------------------------------------------
   const getUserName = useCallback((): string => {
-    if (typeof window !== 'undefined') {
-      const nomComplet = localStorage.getItem(STORAGE_KEYS.nomComplet);
-      if (nomComplet && nomComplet.trim() !== '') return nomComplet;
-    }
+    const nomComplet = safeGetItem(STORAGE_KEYS.nomComplet);
+    if (nomComplet && nomComplet.trim() !== '') return nomComplet;
     if (user?.prenom && user?.nom) return `${user.prenom} ${user.nom}`.trim();
     if (user?.nom) return user.nom;
     return 'Commercial';
   }, [user]);
 
   const getUserEmail = useCallback((): string => {
-    if (typeof window !== 'undefined') {
-      const email = localStorage.getItem(STORAGE_KEYS.email);
-      if (email) return email;
-    }
+    const email = safeGetItem(STORAGE_KEYS.email);
+    if (email) return email;
     return user?.email || '';
   }, [user]);
 
@@ -196,10 +202,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const data = await res.json();
-
-        // ✅ CORRECTION MAJEURE :
-        // La route /api/auth/me renvoie l'utilisateur À PLAT
-        // (pas { user: {...} }). On accepte les deux au cas où.
         const rawUser = data?.user ?? data;
 
         if (rawUser && (rawUser.id || rawUser.id_user || rawUser.email)) {
@@ -216,7 +218,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         console.error('❌ Erreur restauration session:', err);
         // On garde le cache localStorage si présent — évite un faux logout
-        // (ex: panne réseau temporaire)
         if (!cached) {
           setUser(null);
         }
@@ -254,7 +255,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           };
         }
 
-        // ✅ Accepter aussi bien { user: {...} } que l'user à plat
         const rawUser = data?.user ?? data;
 
         if (rawUser && (rawUser.id || rawUser.id_user || rawUser.email)) {

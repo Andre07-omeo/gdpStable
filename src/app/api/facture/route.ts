@@ -32,53 +32,50 @@ function getUserIdFromToken(request: NextRequest): number | null {
   }
 }
 
-// ✅ NOUVEAU : Normaliser le type de document (évite "Data truncated")
+// ✅ Normaliser le type de document
 function normaliserTypeDocument(valeur: any): string {
   const val = String(valeur || 'PROFORMA').trim().toUpperCase();
-
-  // ⚠️ Adapter cette liste si votre ENUM en prod est différent
-  const typesValides = [
-    'FACTURE',
-    'PROFORMA',
-    'DEVIS',
-    'AVOIR',
-    'COMMANDE',
-  ];
-
-  if (typesValides.includes(val)) {
-    return val;
-  }
-
-  console.warn(
-    `⚠️ type_document invalide reçu: "${valeur}", remplacé par "PROFORMA"`
-  );
+  const typesValides = ['FACTURE', 'PROFORMA', 'DEVIS', 'AVOIR', 'COMMANDE'];
+  if (typesValides.includes(val)) return val;
+  console.warn(`⚠️ type_document invalide: "${valeur}", remplacé par "PROFORMA"`);
   return 'PROFORMA';
 }
 
-// ✅ NOUVEAU : Normaliser le statut
-function normaliserStatut(valeur: any, defaut = 'EN_ATTENTE'): string {
-  const val = String(valeur || defaut).trim().toUpperCase();
-
-  const statutsValides = [
-    'EN_ATTENTE',
-    'VALIDE',
-    'PAYEE',
-    'REJETEE',
-    'ANNULEE',
-    'BROUILLON',
-  ];
-
-  if (statutsValides.includes(val)) {
-    return val;
-  }
-
-  console.warn(
-    `⚠️ statut invalide reçu: "${valeur}", remplacé par "${defaut}"`
-  );
-  return defaut;
+// ✅ Normaliser la devise (CDF ou USD uniquement)
+function normaliserDevise(valeur: any): 'CDF' | 'USD' {
+  const val = String(valeur || 'CDF').trim().toUpperCase();
+  if (val === 'USD') return 'USD';
+  return 'CDF';
 }
 
-// ✅ Générer un numéro de facture / proformat
+// ✅ Mapping INT pour le statut
+const STATUTS_INT: Record<string, number> = {
+  EN_ATTENTE: 1,
+  VALIDE: 2,
+  PAYEE: 3,
+  REJETEE: 4,
+  ANNULEE: 5,
+  BROUILLON: 0,
+};
+
+function normaliserStatut(valeur: any, defaut = 'EN_ATTENTE'): number {
+  const val = String(valeur || defaut).trim().toUpperCase();
+  return STATUTS_INT[val] ?? STATUTS_INT[defaut] ?? 1;
+}
+
+// ✅ Vérifier si un numéro de facture existe déjà en BD
+async function numeroExiste(
+  connection: any,
+  numero: string
+): Promise<boolean> {
+  const [rows] = await connection.query(
+    `SELECT COUNT(*) as count FROM facture WHERE numero_facture = ?`,
+    [numero]
+  );
+  return (rows as any[])[0].count > 0;
+}
+
+// ✅ Générer un numéro de facture / proformat (MAX + 1) — fallback serveur
 async function generateNumeroFacture(prefix: string = 'PRO'): Promise<string> {
   const today = new Date();
   const year = today.getFullYear();
@@ -88,19 +85,34 @@ async function generateNumeroFacture(prefix: string = 'PRO'): Promise<string> {
 
   const connection = await pool.getConnection();
   try {
+    // ✅ Chercher le PLUS GRAND numéro existant (MAX + 1)
     const [rows] = await connection.query(
-      `SELECT COUNT(*) as count FROM facture WHERE numero_facture LIKE ?`,
-      [`${prefixFull}%`]
+      `SELECT numero_facture 
+       FROM facture 
+       WHERE numero_facture LIKE ? 
+       ORDER BY numero_facture DESC 
+       LIMIT 1`,
+      [`${prefixFull}-%`]
     );
-    const count = (rows as any[])[0].count + 1;
-    return `${prefixFull}-${String(count).padStart(4, '0')}`;
+
+    let prochainNumero = 1;
+
+    if ((rows as any[]).length > 0) {
+      const dernierNumero = (rows as any[])[0].numero_facture as string;
+      const match = dernierNumero.match(/-(\d+)$/);
+      if (match) {
+        prochainNumero = parseInt(match[1], 10) + 1;
+      }
+    }
+
+    return `${prefixFull}-${String(prochainNumero).padStart(4, '0')}`;
   } finally {
     connection.release();
   }
 }
 
 // ============================================
-// POST - Créer une facture / proformat
+// POST - Créer une facture / proformat (MULTI-DEVISE)
 // ============================================
 export async function POST(request: NextRequest) {
   const connection = await pool.getConnection();
@@ -115,20 +127,22 @@ export async function POST(request: NextRequest) {
     console.log('📥 Données reçues:', body);
 
     const {
+      // ✅ NOUVEAU : numéro envoyé par le frontend
+      numero_facture: numero_facture_front,
       client_nom,
       client_id,
       commercial_nom,
       commercial_email,
       commercial_id,
       reservations,
-      total,
-      currency = 'CDF',
       notes = '',
-      conditions_paiement = 'Paiement à 30 jours',
+      conditions_paiement = 'Paiement à 3 jours',
       type_document = 'PROFORMA',
     } = body;
 
-    // ✅ Vérifications
+    // ✅ Récupérer le numéro fourni par le front
+    const numeroFourni: string = (numero_facture_front || '').trim();
+
     if (!reservations || reservations.length === 0) {
       await connection.rollback();
       connection.release();
@@ -138,6 +152,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ✅ Calculer les totaux SÉPARÉMENT par devise (aucune conversion)
+    let totalHTCDF = 0;
+    let totalHTUSD = 0;
+
+    for (const r of reservations) {
+      const prix = Number(r.prix_saisi) || 0;
+      const devise = normaliserDevise(r.devise);
+      if (devise === 'USD') {
+        totalHTUSD += prix;
+      } else {
+        totalHTCDF += prix;
+      }
+    }
+
+    const tauxTVA = 0.16;
+    const totalTTCCDF = Number((totalHTCDF * (1 + tauxTVA)).toFixed(2));
+    const totalTTCUSD = Number((totalHTUSD * (1 + tauxTVA)).toFixed(2));
+
+    // ✅ Devises utilisées (pour info)
+    const devisesUtilisees = [
+      ...new Set(reservations.map((r: any) => normaliserDevise(r.devise))),
+    ].sort();
+    const devisePrincipale: 'CDF' | 'USD' = devisesUtilisees.includes('CDF')
+      ? 'CDF'
+      : 'USD';
+    const devisesUtiliseesStr = devisesUtilisees.join(',');
+
+    console.log('💰 Totaux par devise:', {
+      totalHTCDF,
+      totalHTUSD,
+      totalTTCCDF,
+      totalTTCUSD,
+      devisesUtilisees: devisesUtiliseesStr,
+    });
+
     // ✅ Récupérer ou créer le client
     let id_client = client_id;
     if (!id_client && client_nom) {
@@ -145,40 +194,29 @@ export async function POST(request: NextRequest) {
         'SELECT id_client FROM client WHERE raison_sociale = ? LIMIT 1',
         [client_nom]
       );
-
       if ((clientResult as any[]).length > 0) {
         id_client = (clientResult as any[])[0].id_client;
-        console.log(`✅ Client trouvé: ${client_nom} (ID: ${id_client})`);
       } else {
         const [insertClient] = await connection.query(
           'INSERT INTO client (raison_sociale, created_at) VALUES (?, NOW())',
           [client_nom]
         );
         id_client = (insertClient as any).insertId;
-        console.log(`✅ Nouveau client créé: ${client_nom} (ID: ${id_client})`);
       }
     }
 
     // ✅ Récupérer l'ID du commercial
     let id_commercial = commercial_id;
-
     if (!id_commercial && commercial_email) {
       const [commercialResult] = await connection.query(
         'SELECT id_user FROM user WHERE email = ? LIMIT 1',
         [commercial_email]
       );
-
       if ((commercialResult as any[]).length > 0) {
         id_commercial = (commercialResult as any[])[0].id_user;
-        console.log(`✅ Commercial trouvé: ${commercial_email} (ID: ${id_commercial})`);
       }
     }
-
-    if (!id_commercial && userId) {
-      id_commercial = userId;
-      console.log(`✅ Utilisation utilisateur connecté (ID: ${id_commercial})`);
-    }
-
+    if (!id_commercial && userId) id_commercial = userId;
     if (!id_commercial && reservations.length > 0) {
       const firstReservation = reservations[0];
       if (firstReservation.id_reservation) {
@@ -191,34 +229,57 @@ export async function POST(request: NextRequest) {
           (reservationResult as any[])[0].id_commercial
         ) {
           id_commercial = (reservationResult as any[])[0].id_commercial;
-          console.log(`✅ Commercial récupéré depuis réservation (ID: ${id_commercial})`);
         }
       }
     }
 
-    // ✅ Générer le numéro de facture
-    const numeroFacture = await generateNumeroFacture('PRO');
+    // ============================================================
+    // ✅ DÉTERMINER LE NUMÉRO FINAL
+    //    Priorité : numéro du frontend → sinon génération serveur
+    //    Vérification d'unicité pour éviter toute collision
+    // ============================================================
+    let numeroFacture: string = numeroFourni;
 
-    // ✅ Calculer les totaux
-    let totalHT = total || 0;
-    const tauxTVA = 0.16;
-    const totalTTC = totalHT * (1 + tauxTVA);
+    if (!numeroFacture) {
+      // Aucun numéro fourni → génération serveur
+      numeroFacture = await generateNumeroFacture('PRO');
+      console.log('🔢 Numéro généré côté serveur (fallback):', numeroFacture);
+    } else {
+      console.log('🔢 Numéro fourni par le frontend:', numeroFacture);
 
-    // ✅ Normaliser AVANT insertion
+      // Vérification d'unicité en BD
+      const existe = await numeroExiste(connection, numeroFacture);
+      if (existe) {
+        const nouveau = await generateNumeroFacture('PRO');
+        console.warn(
+          `⚠️ Numéro "${numeroFacture}" déjà utilisé en BD. Remplacement par "${nouveau}".`
+        );
+        numeroFacture = nouveau;
+      }
+    }
+
+    console.log('✅ Numéro final utilisé:', numeroFacture);
+
     const typeDocumentFinal = normaliserTypeDocument(type_document);
     const statutFinal = normaliserStatut('EN_ATTENTE');
 
-    console.log('💰 Totaux calculés:', {
-      totalHT,
-      totalTTC,
+    // ⚠️ Colonnes legacy total_ht / total_ttc = somme des deux devises (info globale)
+    const totalHTGlobal = Number((totalHTCDF + totalHTUSD).toFixed(2));
+    const totalTTCGlobal = Number((totalTTCCDF + totalTTCUSD).toFixed(2));
+
+    console.log('💰 Insertion facture:', {
       numeroFacture,
-      id_client,
-      id_commercial,
-      type_document: typeDocumentFinal,
-      statut: statutFinal,
+      totalHTGlobal,
+      totalTTCGlobal,
+      totalHTCDF,
+      totalHTUSD,
+      totalTTCCDF,
+      totalTTCUSD,
+      devisePrincipale,
+      devisesUtiliseesStr,
     });
 
-    // ✅ Insérer la facture
+    // ✅ Insertion de la facture AVEC le numéro exact
     const [insertResult] = await connection.query(
       `INSERT INTO facture (
         numero_facture,
@@ -229,35 +290,59 @@ export async function POST(request: NextRequest) {
         date_echeance,
         type_document,
         statut,
+        mode_paiement,
+        nombre_tranches,
         total_ht,
         total_ttc,
+        devise,
+        total_ht_cdf,
+        total_ht_usd,
+        total_ttc_cdf,
+        total_ttc_usd,
+        devises_utilisees,
         remise,
         montant_remise,
         notes,
         conditions_paiement,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, NOW(), CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), ?, ?, ?, ?, 0, 0, ?, ?, NOW(), NOW())`,
+      ) VALUES (
+        ?, ?, ?, NOW(), CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY),
+        ?, ?, 'comptant', 1,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?,
+        0, 0,
+        ?, ?, NOW(), NOW()
+      )`,
       [
-        numeroFacture,
+        numeroFacture, // ✅ NUMÉRO ENVOYÉ PAR LE FRONTEND (ou fallback)
         id_client,
         id_commercial,
         typeDocumentFinal,
         statutFinal,
-        totalHT,
-        totalTTC,
+        totalHTGlobal,
+        totalTTCGlobal,
+        devisePrincipale,
+        totalHTCDF,
+        totalHTUSD,
+        totalTTCCDF,
+        totalTTCUSD,
+        devisesUtiliseesStr,
         notes || null,
-        conditions_paiement || 'Paiement à 30 jours',
+        conditions_paiement || 'Paiement à 3 jours',
       ]
     );
 
     const idFacture = (insertResult as any).insertId;
     console.log('✅ Facture créée avec ID:', idFacture);
+    console.log('✅ Numéro enregistré en BD:', numeroFacture);
 
-    // ✅ Insérer les lignes de facture
+    // ✅ Insérer les lignes AVEC leur devise propre
     for (const reservation of reservations) {
       const libelle = `${reservation.panneau_nom || 'Panneau'} - Face ${reservation.orientation || 'N/A'} (${reservation.type_face || 'Standard'})`;
-      const prix = reservation.prix_saisi || 0;
+      const prix = Number(reservation.prix_saisi) || 0;
+      const deviseLigne = normaliserDevise(reservation.devise);
 
       let dureeMois = 1;
       if (reservation.date_debut && reservation.date_fin) {
@@ -278,13 +363,14 @@ export async function POST(request: NextRequest) {
           libelle,
           quantite,
           prix_unitaire,
+          devise,
           total_ligne,
           date_debut,
           date_fin,
           duree_mois,
           remise_ligne,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 0, NOW())`,
+        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 0, NOW())`,
         [
           idFacture,
           reservation.id_reservation || null,
@@ -292,6 +378,7 @@ export async function POST(request: NextRequest) {
           reservation.id_panneau || null,
           libelle,
           prix,
+          deviseLigne,
           prix,
           reservation.date_debut
             ? new Date(reservation.date_debut).toISOString().split('T')[0]
@@ -302,24 +389,23 @@ export async function POST(request: NextRequest) {
           dureeMois,
         ]
       );
-      console.log(`✅ Ligne facturée: ${libelle} - ${prix} ${currency}`);
+      console.log(`✅ Ligne: ${libelle} - ${prix} ${deviseLigne}`);
     }
 
     // ✅ Historique
     await connection.query(
       `INSERT INTO facture_historique (
-        id_facture,
-        action,
-        ancien_statut,
-        nouveau_statut,
-        description,
-        id_utilisateur,
-        date_action
+        id_facture, action, ancien_statut, nouveau_statut, description, id_utilisateur, date_action
       ) VALUES (?, 'CREATION', NULL, ?, ?, ?, NOW())`,
-      [idFacture, statutFinal, `Création du proformat ${numeroFacture}`, id_commercial]
+      [
+        idFacture,
+        String(statutFinal),
+        `Création du proformat ${numeroFacture} (devises: ${devisesUtiliseesStr})`,
+        id_commercial,
+      ]
     );
 
-    // ✅ Mettre à jour les réservations avec l'ID de facture
+    // ✅ Mise à jour des réservations
     try {
       for (const reservation of reservations) {
         const reservationId = reservation.id_reservation || null;
@@ -328,11 +414,10 @@ export async function POST(request: NextRequest) {
             'UPDATE reservation SET id_facture = ? WHERE id_reservation = ?',
             [idFacture, reservationId]
           );
-          console.log(`✅ Réservation ${reservationId} mise à jour`);
         }
       }
-    } catch (updateError) {
-      console.log("⚠️ La colonne id_facture n'existe pas dans reservation, ignoré");
+    } catch {
+      console.log("⚠️ id_facture absent dans reservation, ignoré");
     }
 
     await connection.commit();
@@ -343,11 +428,17 @@ export async function POST(request: NextRequest) {
       message: 'Proformat enregistré avec succès',
       data: {
         id_facture: idFacture,
-        numero_facture: numeroFacture,
-        total_ht: totalHT,
-        total_ttc: totalTTC,
-        id_client: id_client,
-        id_commercial: id_commercial,
+        numero_facture: numeroFacture, // ✅ LE MÊME NUMÉRO QUE CELUI AFFICHÉ
+        total_ht: totalHTGlobal,
+        total_ttc: totalTTCGlobal,
+        devise: devisePrincipale,
+        devises_utilisees: devisesUtiliseesStr,
+        total_ht_cdf: totalHTCDF,
+        total_ht_usd: totalHTUSD,
+        total_ttc_cdf: totalTTCCDF,
+        total_ttc_usd: totalTTCUSD,
+        id_client,
+        id_commercial,
         type_document: typeDocumentFinal,
         statut: statutFinal,
       },
@@ -355,8 +446,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     await connection.rollback();
     connection.release();
-    console.error("❌ Erreur lors de l'enregistrement du proformat:", error);
-
+    console.error("❌ Erreur:", error);
     return NextResponse.json(
       {
         success: false,
@@ -381,6 +471,7 @@ export async function GET(request: NextRequest) {
     const clientId = searchParams.get('client_id');
     const commercialId = searchParams.get('commercial_id');
     const status = searchParams.get('status');
+    const devise = searchParams.get('devise');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
@@ -404,27 +495,12 @@ export async function GET(request: NextRequest) {
     `;
 
     const params: any[] = [];
-
-    if (id) {
-      query += ` AND f.id_facture = ?`;
-      params.push(parseInt(id));
-    }
-    if (numero) {
-      query += ` AND f.numero_facture = ?`;
-      params.push(numero);
-    }
-    if (clientId) {
-      query += ` AND f.id_client = ?`;
-      params.push(parseInt(clientId));
-    }
-    if (commercialId) {
-      query += ` AND f.id_commercial = ?`;
-      params.push(parseInt(commercialId));
-    }
-    if (status) {
-      query += ` AND f.statut = ?`;
-      params.push(status);
-    }
+    if (id) { query += ` AND f.id_facture = ?`; params.push(parseInt(id)); }
+    if (numero) { query += ` AND f.numero_facture = ?`; params.push(numero); }
+    if (clientId) { query += ` AND f.id_client = ?`; params.push(parseInt(clientId)); }
+    if (commercialId) { query += ` AND f.id_commercial = ?`; params.push(parseInt(commercialId)); }
+    if (status) { query += ` AND f.statut = ?`; params.push(status); }
+    if (devise) { query += ` AND f.devise = ?`; params.push(normaliserDevise(devise)); }
 
     query += ` ORDER BY f.created_at DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
@@ -481,7 +557,7 @@ export async function GET(request: NextRequest) {
     connection.release();
     console.error('❌ Erreur GET facture:', error);
     return NextResponse.json(
-      { success: false, message: 'Erreur lors du chargement des factures' },
+      { success: false, message: 'Erreur lors du chargement' },
       { status: 500 }
     );
   }
@@ -492,7 +568,6 @@ export async function GET(request: NextRequest) {
 // ============================================
 export async function PUT(request: NextRequest) {
   const connection = await pool.getConnection();
-
   try {
     const userId = getUserIdFromToken(request);
     if (!userId) {
@@ -526,8 +601,6 @@ export async function PUT(request: NextRequest) {
       [id_facture]
     );
     const ancienStatut = (oldData as any[])[0]?.statut || null;
-
-    // ✅ Normaliser le statut si fourni
     const statutFinal = statut ? normaliserStatut(statut) : null;
 
     await connection.query(
@@ -549,8 +622,8 @@ export async function PUT(request: NextRequest) {
         ) VALUES (?, 'CHANGEMENT_STATUT', ?, ?, ?, ?)`,
         [
           id_facture,
-          ancienStatut,
-          statutFinal,
+          String(ancienStatut),
+          String(statutFinal),
           `Changement de statut vers ${statutFinal}`,
           userId,
         ]
@@ -558,7 +631,6 @@ export async function PUT(request: NextRequest) {
     }
 
     connection.release();
-
     return NextResponse.json({
       success: true,
       message: 'Facture mise à jour avec succès',

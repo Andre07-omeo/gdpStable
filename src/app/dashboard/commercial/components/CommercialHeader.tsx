@@ -9,7 +9,8 @@ import {
   Bell, RefreshCw, User,
   MapPin, BarChart3, Users,
   BookOpen, Download, TrendingUp,
-  ClipboardCheck, Crown, Building2,
+  ClipboardCheck, Crown,
+  Menu, X, LogOut, Settings, KeyRound, HelpCircle,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -102,17 +103,35 @@ export function CommercialHeader({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { getUserName, getUserEmail } = useAuth();
 
   useEffect(() => setMounted(true), []);
 
   // ✅ Détection mobile
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 640;
+      setIsMobile(mobile);
+      if (!mobile) setIsMobileMenuOpen(false);
+    };
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // ✅ Bloquer le scroll du body quand le drawer est ouvert
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
 
   const displayName = mounted ? getUserName() : '';
   const displayEmail = mounted ? getUserEmail() : '';
@@ -139,6 +158,7 @@ export function CommercialHeader({
   // ✅ Ouvre la modale de déconnexion proprement
   const handleLogoutClick = () => {
     setIsLogoutModalOpen(true);
+    setIsMobileMenuOpen(false);
   };
 
   const features = user ? getFeaturesByProfil(user.profil) : null;
@@ -279,6 +299,127 @@ export function CommercialHeader({
     );
   };
 
+  // ✅ Liste complète des actions pour le drawer mobile
+  const mobileMenuActions = useMemo(() => {
+    const actions: Array<{
+      id: string;
+      label: string;
+      icon: React.ReactNode;
+      onClick?: () => void;
+      colorClass: string;
+      badge?: number;
+      hidden?: boolean;
+    }> = [];
+
+    if (onCatalogueToggle) {
+      actions.push({
+        id: 'catalogue',
+        label: 'Catalogue',
+        icon: <BookOpen size={18} />,
+        onClick: onCatalogueToggle,
+        colorClass: 'bg-blue-600 hover:bg-blue-500',
+      });
+    }
+    if (onMapToggle) {
+      actions.push({
+        id: 'map',
+        label: 'Carte interactive',
+        icon: <MapPin size={18} />,
+        onClick: onMapToggle,
+        colorClass: 'bg-emerald-600 hover:bg-emerald-500',
+      });
+    }
+    if (onExportToggle) {
+      actions.push({
+        id: 'export',
+        label: 'Exporter les données',
+        icon: <Download size={18} />,
+        onClick: onExportToggle,
+        colorClass: 'bg-violet-600 hover:bg-violet-500',
+      });
+    }
+    if (features?.canManageTeam && onTeamManagementToggle) {
+      actions.push({
+        id: 'team',
+        label: "Gestion de l'équipe",
+        icon: <Users size={18} />,
+        onClick: onTeamManagementToggle,
+        colorClass: 'bg-orange-600 hover:bg-orange-500',
+      });
+    }
+    if (features?.canModifyReservations && onReservationsManagementToggle) {
+      actions.push({
+        id: 'reservations',
+        label: 'Gestion des réservations',
+        icon: <ClipboardCheck size={18} />,
+        onClick: onReservationsManagementToggle,
+        colorClass: 'bg-amber-600 hover:bg-amber-500',
+      });
+    }
+    if (features?.canViewReports && onReportsToggle) {
+      actions.push({
+        id: 'reports',
+        label: 'Rapports',
+        icon: <BarChart3 size={18} />,
+        onClick: onReportsToggle,
+        colorClass: 'bg-cyan-600 hover:bg-cyan-500',
+      });
+    }
+    if (features?.canViewPredictions && onPredictionsToggle) {
+      actions.push({
+        id: 'predictions',
+        label: 'Prédictions',
+        icon: <TrendingUp size={18} />,
+        onClick: onPredictionsToggle,
+        colorClass: 'bg-indigo-600 hover:bg-indigo-500',
+      });
+    }
+    if (onNotificationsToggle) {
+      actions.push({
+        id: 'notifications',
+        label: 'Notifications',
+        icon: <Bell size={18} />,
+        onClick: onNotificationsToggle,
+        colorClass: 'bg-red-600 hover:bg-red-500',
+        badge: notificationCount,
+      });
+    }
+
+    actions.push({
+      id: 'refresh',
+      label: 'Actualiser',
+      icon: <RefreshCw size={18} />,
+      onClick: handleRefresh,
+      colorClass: 'bg-slate-600 hover:bg-slate-500',
+    });
+
+    if (isAdmin && onAdminToggle) {
+      actions.push({
+        id: 'admin',
+        label: 'Administration',
+        icon: <User size={18} />,
+        onClick: onAdminToggle,
+        colorClass: 'bg-fuchsia-600 hover:bg-fuchsia-500',
+      });
+    }
+
+    return actions;
+  }, [
+    onCatalogueToggle, onMapToggle, onExportToggle,
+    onTeamManagementToggle, onReservationsManagementToggle,
+    onReportsToggle, onPredictionsToggle, onNotificationsToggle,
+    onAdminToggle, isAdmin, features, notificationCount,
+  ]);
+
+  // ✅ Handler d'action du drawer mobile
+    // ✅ Handler d'action du drawer mobile
+  const handleMobileAction = (action?: () => void) => {
+    return () => {
+      setIsMobileMenuOpen(false);
+      action?.();
+    };
+  };
+
   return (
     <>
       <header className={`${theme.headerBg} shadow-2xl sticky top-0 z-50 border-b ${theme.border}`}>
@@ -286,10 +427,10 @@ export function CommercialHeader({
           <div className="flex items-center justify-between gap-2">
 
             {/* 1. LOGO + TITRE */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 min-w-0">
               <button
                 onClick={handleLogoClick}
-                className="relative group transition-all duration-500 hover:scale-110 active:scale-95"
+                className="relative group transition-all duration-500 hover:scale-110 active:scale-95 flex-shrink-0"
                 title="Accueil"
               >
                 <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${theme.iconBadge} flex items-center justify-center border shadow-lg overflow-hidden`}>
@@ -313,25 +454,25 @@ export function CommercialHeader({
               </button>
 
               {/* Titre desktop */}
-              <div className="hidden sm:block">
+              <div className="hidden sm:block min-w-0">
                 <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight flex items-center gap-2">
                   <span className={theme.accent}>GDP</span>
                   <span className="text-white/60">|</span>
-                  <span className="text-white">{theme.title}</span>
+                  <span className="text-white truncate">{theme.title}</span>
                   {roleBadge && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold tracking-wider ${roleBadge.color}`}>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold tracking-wider flex-shrink-0 ${roleBadge.color}`}>
                       {roleBadge.label}
                     </span>
                   )}
                 </h1>
-                <p className={`text-[9px] ${theme.subtitle} uppercase tracking-[0.15em] font-bold`}>
+                <p className={`text-[9px] ${theme.subtitle} uppercase tracking-[0.15em] font-bold truncate`}>
                   {user?.profilLibelle || `Espace ${variant}`}
                 </p>
               </div>
 
               {/* Titre mobile */}
-              <div className="sm:hidden">
-                <h1 className="text-base font-bold text-white flex items-center gap-1">
+              <div className="sm:hidden min-w-0">
+                <h1 className="text-sm font-bold text-white flex items-center gap-1">
                   <span className={theme.accent}>GDP</span>
                   <span className="text-white/60">|</span>
                   <span className="text-white">{theme.shortTitle}</span>
@@ -473,9 +614,9 @@ export function CommercialHeader({
 
             <div className={`hidden sm:block w-px h-8 ${theme.divider} mx-1`} />
 
-            {/* 4. AVATAR + DROPDOWN */}
+            {/* 4. AVATAR + DROPDOWN (desktop) */}
             {mounted && displayName && (
-              <div className="flex-shrink-0">
+              <div className="hidden sm:block flex-shrink-0">
                 <ProfileDropdown
                   userName={displayName}
                   userEmail={displayEmail}
@@ -485,13 +626,178 @@ export function CommercialHeader({
                   onChangePasswordClick={onChangePasswordClick}
                   onSettingsClick={onSettingsClick}
                   onHelpClick={() => console.log('Aide')}
-                  extraActions={isMobile ? extraActions : []}
+                  extraActions={[]}
                 />
               </div>
             )}
+
+            {/* 5. BOUTON MENU MOBILE */}
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="
+                sm:hidden flex-shrink-0
+                p-2 rounded-xl
+                bg-white/10 hover:bg-white/20
+                border border-white/20
+                text-white
+                transition-all duration-300
+                active:scale-95
+              "
+              title="Menu"
+              aria-label="Ouvrir le menu"
+            >
+              <Menu className="w-5 h-5" />
+              {notificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-red-500 rounded-full text-[8px] font-bold text-white flex items-center justify-center">
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </header>
+
+      {/* ✅ DRAWER MOBILE */}
+      {isMobileMenuOpen && (
+        <div className="sm:hidden fixed inset-0 z-[100]">
+          {/* Overlay */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+
+          {/* Panneau */}
+          <div
+            className="
+              absolute top-0 right-0 h-full w-[85%] max-w-sm
+              bg-gradient-to-b from-slate-900 to-slate-800
+              shadow-2xl
+              flex flex-col
+              animate-slideInRight
+            "
+          >
+            {/* En-tête du drawer */}
+            <div className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold flex-shrink-0">
+                  {displayName?.charAt(0).toUpperCase() || 'U'}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-white font-semibold text-sm truncate">
+                    {displayName || 'Utilisateur'}
+                  </p>
+                  <p className="text-white/60 text-xs truncate">
+                    {displayEmail || ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition"
+                aria-label="Fermer le menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* ✅ Actions scrollables */}
+            <div className="flex-1 overflow-y-auto overscroll-contain mobile-menu-scroll p-3">
+              {/* Section Actions */}
+              <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-2 mb-2">
+                Actions
+              </p>
+
+              <div className="space-y-1.5 mb-4">
+                {mobileMenuActions.map((action) => (
+                  <button
+                    key={action.id}
+                    onClick={handleMobileAction(action.onClick)}
+                    className={`
+                      w-full flex items-center gap-3 px-3 py-3 rounded-xl
+                      text-white text-sm font-medium
+                      transition-all duration-200
+                      active:scale-[0.98]
+                      ${action.colorClass}
+                      shadow-md
+                    `}
+                  >
+                    <span className="flex-shrink-0">{action.icon}</span>
+                    <span className="flex-1 text-left truncate">{action.label}</span>
+                    {action.badge !== undefined && action.badge > 0 && (
+                      <span className="min-w-[20px] h-5 px-1.5 bg-white text-red-600 rounded-full text-[10px] font-bold flex items-center justify-center">
+                        {action.badge > 99 ? '99+' : action.badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Section Compte */}
+              <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-2 mb-2">
+                Mon compte
+              </p>
+
+              <div className="space-y-1.5 mb-4">
+                {onProfileClick && (
+                  <button
+                    onClick={handleMobileAction(onProfileClick)}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition"
+                  >
+                    <User size={18} className="flex-shrink-0" />
+                    <span>Mon profil</span>
+                  </button>
+                )}
+
+                {onChangePasswordClick && (
+                  <button
+                    onClick={handleMobileAction(onChangePasswordClick)}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition"
+                  >
+                    <KeyRound size={18} className="flex-shrink-0" />
+                    <span>Changer le mot de passe</span>
+                  </button>
+                )}
+
+                {onSettingsClick && (
+                  <button
+                    onClick={handleMobileAction(onSettingsClick)}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition"
+                  >
+                    <Settings size={18} className="flex-shrink-0" />
+                    <span>Paramètres</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => console.log('Aide')}
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition"
+                >
+                  <HelpCircle size={18} className="flex-shrink-0" />
+                  <span>Aide</span>
+                </button>
+              </div>
+
+              {/* ✅ Section Déconnexion (en bas, visible) */}
+              <div className="pt-2 border-t border-white/10">
+                <button
+                  onClick={handleLogoutClick}
+                  className="
+                    w-full flex items-center gap-3 px-3 py-3.5 rounded-xl
+                    bg-red-600 hover:bg-red-500
+                    text-white text-sm font-bold
+                    transition-all duration-200
+                    active:scale-[0.98]
+                    shadow-lg shadow-red-900/30
+                  "
+                >
+                  <LogOut size={18} className="flex-shrink-0" />
+                  <span>Se déconnecter</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <LogoutConfirmModal
         isOpen={isLogoutModalOpen}
@@ -502,6 +808,41 @@ export function CommercialHeader({
         }}
         userName={displayName || 'Utilisateur'}
       />
+
+      {/* ✅ Styles d'animation + scrollbar fine */}
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.25s ease-out;
+        }
+        .animate-slideInRight {
+          animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .mobile-menu-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        .mobile-menu-scroll::-webkit-scrollbar {
+          width: 6px;
+        }
+        .mobile-menu-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .mobile-menu-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 3px;
+        }
+        .mobile-menu-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.35);
+        }
+      `}</style>
     </>
   );
 }

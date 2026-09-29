@@ -1,14 +1,15 @@
-﻿import type { Metadata, Viewport } from 'next';
+﻿// src/app/layout.tsx
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import ServiceWorkerRegister from '@/components/shared/ServiceWorkerRegister';
 import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
 
-// ✅ FORCE LE RENDU DYNAMIQUE
-export const dynamic = 'force-dynamic';
-
 export const metadata: Metadata = {
-  metadataBase: new URL('https://gestiondigitalepanneaux.com'),
+  metadataBase:
+    process.env.NODE_ENV === 'production'
+      ? new URL('https://gestiondigitalepanneaux.com/login')
+      : new URL('http://localhost:3000/login'),
   title: {
     default: 'Gestion Panneaux',
     template: '%s | Gestion Panneaux',
@@ -19,8 +20,9 @@ export const metadata: Metadata = {
   authors: [{ name: 'Gestion Panneaux Pro' }],
   manifest: '/manifest.json',
   icons: {
+    // ⚠️ favicon.ico doit être placé dans src/app/favicon.ico
+    // Next.js le détecte automatiquement, PAS besoin de le déclarer ici
     icon: [
-      { url: '/favicon.ico', sizes: 'any' },
       { url: '/icons/icon-16x16.png', sizes: '16x16', type: 'image/png' },
       { url: '/icons/icon-32x32.png', sizes: '32x32', type: 'image/png' },
       { url: '/icons/icon-48x48.png', sizes: '48x48', type: 'image/png' },
@@ -30,14 +32,13 @@ export const metadata: Metadata = {
     apple: [
       { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
-    shortcut: ['/favicon.ico'],
   },
   openGraph: {
     type: 'website',
     locale: 'fr_FR',
-    url: 'https://gestiondigitalepanneaux.com',
-    siteName: 'Gestion Panneaux ',
-    title: 'Gestion Panneaux ',
+    url: 'https://gestiondigitalepanneaux.com/login',
+    siteName: 'Gestion Panneaux',
+    title: 'Gestion Panneaux',
     description: 'Application de gestion des panneaux publicitaires',
     images: [
       {
@@ -74,28 +75,27 @@ export const viewport: Viewport = {
   userScalable: true,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="fr">
       <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="icon" href="/icons/icon-192x192.png" type="image/png" />
-        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#1e40af" />
+        {/* ⚠️ NE PAS remettre les <link rel="icon"> ni <link rel="manifest"> ici
+            → ils sont déjà générés par metadata.icons et metadata.manifest.
+            Doublon = erreur 500 sur favicon.ico */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Panneaux Pro" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body>
-        {/* ✅ LES PROVIDERS QUI ENVELOPPENT TOUTE L'APP */}
         <AuthProvider>
-          <CartProvider>
-            {children}
-            <ServiceWorkerRegister />
-          </CartProvider>
+          <CartProvider>{children}</CartProvider>
         </AuthProvider>
+        <ServiceWorkerRegister />
       </body>
     </html>
   );

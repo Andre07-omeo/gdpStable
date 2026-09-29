@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/commercial/components/PendingReservationsTab.tsximport { useState, useEffect } from 'react';
+// src/app/dashboard/commercial/components/PendingReservationsTab.tsx
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Clock, Calendar, Building2, User,
@@ -54,6 +55,8 @@ interface PendingReservationsTabProps {
   user: any;
 }
 
+type Devise = 'CDF' | 'USD' | '';
+
 // ✅ Helper : lecture sûre de localStorage (retourne '' si indisponible)
 const safeGetItem = (key: string): string => {
   if (typeof window === 'undefined') return '';
@@ -69,6 +72,7 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectAll, setSelectAll] = useState(false);
   const [prixSaisis, setPrixSaisis] = useState<Record<number, string>>({});
+  const [devisesSaisies, setDevisesSaisies] = useState<Record<number, Devise>>({});
 
   // ✅ Récupérer l'utilisateur depuis localStorage
   const getUserFromStorage = () => {
@@ -138,10 +142,13 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
       if (data.success) {
         setReservations(data.data);
         const prixInit: Record<number, string> = {};
+        const devisesInit: Record<number, Devise> = {};
         data.data.forEach((r: PendingReservation) => {
           prixInit[r.id_reservation] = '';
+          devisesInit[r.id_reservation] = '';
         });
         setPrixSaisis(prixInit);
+        setDevisesSaisies(devisesInit);
         console.log(`📊 ${data.total} réservations en attente chargées`);
       } else {
         setError(data.error || 'Erreur de chargement');
@@ -177,13 +184,18 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
     setPrixSaisis(prev => ({ ...prev, [id]: valeur }));
   };
 
+  const updateDevise = (id: number, valeur: 'CDF' | 'USD') => {
+    setDevisesSaisies(prev => ({ ...prev, [id]: valeur }));
+  };
+
   const verifierPrix = () => {
     const selectedReservations = reservations.filter(r => selectedIds.includes(r.id_reservation));
     const prixManquants: number[] = [];
 
     for (const r of selectedReservations) {
       const prix = prixSaisis[r.id_reservation] || '';
-      if (!prix || parseFloat(prix) <= 0) {
+      const devise = devisesSaisies[r.id_reservation] || '';
+      if (!prix || parseFloat(prix) <= 0 || !devise) {
         prixManquants.push(r.id_reservation);
       }
     }
@@ -191,8 +203,34 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
     return prixManquants;
   };
 
+  // ✅ Lister les devises utilisées (info, plus un blocage)
+  const listerDevisesUtilisees = (): string[] => {
+    const selectedReservations = reservations.filter(r => selectedIds.includes(r.id_reservation));
+    return [...new Set(
+      selectedReservations
+        .map(r => devisesSaisies[r.id_reservation])
+        .filter(d => d === 'CDF' || d === 'USD')
+    )].sort();
+  };
+
+  // ✅ Calcul des totaux séparés par devise
+  const calculerTotauxParDevise = () => {
+    const selectedReservations = reservations.filter(r => selectedIds.includes(r.id_reservation));
+    let totalCDF = 0;
+    let totalUSD = 0;
+
+    for (const r of selectedReservations) {
+      const prix = parseFloat(prixSaisis[r.id_reservation] || '0') || 0;
+      const devise = devisesSaisies[r.id_reservation];
+      if (devise === 'USD') totalUSD += prix;
+      else if (devise === 'CDF') totalCDF += prix;
+    }
+
+    return { totalCDF, totalUSD };
+  };
+
   // ============================================
-  // ✅ CRÉER UN PROFORMAT
+  // ✅ CRÉER UN PROFORMAT (multi-devises autorisé)
   // ============================================
   const creerFacture = async () => {
     if (selectedIds.length === 0) {
@@ -209,19 +247,15 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
     const email = emailCommercial || userData?.email || '';
 
     console.log('📋 Données utilisateur depuis localStorage:', {
-      nom,
-      prenom,
-      email,
-      nomComplet,
-      userData,
+      nom, prenom, email, nomComplet, userData,
     });
 
     if (!nom || !prenom) {
       alert(
         '⚠️ Impossible de créer le proformat :\n\n' +
-          'Vos informations personnelles (nom et prénom) sont incomplètes.\n\n' +
-          'Veuillez vous déconnecter et vous reconnecter.\n' +
-          "Si le problème persiste, contactez l'administrateur."
+        'Vos informations personnelles (nom et prénom) sont incomplètes.\n\n' +
+        'Veuillez vous déconnecter et vous reconnecter.\n' +
+        "Si le problème persiste, contactez l'administrateur."
       );
       return;
     }
@@ -229,9 +263,9 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
     if (!email) {
       alert(
         '⚠️ Impossible de créer le proformat :\n\n' +
-          'Votre adresse email est manquante.\n\n' +
-          'Veuillez vous déconnecter et vous reconnecter.\n' +
-          "Si le problème persiste, contactez l'administrateur."
+        'Votre adresse email est manquante.\n\n' +
+        'Veuillez vous déconnecter et vous reconnecter.\n' +
+        "Si le problème persiste, contactez l'administrateur."
       );
       return;
     }
@@ -242,7 +276,7 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
     if (clientIds.length > 1) {
       alert(
         '⚠️ Vous ne pouvez pas créer une facture avec plusieurs clients !\n' +
-          'Les clients concernés : ' + clientIds.join(', ')
+        'Les clients concernés : ' + clientIds.join(', ')
       );
       return;
     }
@@ -251,20 +285,23 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
     if (prixManquants.length > 0) {
       const commandes = prixManquants.map(id => {
         const r = reservations.find(res => res.id_reservation === id);
-        return r?.numero_commande || id;
+        const prix = prixSaisis[id] || '';
+        const devise = devisesSaisies[id] || '';
+        let raison = '';
+        if (!prix || parseFloat(prix) <= 0) raison = 'prix manquant';
+        if (!devise) raison = raison ? `${raison} + devise manquante` : 'devise manquante';
+        return `- ${r?.numero_commande || id} : ${raison}`;
       });
-      alert(`⚠️ Veuillez saisir un prix pour les réservations suivantes :\n${commandes.join('\n')}`);
+      alert(`⚠️ Veuillez compléter les informations suivantes :\n\n${commandes.join('\n')}`);
       return;
     }
 
-    const nomCompletFinal = `${prenom} ${nom}`.trim();
+    // ✅ Multi-devises AUTORISÉ — on collecte juste les infos
+    const devisesUtilisees = listerDevisesUtilisees();
+    const deviseProformat = devisesUtilisees.length === 1 ? devisesUtilisees[0] : 'MULTI';
+    const { totalCDF, totalUSD } = calculerTotauxParDevise();
 
-    console.log('👤 Informations commercial finales:', {
-      nom,
-      prenom,
-      email,
-      nomComplet: nomCompletFinal,
-    });
+    const nomCompletFinal = `${prenom} ${nom}`.trim();
 
     try {
       const factureData = selectedReservations.map(r => ({
@@ -284,6 +321,7 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
         notes: r.notes,
         date_expiration: r.date_expiration,
         prix_saisi: parseFloat(prixSaisis[r.id_reservation] || '0'),
+        devise: devisesSaisies[r.id_reservation] || 'CDF',
         lignes: r.lignes.map(l => ({
           id_ligne: l.id_ligne,
           id_face: l.id_face,
@@ -303,6 +341,10 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
 
       localStorage.setItem('proformat_selected_reservations', JSON.stringify(factureData));
       localStorage.setItem('proformat_client_nom', clientIds[0] || '');
+      localStorage.setItem('proformat_devise', deviseProformat);
+      localStorage.setItem('proformat_devises_utilisees', devisesUtilisees.join(','));
+      localStorage.setItem('proformat_total_cdf', String(totalCDF));
+      localStorage.setItem('proformat_total_usd', String(totalUSD));
 
       router.push('/dashboard/commercial/proformat/preview');
     } catch (error) {
@@ -349,21 +391,24 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
 
   const clientInfo = getClientInfo();
   const prixManquants = verifierPrix();
+  const devisesUtilisees = listerDevisesUtilisees();
+  const deviseMixte = devisesUtilisees.length > 1;
+  const { totalCDF, totalUSD } = calculerTotauxParDevise();
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-64 bg-gray-50 rounded-xl">
         <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-        <p className="mt-4 text-gray-500">Chargement des réservations en attente...</p>
+        <p className="mt-4 text-gray-500 px-2 text-center">Chargement des réservations en attente...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center py-12 bg-white rounded-xl border-2 border-red-200">
+      <div className="text-center py-12 px-2 bg-white rounded-xl border-2 border-red-200">
         <div className="text-4xl mb-4">⚠️</div>
-        <p className="text-red-600 font-bold">{error}</p>
+        <p className="text-red-600 font-bold break-words">{error}</p>
         <button
           onClick={fetchPendingReservations}
           className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition"
@@ -376,7 +421,7 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
 
   if (reservations.length === 0) {
     return (
-      <div className="text-center py-16 bg-white rounded-xl border-2 border-gray-200">
+      <div className="text-center py-16 px-2 bg-white rounded-xl border-2 border-gray-200">
         <div className="text-6xl mb-4">✅</div>
         <p className="text-gray-500 font-bold text-lg">Aucune réservation en attente</p>
         <p className="text-gray-400 text-sm mt-1">
@@ -394,71 +439,104 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
   }
 
   return (
-    <div className="bg-gray-50 rounded-xl p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-3">
-          <h3 className="text-lg font-bold text-gray-800">📋 Réservations en attente</h3>
-          <span className="px-3 py-1 bg-amber-500 text-white rounded-full text-xs font-bold">
+    <div className="bg-gray-50 rounded-xl p-2 sm:p-3 md:p-4 lg:p-6 2xl:p-8 w-full max-w-full overflow-x-hidden">
+      {/* En-tête */}
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4 sm:mb-6">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <h3 className="text-base sm:text-lg font-bold text-gray-800">
+            📋 Réservations en attente
+          </h3>
+          <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-amber-500 text-white rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap">
             {reservations.length} en attente
           </span>
           {selectedIds.length > 0 && (
-            <span className="px-3 py-1 bg-blue-500 text-white rounded-full text-xs font-bold">
+            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-500 text-white rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap">
               {selectedIds.length} sélectionnée(s)
             </span>
           )}
           {prixManquants.length > 0 && selectedIds.length > 0 && (
-            <span className="px-3 py-1 bg-red-500 text-white rounded-full text-xs font-bold animate-pulse">
-              ⚠️ {prixManquants.length} prix manquant(s)
+            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-red-500 text-white rounded-full text-[10px] sm:text-xs font-bold animate-pulse whitespace-nowrap">
+              ⚠️ {prixManquants.length} incomplet(s)
+            </span>
+          )}
+          {deviseMixte && (
+            <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-500 text-white rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap">
+              💱 Multi-devises : {devisesUtilisees.join(' + ')}
             </span>
           )}
         </div>
         <div className="flex gap-2">
           <button
             onClick={fetchPendingReservations}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition flex items-center gap-2"
+            className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg text-xs sm:text-sm font-bold hover:bg-blue-700 transition flex items-center gap-2"
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            Rafraîchir
+            <span className="hidden xs:inline sm:inline">Rafraîchir</span>
           </button>
         </div>
       </div>
 
-      {/* Barre d'actions */}
-      <div className="bg-white rounded-xl p-4 mb-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+      {/* Résumé totaux par devise (si sélection) */}
+      {selectedIds.length > 0 && (
+        <div className="bg-white rounded-xl p-3 sm:p-4 mb-4 shadow-sm border-l-4 border-blue-500">
+          <div className="flex flex-wrap gap-4 items-center">
+            <span className="text-sm font-bold text-gray-700">💰 Totaux :</span>
+            {totalCDF > 0 && (
+              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs sm:text-sm font-bold">
+                CDF : {totalCDF.toLocaleString()} FC
+              </span>
+            )}
+            {totalUSD > 0 && (
+              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs sm:text-sm font-bold">
+                USD : {totalUSD.toLocaleString()} $
+              </span>
+            )}
+            {totalCDF === 0 && totalUSD === 0 && (
+              <span className="text-xs text-gray-400">Aucun prix saisi</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Barre d'actions haut */}
+      <div className="bg-white rounded-xl p-2 sm:p-3 md:p-4 mb-4 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4">
             <button
               onClick={toggleSelectAll}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition"
+              className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 hover:text-blue-600 transition"
             >
-              {selectAll ? <CheckSquare size={18} /> : <Square size={18} />}
-              {selectAll ? 'Tout désélectionner' : 'Tout sélectionner'}
+              {selectAll ? <CheckSquare size={16} className="sm:w-[18px] sm:h-[18px]" /> : <Square size={16} className="sm:w-[18px] sm:h-[18px]" />}
+              <span className="whitespace-nowrap">
+                {selectAll ? 'Tout désélectionner' : 'Tout sélectionner'}
+              </span>
             </button>
-            <span className="text-sm text-gray-400">|</span>
-            <span className="text-sm text-gray-600">
-              {selectedIds.length} réservation(s) sélectionnée(s)
+            <span className="text-sm text-gray-400 hidden sm:inline">|</span>
+            <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">
+              {selectedIds.length} sélectionnée(s)
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             {clientInfo && clientInfo.type === 'multiple' && (
-              <span className="text-sm text-red-500 font-bold">{clientInfo.message}</span>
+              <span className="text-xs sm:text-sm text-red-500 font-bold break-words">
+                {clientInfo.message}
+              </span>
             )}
             {clientInfo && clientInfo.type === 'unique' && selectedIds.length > 0 && (
-              <span className="text-sm text-green-600">
-                Client: <strong>{clientInfo.client}</strong> ({clientInfo.count} réservation(s))
+              <span className="text-xs sm:text-sm text-green-600 break-words">
+                Client: <strong>{clientInfo.client}</strong> ({clientInfo.count})
               </span>
             )}
             <button
               onClick={creerFacture}
               disabled={selectedIds.length === 0 || clientInfo?.type === 'multiple' || prixManquants.length > 0}
-              className={`flex items-center gap-2 px-6 py-2 rounded-lg font-bold transition ${
-                selectedIds.length === 0 || clientInfo?.type === 'multiple' || prixManquants.length > 0
+              className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-2 rounded-lg font-bold text-xs sm:text-sm transition w-full sm:w-auto ${selectedIds.length === 0 || clientInfo?.type === 'multiple' || prixManquants.length > 0
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
+                }`}
             >
-              <FileText size={18} />
+              <FileText size={16} className="sm:w-[18px] sm:h-[18px]" />
               Créer un proformat
             </button>
           </div>
@@ -466,7 +544,7 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
       </div>
 
       {/* Liste des réservations */}
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         {reservations.map((reservation, idx) => {
           const expiration = getExpirationStatus(reservation.jours_restants);
           const panneauNom = reservation.lignes[0]?.panneau?.nom || 'Panneau non spécifié';
@@ -474,6 +552,9 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
           const isSelected = selectedIds.includes(reservation.id_reservation);
           const prix = prixSaisis[reservation.id_reservation] || '';
           const isPrixValide = prix && parseFloat(prix) > 0;
+          const deviseResa = devisesSaisies[reservation.id_reservation] || '';
+          const isDeviseValide = deviseResa === 'CDF' || deviseResa === 'USD';
+          const isLigneComplete = isPrixValide && isDeviseValide;
 
           return (
             <motion.div
@@ -481,73 +562,78 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.05 }}
-              className={`bg-white rounded-xl border-2 transition-all overflow-hidden ${
-                isSelected
+              className={`bg-white rounded-xl border-2 transition-all overflow-hidden ${isSelected
                   ? 'border-blue-500 shadow-md shadow-blue-100'
                   : 'border-amber-200 hover:border-amber-400'
-              }`}
+                }`}
             >
-              <div className="p-4">
-                <div className="flex items-start gap-4">
-                  <div className="pt-1">
+              <div className="p-2 sm:p-3 md:p-4">
+                <div className="flex items-start gap-2 sm:gap-3 md:gap-4">
+                  <div className="pt-1 shrink-0">
                     <button
                       onClick={() => toggleSelection(reservation.id_reservation)}
                       className="focus:outline-none"
                     >
                       {isSelected ? (
-                        <CheckSquare size={24} className="text-blue-600" />
+                        <CheckSquare size={20} className="sm:w-6 sm:h-6 text-blue-600" />
                       ) : (
-                        <Square size={24} className="text-gray-400 hover:text-gray-600" />
+                        <Square size={20} className="sm:w-6 sm:h-6 text-gray-400 hover:text-gray-600" />
                       )}
                     </button>
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="flex-1 min-w-[200px]">
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <h4 className="font-bold text-gray-800 text-lg">
+                    <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 md:gap-3">
+                          <h4 className="font-bold text-gray-800 text-sm sm:text-base md:text-lg break-all">
                             {reservation.numero_commande || 'N/A'}
                           </h4>
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap">
                             {reservation.statut || 'En attente'}
                           </span>
-                          <span className={`text-xs font-bold ${expiration.color}`}>
+                          <span className={`text-[10px] sm:text-xs font-bold whitespace-nowrap ${expiration.color}`}>
                             {expiration.label}
                           </span>
-                          {isSelected && isPrixValide && (
-                            <span className="px-2 py-0.5 bg-green-500 text-white rounded-full text-xs font-bold">
-                              ✅ Prix OK
+                          {isSelected && isLigneComplete && (
+                            <span className="px-2 py-0.5 bg-green-500 text-white rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap">
+                              ✅ Prix + Devise OK
                             </span>
                           )}
                           {isSelected && !isPrixValide && (
-                            <span className="px-2 py-0.5 bg-red-500 text-white rounded-full text-xs font-bold animate-pulse">
+                            <span className="px-2 py-0.5 bg-red-500 text-white rounded-full text-[10px] sm:text-xs font-bold animate-pulse whitespace-nowrap">
                               ⚠️ Prix requis
                             </span>
                           )}
+                          {isSelected && isPrixValide && !isDeviseValide && (
+                            <span className="px-2 py-0.5 bg-orange-500 text-white rounded-full text-[10px] sm:text-xs font-bold animate-pulse whitespace-nowrap">
+                              ⚠️ Devise requise
+                            </span>
+                          )}
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">
-                          <Building2 size={14} className="inline mr-1" />
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">
+                          <Building2 size={14} className="inline mr-1 shrink-0" />
                           {panneauNom} - Face {faceOrientation}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          <User size={12} className="inline mr-1" />
+                        <p className="text-[11px] sm:text-xs text-gray-500 break-words">
+                          <User size={12} className="inline mr-1 shrink-0" />
                           {reservation.client?.nom || 'Client non spécifié'}
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-500 font-medium">Prix/mois:</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 shrink-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs sm:text-sm text-gray-500 font-medium whitespace-nowrap">
+                            Prix/mois:
+                          </span>
                           <input
                             type="number"
-                            className={`w-32 p-2 border-2 rounded-lg text-right font-bold text-sm ${
-                              isSelected
+                            className={`w-24 sm:w-28 p-1.5 sm:p-2 border-2 rounded-lg text-right font-bold text-xs sm:text-sm ${isSelected
                                 ? isPrixValide
                                   ? 'border-green-400 bg-green-50 text-green-700'
                                   : 'border-red-400 bg-red-50 text-red-700'
                                 : 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
-                            }`}
+                              }`}
                             value={prix}
                             onChange={(e) => {
                               if (isSelected) {
@@ -557,37 +643,54 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
                             onFocus={(e) => e.target.select()}
                             min="0"
                             step="100"
-                            placeholder="Saisir le prix"
+                            placeholder="Prix"
                             disabled={!isSelected}
                           />
-                          <span className="text-xs text-gray-500">FC</span>
+                          <select
+                            value={deviseResa}
+                            onChange={(e) =>
+                              updateDevise(reservation.id_reservation, e.target.value as 'CDF' | 'USD')
+                            }
+                            disabled={!isSelected}
+                            className={`p-1.5 sm:p-2 border-2 rounded-lg text-xs sm:text-sm font-bold transition ${!isSelected
+                                ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : !isDeviseValide
+                                  ? 'border-orange-400 bg-orange-50 text-orange-700 animate-pulse'
+                                  : 'border-green-400 bg-green-50 text-green-700'
+                              }`}
+                            title={!isDeviseValide ? 'Devise obligatoire' : 'Devise sélectionnée'}
+                          >
+                            <option value="">Devise</option>
+                            <option value="CDF">CDF (FC)</option>
+                            <option value="USD">USD ($)</option>
+                          </select>
                         </div>
-                        <button className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-bold transition flex items-center gap-1">
+                        <button className="px-2 sm:px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-[10px] sm:text-xs font-bold transition flex items-center gap-1 justify-center whitespace-nowrap">
                           <Eye size={14} />
                           Détails
                         </button>
                       </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-gray-100">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <User size={14} className="text-gray-400" />
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 min-w-0">
+                        <User size={14} className="text-gray-400 shrink-0" />
                         <span className="truncate">{reservation.client?.nom || 'N/A'}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Calendar size={14} className="text-gray-400" />
-                        <span>
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 min-w-0">
+                        <Calendar size={14} className="text-gray-400 shrink-0" />
+                        <span className="truncate">
                           {formatDate(reservation.date_debut_campagne)} → {formatDate(reservation.date_fin_campagne)}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Clock size={14} className="text-gray-400" />
-                        <span>Créée le {formatDate(reservation.created_at)}</span>
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 min-w-0">
+                        <Clock size={14} className="text-gray-400 shrink-0" />
+                        <span className="truncate">Créée le {formatDate(reservation.created_at)}</span>
                       </div>
                     </div>
 
                     {reservation.notes && (
-                      <div className="mt-3 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+                      <div className="mt-3 text-[11px] sm:text-xs text-gray-500 bg-gray-50 p-2 rounded-lg break-words">
                         📝 {reservation.notes}
                       </div>
                     )}
@@ -599,47 +702,53 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
         })}
       </div>
 
-      {/* Barre d'action en bas */}
-      <div className="mt-6 bg-white rounded-xl p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+      {/* Barre d'action bas */}
+      <div className="mt-4 sm:mt-6 bg-white rounded-xl p-2 sm:p-4 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 md:gap-4">
             <button
               onClick={toggleSelectAll}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition"
+              className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 hover:text-blue-600 transition"
             >
-              {selectAll ? <CheckSquare size={18} /> : <Square size={18} />}
-              {selectAll ? 'Tout désélectionner' : 'Tout sélectionner'}
+              {selectAll ? <CheckSquare size={16} className="sm:w-[18px] sm:h-[18px]" /> : <Square size={16} className="sm:w-[18px] sm:h-[18px]" />}
+              <span className="whitespace-nowrap">
+                {selectAll ? 'Tout désélectionner' : 'Tout sélectionner'}
+              </span>
             </button>
-            <span className="text-sm text-gray-400">|</span>
-            <span className="text-sm text-gray-600">
-              {selectedIds.length} réservation(s) sélectionnée(s)
+            <span className="text-sm text-gray-400 hidden sm:inline">|</span>
+            <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">
+              {selectedIds.length} sélectionnée(s)
             </span>
             {clientInfo && clientInfo.type === 'unique' && selectedIds.length > 0 && (
-              <span className="text-sm text-green-600">
+              <span className="text-xs sm:text-sm text-green-600 break-words">
                 Client: <strong>{clientInfo.client}</strong>
               </span>
             )}
             {clientInfo && clientInfo.type === 'multiple' && (
-              <span className="text-sm text-red-500 font-bold animate-pulse">
+              <span className="text-xs sm:text-sm text-red-500 font-bold animate-pulse break-words">
                 ⚠️ {clientInfo.message} - Une facture ne peut avoir qu'un seul client !
               </span>
             )}
             {prixManquants.length > 0 && selectedIds.length > 0 && (
-              <span className="text-sm text-red-500 font-bold animate-pulse">
-                ⚠️ {prixManquants.length} prix manquant(s)
+              <span className="text-xs sm:text-sm text-red-500 font-bold animate-pulse whitespace-nowrap">
+                ⚠️ {prixManquants.length} incomplet(s)
+              </span>
+            )}
+            {deviseMixte && (
+              <span className="text-xs sm:text-sm text-blue-600 font-bold break-words">
+                💱 Multi-devises : {devisesUtilisees.join(' + ')} — totaux séparés
               </span>
             )}
           </div>
           <button
             onClick={creerFacture}
             disabled={selectedIds.length === 0 || clientInfo?.type === 'multiple' || prixManquants.length > 0}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg font-bold transition ${
-              selectedIds.length === 0 || clientInfo?.type === 'multiple' || prixManquants.length > 0
+            className={`flex items-center justify-center gap-2 px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-bold text-xs sm:text-sm transition w-full lg:w-auto ${selectedIds.length === 0 || clientInfo?.type === 'multiple' || prixManquants.length > 0
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-blue-600 text-white hover:bg-blue-700 transform hover:scale-105'
-            }`}
+              }`}
           >
-            <Printer size={18} />
+            <Printer size={16} className="sm:w-[18px] sm:h-[18px]" />
             Générer le proformat ({selectedIds.length})
           </button>
         </div>

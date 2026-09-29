@@ -1,8 +1,7 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-// src/context/CartContext.tsximport React, { createContext, useContext, useState, useEffect } from 'react';
+// src/context/CartContext.tsx
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type Currency = 'CDF' | 'USD';
 
@@ -19,7 +18,7 @@ export interface CartItem {
   statut: string;
   date_debut?: string;
   date_fin?: string;
-  prix_saisi: number; // 0 = vide, l'utilisateur doit le saisir
+  prix_saisi: number;
   prix_original?: number;
   currency: Currency;
   hauteur_cm?: number;
@@ -45,14 +44,38 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+// ============================================
+// ✅ HELPERS localStorage (safe en navigation privée)
+// ============================================
+function safeGetItem(key: string): string | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(key, value);
+  } catch {
+    // Navigation privée : silencieux
+  }
+}
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [currency, setCurrency] = useState<Currency>('CDF');
 
+  // ============================================
+  // Chargement initial
+  // ============================================
   useEffect(() => {
-    const saved = localStorage.getItem('cart_items');
-    const savedCurrency = localStorage.getItem('cart_currency') as Currency | null;
-    
+    const saved = safeGetItem('cart_items');
+    const savedCurrency = safeGetItem('cart_currency') as Currency | null;
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -67,18 +90,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setItems([]);
       }
     }
-    
+
     if (savedCurrency && (savedCurrency === 'CDF' || savedCurrency === 'USD')) {
       setCurrency(savedCurrency);
     }
   }, []);
 
+  // ============================================
+  // Persistance items
+  // ============================================
   useEffect(() => {
-    localStorage.setItem('cart_items', JSON.stringify(items));
+    safeSetItem('cart_items', JSON.stringify(items));
   }, [items]);
 
+  // ============================================
+  // Persistance currency
+  // ============================================
   useEffect(() => {
-    localStorage.setItem('cart_currency', currency);
+    safeSetItem('cart_currency', currency);
   }, [currency]);
 
   // ✅ Recalculer les prix - mais ne pas forcer de prix par défaut
@@ -88,14 +117,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addItem = (item: CartItem) => {
-    // ✅ Prix à 0 par défaut (vide)
     const validItem = {
       ...item,
-      prix_saisi: 0, // ✅ Vide, l'utilisateur doit saisir
+      prix_saisi: 0,
       prix_original: 0,
       currency: item.currency || 'CDF'
     };
-    
+
     setItems(prev => {
       if (prev.some(i => i.id_face === validItem.id_face)) {
         return prev;
@@ -118,12 +146,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return items.some(item => item.id_face === id_face);
   };
 
-  // ✅ Total en CDF (somme des items en CDF uniquement)
+  // ✅ Total en CDF
   const getTotalPriceInCDF = () => {
     return items.reduce((sum, item) => {
       if (item.currency === 'CDF') {
         const prix = typeof item.prix_saisi === 'number' && !isNaN(item.prix_saisi)
-          ? item.prix_saisi 
+          ? item.prix_saisi
           : 0;
         return sum + prix;
       }
@@ -131,12 +159,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }, 0);
   };
 
-  // ✅ Total en USD (somme des items en USD uniquement)
+  // ✅ Total en USD
   const getTotalPriceInUSD = () => {
     return items.reduce((sum, item) => {
       if (item.currency === 'USD') {
         const prix = typeof item.prix_saisi === 'number' && !isNaN(item.prix_saisi)
-          ? item.prix_saisi 
+          ? item.prix_saisi
           : 0;
         return sum + prix;
       }
@@ -156,8 +184,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const updateItemPrice = (id_face: number, prix: number, newCurrency: Currency) => {
     const validPrix = typeof prix === 'number' && !isNaN(prix) ? prix : 0;
     setItems(prev => {
-      return prev.map(item => 
-        item.id_face === id_face 
+      return prev.map(item =>
+        item.id_face === id_face
           ? { ...item, prix_saisi: validPrix, currency: newCurrency, prix_original: validPrix }
           : item
       );

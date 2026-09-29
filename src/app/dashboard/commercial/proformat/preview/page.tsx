@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic';
 
 // src/app/dashboard/commercial/proformat/preview/page.tsx
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -31,6 +30,7 @@ interface ReservationProformat {
   date_debut_campagne: string;
   date_fin_campagne: string;
   prix_saisi: number;
+  devise: 'CDF' | 'USD';
   commercial_nom: string;
   commercial_prenom: string;
   commercial_email: string;
@@ -51,7 +51,14 @@ export default function ProformatPreviewPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // ✅ Totaux séparés par devise
   const [totalGeneral, setTotalGeneral] = useState(0);
+  const [totalCDF, setTotalCDF] = useState(0);
+  const [totalUSD, setTotalUSD] = useState(0);
+  const [devisesUtilisees, setDevisesUtilisees] = useState<string[]>([]);
+  const [deviseProformat, setDeviseProformat] = useState<'CDF' | 'USD' | 'MULTI'>('CDF');
+
   const [commercialInfo, setCommercialInfo] = useState({
     nom: '',
     prenom: '',
@@ -60,10 +67,11 @@ export default function ProformatPreviewPage() {
   });
   const [zoom, setZoom] = useState(1);
   const [error, setError] = useState<string | null>(null);
-  const [numeroFacture, setNumeroFacture] = useState('');
+
+  // ✅ Numéro issu de la BD (prévisionnel puis définitif)
+  const [numeroFacture, setNumeroFacture] = useState('Chargement...');
+  const [numeroBD, setNumeroBD] = useState<string | null>(null); // Numéro d'une facture existante (doublon)
   const [idFacture, setIdFacture] = useState<number | null>(null);
-  const [notes, setNotes] = useState('');
-  const [conditions, setConditions] = useState('Paiement à 30 jours');
   const [showValidationModal, setShowValidationModal] = useState(false);
 
   // ✅ Pour éviter les doubles impressions
@@ -86,14 +94,9 @@ export default function ProformatPreviewPage() {
   }, []);
 
   // ============================================
-  // CHARGEMENT DU localStorage
+  // CHARGEMENT DU localStorage + NUMÉRO BD
   // ============================================
   useEffect(() => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const random = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
-    setNumeroFacture(`PRO-${year}-${random}`);
-
     const data =
       typeof window !== 'undefined'
         ? localStorage.getItem('proformat_selected_reservations')
@@ -101,6 +104,10 @@ export default function ProformatPreviewPage() {
     const client =
       typeof window !== 'undefined'
         ? localStorage.getItem('proformat_client_nom')
+        : null;
+    const devise =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('proformat_devise')
         : null;
 
     if (!data || !client) {
@@ -141,11 +148,57 @@ export default function ProformatPreviewPage() {
         nomComplet: finalNomComplet,
       });
 
-      const total = parsed.reduce(
-        (sum: number, r: ReservationProformat) => sum + (r.prix_saisi || 0),
-        0
-      );
-      setTotalGeneral(total);
+      // ✅ Calcul des totaux SÉPARÉS par devise
+      let sommeCDF = 0;
+      let sommeUSD = 0;
+      const devisesSet = new Set<string>();
+
+      for (const r of parsed as ReservationProformat[]) {
+        const p = Number(r.prix_saisi) || 0;
+        if (r.devise === 'USD') {
+          sommeUSD += p;
+          devisesSet.add('USD');
+        } else {
+          sommeCDF += p;
+          devisesSet.add('CDF');
+        }
+      }
+
+      setTotalCDF(sommeCDF);
+      setTotalUSD(sommeUSD);
+      setTotalGeneral(sommeCDF + sommeUSD);
+
+      const devisesArr = Array.from(devisesSet).sort();
+      setDevisesUtilisees(devisesArr);
+
+      if (devisesArr.length === 1) {
+        setDeviseProformat(devisesArr[0] as 'CDF' | 'USD');
+      } else if (devisesArr.length > 1) {
+        setDeviseProformat('MULTI');
+      } else if (devise === 'CDF' || devise === 'USD') {
+        setDeviseProformat(devise);
+      } else {
+        setDeviseProformat('CDF');
+      }
+
+      // ✅ Récupérer le prochain numéro depuis la BD
+      (async () => {
+        try {
+          const resp = await fetch('/api/facture/next-numero?prefix=PRO', {
+            method: 'GET',
+            credentials: 'include',
+          });
+          const res = await resp.json();
+          if (res.success && res.numero) {
+            setNumeroFacture(res.numero);
+          } else {
+            setNumeroFacture('PRO-XXXX-XXXXXX');
+          }
+        } catch (e) {
+          console.error('Erreur récupération numéro:', e);
+          setNumeroFacture('PRO-XXXX-XXXXXX');
+        }
+      })();
     } catch (e) {
       console.error('Erreur de chargement:', e);
       setError('Erreur lors du chargement des données.');
@@ -189,6 +242,13 @@ export default function ProformatPreviewPage() {
       );
       if (sansPrix.length > 0) {
         errors.push(`❌ ${sansPrix.length} réservation(s) sans prix valide`);
+      }
+
+      const sansDevise = reservations.filter(
+        (r) => r.devise !== 'CDF' && r.devise !== 'USD'
+      );
+      if (sansDevise.length > 0) {
+        errors.push(`❌ ${sansDevise.length} réservation(s) sans devise valide`);
       }
 
       const sansId = reservations.filter((r) => !r.id_reservation);
@@ -236,6 +296,8 @@ export default function ProformatPreviewPage() {
   const checkDuplicate = async (): Promise<{
     isDuplicate: boolean;
     message?: string;
+    numero_facture?: string;
+    id_facture?: number;
   }> => {
     try {
       const ids = reservations.map((r) => r.id_reservation).join(',');
@@ -305,6 +367,11 @@ export default function ProformatPreviewPage() {
       console.log('🟢 [8] Doublon:', duplicateCheck);
 
       if (duplicateCheck.isDuplicate) {
+        // ✅ On utilise le numéro RÉEL venant de la BD
+        if (duplicateCheck.numero_facture) {
+          setNumeroBD(duplicateCheck.numero_facture);
+          setNumeroFacture(duplicateCheck.numero_facture);
+        }
         setSaveError(
           `⚠️ ${duplicateCheck.message || 'Une facture existe déjà pour ces réservations'}`
         );
@@ -321,24 +388,27 @@ export default function ProformatPreviewPage() {
         commercial_nom: commercialNom,
         commercial_email: commercialEmail,
         commercial_id: user?.id || null,
+        devise: deviseProformat === 'MULTI' ? 'CDF' : deviseProformat,
+        devises_utilisees: devisesUtilisees.join(','),
+        total: totalGeneral,
+        total_cdf: totalCDF,
+        total_usd: totalUSD,
         reservations: reservations.map((r) => ({
           id_reservation: r.id_reservation,
           numero_commande: r.numero_commande,
           id_face: r.lignes[0]?.id_face || null,
           id_panneau: r.lignes[0]?.id_panneau || null,
           prix_saisi: r.prix_saisi || 0,
+          devise: r.devise || 'CDF',
           panneau_nom: r.lignes[0]?.panneau?.nom || '',
           panneau_adresse: r.lignes[0]?.panneau?.adresse || '',
           orientation: r.lignes[0]?.orientation || '',
           type_face: r.lignes[0]?.type_face || '',
           date_debut: r.date_debut_campagne,
           date_fin: r.date_fin_campagne,
-          currency: 'CDF',
         })),
-        total: totalGeneral,
-        currency: 'CDF',
-        notes,
-        conditions_paiement: conditions,
+        notes: '',
+        conditions_paiement: 'Paiement à 30 jours',
       };
 
       console.log('🟢 [10] Envoi POST /api/facture');
@@ -359,13 +429,14 @@ export default function ProformatPreviewPage() {
         setSaveSuccess(
           `✅ Proformat enregistré avec succès ! N°: ${result.data.numero_facture}`
         );
+
+        // ✅ On stocke le VRAI numéro définitif renvoyé par l'API
         setNumeroFacture(result.data.numero_facture);
         setIdFacture(result.data.id_facture);
 
         localStorage.setItem('last_facture_id', result.data.id_facture);
         localStorage.setItem('last_facture_numero', result.data.numero_facture);
 
-        // ✅ Impression auto APRÈS re-render
         console.log('🟢 [13] Impression programmée');
         triggerPrint(1200);
       } else {
@@ -407,9 +478,9 @@ export default function ProformatPreviewPage() {
     }
   };
 
-  // ============================================
-  // AFFICHAGES D'ERREUR / CHARGEMENT
-  // ============================================
+  // ✅ Symbole devise pour affichage
+  const getDeviseSymbole = (d: string) => (d === 'USD' ? '$' : 'FC');
+
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -456,9 +527,10 @@ export default function ProformatPreviewPage() {
     );
   }
 
-  // ============================================
-  // RENDU PRINCIPAL
-  // ============================================
+  const afficherTotalCDF = totalCDF > 0;
+  const afficherTotalUSD = totalUSD > 0;
+  const afficherLesDeux = afficherTotalCDF && afficherTotalUSD;
+
   return (
     <div className="page-container">
       {/* Modal validation */}
@@ -583,7 +655,7 @@ export default function ProformatPreviewPage() {
             {new Date().toLocaleDateString('fr-FR')}
           </div>
 
-          {/* NUMÉRO PROFORMAT */}
+          {/* NUMÉRO PROFORMAT — Vient de la BD (prévisionnel ou définitif) */}
           <div
             style={{
               position: 'absolute',
@@ -595,11 +667,7 @@ export default function ProformatPreviewPage() {
               fontFamily: "'Courier New', Courier, monospace",
             }}
           >
-            {saved
-              ? numeroFacture
-              : `PRO-${new Date().getFullYear()}-${String(
-                  Math.floor(Math.random() * 10000)
-                ).padStart(4, '0')}`}
+            {numeroFacture}
           </div>
 
           {/* INFOS CLIENT */}
@@ -664,7 +732,8 @@ export default function ProformatPreviewPage() {
                 >
                   <span>{reservation.numero_commande}</span>
                   <span>
-                    {reservation.prix_saisi?.toLocaleString()} FCFA/mois
+                    {reservation.prix_saisi?.toLocaleString()}{' '}
+                    {getDeviseSymbole(reservation.devise || deviseProformat)} /mois
                   </span>
                 </div>
 
@@ -750,166 +819,34 @@ export default function ProformatPreviewPage() {
             ))}
           </div>
 
-          {/* TOTAL */}
+          {/* TOTAL MULTI-DEVISES */}
           <div
             style={{
               position: 'absolute',
-              top: '250mm',
-              left: '160mm',
-              width: '30mm',
+              top: afficherLesDeux ? '240mm' : '250mm',
+              left: '130mm',
+              width: '60mm',
               textAlign: 'right',
               fontWeight: 'bold',
-              fontSize: '16px',
+              fontSize: afficherLesDeux ? '13px' : '16px',
               fontFamily: "'Courier New', Courier, monospace",
               color: saved ? '#003366' : '#000',
+              lineHeight: '1.6',
             }}
           >
-            {totalGeneral.toLocaleString()} FCFA
-          </div>
-
-          {/* CONDITIONS / NOTES */}
-          <div
-            style={{
-              position: 'absolute',
-              top: '260mm',
-              left: '10mm',
-              width: '180mm',
-              fontSize: '7px',
-              color: '#666',
-              fontFamily: "'Courier New', Courier, monospace",
-            }}
-          >
-            <div className="no-print" style={{ marginBottom: '2mm' }}>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notes supplémentaires..."
-                style={{
-                  width: '100%',
-                  padding: '2mm',
-                  border: '1px solid #ddd',
-                  borderRadius: '2px',
-                  fontSize: '8px',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                  minHeight: '15mm',
-                }}
-              />
-              <input
-                type="text"
-                value={conditions}
-                onChange={(e) => setConditions(e.target.value)}
-                placeholder="Conditions de paiement"
-                style={{
-                  width: '100%',
-                  padding: '2mm',
-                  border: '1px solid #ddd',
-                  borderRadius: '2px',
-                  fontSize: '8px',
-                  fontFamily: 'inherit',
-                  marginTop: '1mm',
-                }}
-              />
-            </div>
-            <div className="print-only">
-              <p style={{ margin: '0.5mm 0' }}>
-                {conditions || 'Paiement à 30 jours'}
-              </p>
-              {notes && (
-                <p style={{ margin: '0.5mm 0', fontStyle: 'italic' }}>
-                  {notes}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* SIGNATURES */}
-          <div
-            style={{
-              position: 'absolute',
-              top: '280mm',
-              left: '10mm',
-              width: '180mm',
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontFamily: "'Courier New', Courier, monospace",
-            }}
-          >
-            <div style={{ width: '80mm' }}>
-              <p
-                style={{
-                  fontSize: '7px',
-                  color: '#666',
-                  marginBottom: '2mm',
-                }}
-              >
-                Signature du commercial
-              </p>
-              <div
-                style={{
-                  borderBottom: '1px solid #999',
-                  height: '10mm',
-                }}
-              ></div>
-              <p
-                style={{
-                  fontSize: '8px',
-                  fontWeight: 'bold',
-                  marginTop: '1mm',
-                }}
-              >
-                {commercialInfo.nomComplet}
-              </p>
-              <p style={{ fontSize: '7px', color: '#666' }}>
-                {commercialInfo.email}
-              </p>
-            </div>
-            <div style={{ width: '80mm' }}>
-              <p
-                style={{
-                  fontSize: '7px',
-                  color: '#666',
-                  marginBottom: '2mm',
-                }}
-              >
-                Signature du client
-              </p>
-              <div
-                style={{
-                  borderBottom: '1px solid #999',
-                  height: '10mm',
-                }}
-              ></div>
-              <p
-                style={{
-                  fontSize: '8px',
-                  fontWeight: 'bold',
-                  marginTop: '1mm',
-                }}
-              >
-                Bon pour accord
-              </p>
-              <p style={{ fontSize: '7px', color: '#666' }}>{clientNom}</p>
-            </div>
-          </div>
-
-          {/* Pied de page */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '5mm',
-              left: '10mm',
-              width: '190mm',
-              textAlign: 'center',
-              fontSize: '5px',
-              color: '#999',
-              fontFamily: "'Courier New', Courier, monospace",
-              borderTop: '1px solid #eee',
-              paddingTop: '1mm',
-            }}
-          >
-            {saved ? `✅ Enregistré sous N° ${numeroFacture} - ` : ''}
-            Document généré automatiquement - {new Date().toLocaleString()}
+            {afficherTotalCDF && (
+              <div>
+                Total CDF : {totalCDF.toLocaleString()} FC
+              </div>
+            )}
+            {afficherTotalUSD && (
+              <div>
+                Total USD : {totalUSD.toLocaleString()} $
+              </div>
+            )}
+            {!afficherTotalCDF && !afficherTotalUSD && (
+              <div>0 {getDeviseSymbole(deviseProformat)}</div>
+            )}
           </div>
         </div>
       </div>
@@ -1021,7 +958,7 @@ export default function ProformatPreviewPage() {
           background: #27ae60;
           color: white;
           padding: 6px 14px;
-          border-radius: 20px;
+          border-radius: 50px;
           font-size: 12px;
           font-weight: bold;
           display: flex;
