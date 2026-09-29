@@ -299,16 +299,14 @@ export function CommercialHeader({
     );
   };
 
-  // ✅ Liste complète des actions pour le drawer mobile
+  // ✅ Liste des actions pour le drawer mobile (design épuré)
   const mobileMenuActions = useMemo(() => {
     const actions: Array<{
       id: string;
       label: string;
       icon: React.ReactNode;
       onClick?: () => void;
-      colorClass: string;
       badge?: number;
-      hidden?: boolean;
     }> = [];
 
     if (onCatalogueToggle) {
@@ -317,7 +315,6 @@ export function CommercialHeader({
         label: 'Catalogue',
         icon: <BookOpen size={18} />,
         onClick: onCatalogueToggle,
-        colorClass: 'bg-blue-600 hover:bg-blue-500',
       });
     }
     if (onMapToggle) {
@@ -326,7 +323,6 @@ export function CommercialHeader({
         label: 'Carte interactive',
         icon: <MapPin size={18} />,
         onClick: onMapToggle,
-        colorClass: 'bg-emerald-600 hover:bg-emerald-500',
       });
     }
     if (onExportToggle) {
@@ -335,7 +331,6 @@ export function CommercialHeader({
         label: 'Exporter les données',
         icon: <Download size={18} />,
         onClick: onExportToggle,
-        colorClass: 'bg-violet-600 hover:bg-violet-500',
       });
     }
     if (features?.canManageTeam && onTeamManagementToggle) {
@@ -344,7 +339,6 @@ export function CommercialHeader({
         label: "Gestion de l'équipe",
         icon: <Users size={18} />,
         onClick: onTeamManagementToggle,
-        colorClass: 'bg-orange-600 hover:bg-orange-500',
       });
     }
     if (features?.canModifyReservations && onReservationsManagementToggle) {
@@ -353,7 +347,6 @@ export function CommercialHeader({
         label: 'Gestion des réservations',
         icon: <ClipboardCheck size={18} />,
         onClick: onReservationsManagementToggle,
-        colorClass: 'bg-amber-600 hover:bg-amber-500',
       });
     }
     if (features?.canViewReports && onReportsToggle) {
@@ -362,7 +355,6 @@ export function CommercialHeader({
         label: 'Rapports',
         icon: <BarChart3 size={18} />,
         onClick: onReportsToggle,
-        colorClass: 'bg-cyan-600 hover:bg-cyan-500',
       });
     }
     if (features?.canViewPredictions && onPredictionsToggle) {
@@ -371,7 +363,6 @@ export function CommercialHeader({
         label: 'Prédictions',
         icon: <TrendingUp size={18} />,
         onClick: onPredictionsToggle,
-        colorClass: 'bg-indigo-600 hover:bg-indigo-500',
       });
     }
     if (onNotificationsToggle) {
@@ -380,7 +371,6 @@ export function CommercialHeader({
         label: 'Notifications',
         icon: <Bell size={18} />,
         onClick: onNotificationsToggle,
-        colorClass: 'bg-red-600 hover:bg-red-500',
         badge: notificationCount,
       });
     }
@@ -390,7 +380,6 @@ export function CommercialHeader({
       label: 'Actualiser',
       icon: <RefreshCw size={18} />,
       onClick: handleRefresh,
-      colorClass: 'bg-slate-600 hover:bg-slate-500',
     });
 
     if (isAdmin && onAdminToggle) {
@@ -399,7 +388,6 @@ export function CommercialHeader({
         label: 'Administration',
         icon: <User size={18} />,
         onClick: onAdminToggle,
-        colorClass: 'bg-fuchsia-600 hover:bg-fuchsia-500',
       });
     }
 
@@ -412,7 +400,6 @@ export function CommercialHeader({
   ]);
 
   // ✅ Handler d'action du drawer mobile
-    // ✅ Handler d'action du drawer mobile
   const handleMobileAction = (action?: () => void) => {
     return () => {
       setIsMobileMenuOpen(false);
@@ -635,7 +622,7 @@ export function CommercialHeader({
             <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="
-                sm:hidden flex-shrink-0
+                sm:hidden flex-shrink-0 relative
                 p-2 rounded-xl
                 bg-white/10 hover:bg-white/20
                 border border-white/20
@@ -657,12 +644,12 @@ export function CommercialHeader({
         </div>
       </header>
 
-      {/* ✅ DRAWER MOBILE */}
+      {/* ✅ DRAWER MOBILE — Design épuré */}
       {isMobileMenuOpen && (
         <div className="sm:hidden fixed inset-0 z-[100]">
           {/* Overlay */}
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn"
+            className="absolute inset-0 bg-black/50 animate-fadeIn"
             onClick={() => setIsMobileMenuOpen(false)}
           />
 
@@ -670,7 +657,7 @@ export function CommercialHeader({
           <div
             className="
               absolute top-0 right-0 h-full w-[85%] max-w-sm
-              bg-gradient-to-b from-slate-900 to-slate-800
+              bg-slate-900
               shadow-2xl
               flex flex-col
               animate-slideInRight
@@ -679,52 +666,52 @@ export function CommercialHeader({
             {/* En-tête du drawer */}
             <div className="flex items-center justify-between p-4 border-b border-white/10 flex-shrink-0">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold flex-shrink-0">
+                <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold flex-shrink-0">
                   {displayName?.charAt(0).toUpperCase() || 'U'}
                 </div>
                 <div className="min-w-0">
                   <p className="text-white font-semibold text-sm truncate">
                     {displayName || 'Utilisateur'}
                   </p>
-                  <p className="text-white/60 text-xs truncate">
+                  <p className="text-white/50 text-xs truncate">
                     {displayEmail || ''}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition"
+                className="p-2 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition"
                 aria-label="Fermer le menu"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* ✅ Actions scrollables */}
+            {/* ✅ Contenu scrollable */}
             <div className="flex-1 overflow-y-auto overscroll-contain mobile-menu-scroll p-3">
+
               {/* Section Actions */}
-              <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-2 mb-2">
+              <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-3 mb-1.5 mt-1">
                 Actions
               </p>
 
-              <div className="space-y-1.5 mb-4">
+              <div className="space-y-0.5 mb-4">
                 {mobileMenuActions.map((action) => (
                   <button
                     key={action.id}
                     onClick={handleMobileAction(action.onClick)}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-3 rounded-xl
-                      text-white text-sm font-medium
-                      transition-all duration-200
-                      active:scale-[0.98]
-                      ${action.colorClass}
-                      shadow-md
-                    `}
+                    className="
+                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                      text-white/90 hover:text-white hover:bg-white/5
+                      text-sm font-medium
+                      transition-colors duration-150
+                      active:bg-white/10
+                    "
                   >
-                    <span className="flex-shrink-0">{action.icon}</span>
+                    <span className="flex-shrink-0 text-white/60">{action.icon}</span>
                     <span className="flex-1 text-left truncate">{action.label}</span>
                     {action.badge !== undefined && action.badge > 0 && (
-                      <span className="min-w-[20px] h-5 px-1.5 bg-white text-red-600 rounded-full text-[10px] font-bold flex items-center justify-center">
+                      <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center">
                         {action.badge > 99 ? '99+' : action.badge}
                       </span>
                     )}
@@ -733,17 +720,23 @@ export function CommercialHeader({
               </div>
 
               {/* Section Compte */}
-              <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-2 mb-2">
+              <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-3 mb-1.5">
                 Mon compte
               </p>
 
-              <div className="space-y-1.5 mb-4">
+              <div className="space-y-0.5 mb-4">
                 {onProfileClick && (
                   <button
                     onClick={handleMobileAction(onProfileClick)}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition"
+                    className="
+                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                      text-white/90 hover:text-white hover:bg-white/5
+                      text-sm font-medium
+                      transition-colors duration-150
+                      active:bg-white/10
+                    "
                   >
-                    <User size={18} className="flex-shrink-0" />
+                    <User size={18} className="flex-shrink-0 text-white/60" />
                     <span>Mon profil</span>
                   </button>
                 )}
@@ -751,9 +744,15 @@ export function CommercialHeader({
                 {onChangePasswordClick && (
                   <button
                     onClick={handleMobileAction(onChangePasswordClick)}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition"
+                    className="
+                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                      text-white/90 hover:text-white hover:bg-white/5
+                      text-sm font-medium
+                      transition-colors duration-150
+                      active:bg-white/10
+                    "
                   >
-                    <KeyRound size={18} className="flex-shrink-0" />
+                    <KeyRound size={18} className="flex-shrink-0 text-white/60" />
                     <span>Changer le mot de passe</span>
                   </button>
                 )}
@@ -761,33 +760,44 @@ export function CommercialHeader({
                 {onSettingsClick && (
                   <button
                     onClick={handleMobileAction(onSettingsClick)}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition"
+                    className="
+                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                      text-white/90 hover:text-white hover:bg-white/5
+                      text-sm font-medium
+                      transition-colors duration-150
+                      active:bg-white/10
+                    "
                   >
-                    <Settings size={18} className="flex-shrink-0" />
+                    <Settings size={18} className="flex-shrink-0 text-white/60" />
                     <span>Paramètres</span>
                   </button>
                 )}
 
                 <button
                   onClick={() => console.log('Aide')}
-                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition"
+                  className="
+                    w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                    text-white/90 hover:text-white hover:bg-white/5
+                    text-sm font-medium
+                    transition-colors duration-150
+                    active:bg-white/10
+                  "
                 >
-                  <HelpCircle size={18} className="flex-shrink-0" />
+                  <HelpCircle size={18} className="flex-shrink-0 text-white/60" />
                   <span>Aide</span>
                 </button>
               </div>
 
-              {/* ✅ Section Déconnexion (en bas, visible) */}
-              <div className="pt-2 border-t border-white/10">
+              {/* Section Déconnexion */}
+              <div className="pt-3 mt-2 border-t border-white/10">
                 <button
                   onClick={handleLogoutClick}
                   className="
-                    w-full flex items-center gap-3 px-3 py-3.5 rounded-xl
-                    bg-red-600 hover:bg-red-500
-                    text-white text-sm font-bold
-                    transition-all duration-200
-                    active:scale-[0.98]
-                    shadow-lg shadow-red-900/30
+                    w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                    text-red-400 hover:text-red-300 hover:bg-red-500/10
+                    text-sm font-medium
+                    transition-colors duration-150
+                    active:bg-red-500/20
                   "
                 >
                   <LogOut size={18} className="flex-shrink-0" />
@@ -809,7 +819,7 @@ export function CommercialHeader({
         userName={displayName || 'Utilisateur'}
       />
 
-      {/* ✅ Styles d'animation + scrollbar fine */}
+      {/* ✅ Animations + scrollbar fine */}
       <style jsx global>{`
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -820,14 +830,14 @@ export function CommercialHeader({
           to { transform: translateX(0); }
         }
         .animate-fadeIn {
-          animation: fadeIn 0.25s ease-out;
+          animation: fadeIn 0.2s ease-out;
         }
         .animate-slideInRight {
-          animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .mobile-menu-scroll {
           scrollbar-width: thin;
-          scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+          scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
         }
         .mobile-menu-scroll::-webkit-scrollbar {
           width: 6px;
@@ -836,11 +846,11 @@ export function CommercialHeader({
           background: transparent;
         }
         .mobile-menu-scroll::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.2);
+          background: rgba(255, 255, 255, 0.15);
           border-radius: 3px;
         }
         .mobile-menu-scroll::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.35);
+          background: rgba(255, 255, 255, 0.25);
         }
       `}</style>
     </>
