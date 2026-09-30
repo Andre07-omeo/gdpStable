@@ -508,13 +508,15 @@ function CommercialDashboardInner() {
   const { addItem } = useCart();
   const { panneaux, loading, error, refresh } = useCommercialData();
 
-  const { stats } = usePanneauxFilters({ panneaux });
-
-  const [filters, setFilters] = useState<PanneauFiltersState>(DEFAULT_FILTERS);
-
+  // ✅ 1. DÉCLARER reservationsMap UNE SEULE FOIS (avant usePanneauxFilters)
   const [reservationsMap, setReservationsMap] = useState<ReservationsMap>(
     createEmptyReservationsMap()
   );
+
+  // ✅ 2. ENSUITE appeler usePanneauxFilters avec reservationsMap
+  const { stats } = usePanneauxFilters({ panneaux, reservationsMap });
+
+  const [filters, setFilters] = useState<PanneauFiltersState>(DEFAULT_FILTERS);
 
   const features = user ? getFeaturesByProfil(user.profil) : null;
 
