@@ -17,6 +17,7 @@ const publicRoutes = [
   '/api/user/request-password-reset',
   '/api/panneaux',
   '/api/locations',
+  '/api/health',          // ✅ AJOUTÉ — healthcheck public (obligatoire pour Docker/Coolify)
 ];
 
 // ✅ Rôles autorisés par route (ordre : spécifique d'abord)
