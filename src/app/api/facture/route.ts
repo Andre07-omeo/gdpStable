@@ -58,18 +58,25 @@ function normaliserDevise(valeur: any): 'CDF' | 'USD' {
 }
 
 // ✅ Mapping INT pour le statut
-const STATUTS_INT: Record<string, number> = {
-  EN_ATTENTE: 1,
-  VALIDE: 2,
-  PAYEE: 3,
-  REJETEE: 4,
-  ANNULEE: 5,
-  BROUILLON: 0,
-};
-
-function normaliserStatut(valeur: any, defaut = 'brouillon'): number {
-  const val = String(valeur || defaut).trim().toUpperCase();
-  return STATUTS_INT[val] ?? STATUTS_INT[defaut] ?? 1;
+// ✅ Mapping STRING pour le statut (aligné sur l'ENUM MySQL)
+// ENUM: enum('brouillon','envoye','paye','annule')
+function normaliserStatut(valeur: any, defaut: 'brouillon' | 'envoye' | 'paye' | 'annule' = 'brouillon'): 'brouillon' | 'envoye' | 'paye' | 'annule' {
+  const val = String(valeur || defaut).trim().toLowerCase();
+  const alias: Record<string, 'brouillon' | 'envoye' | 'paye' | 'annule'> = {
+    // Nouvelles valeurs (ENUM)
+    brouillon: 'brouillon',
+    envoye: 'envoye',
+    paye: 'paye',
+    annule: 'annule',
+    // Anciennes valeurs (compatibilité)
+    en_attente: 'brouillon',
+    broUILLON: 'brouillon',
+    valide: 'envoye',
+    payee: 'paye',
+    rejetee: 'annule',
+    annulee: 'annule',
+  };
+  return alias[val] || 'brouillon';
 }
 
 // ✅ Vérifier si un numéro de facture existe déjà en BD
