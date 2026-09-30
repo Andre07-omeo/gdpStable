@@ -1,5 +1,6 @@
 ﻿# ============================================
 # DOCKERFILE — Gestion Panneaux (Next.js 14)
+# Version optimisée — évite le chown -R (cause erreur 137)
 # ============================================
 
 # ============================================
@@ -12,7 +13,7 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 
-# ⚡ INSTALLER AUSSI LES devDependencies (tailwindcss, typescript, etc.)
+# Installer AUSSI les devDependencies (tailwindcss, typescript, etc.)
 RUN npm ci --include=dev --no-audit --no-fund
 
 
@@ -37,9 +38,7 @@ RUN echo "🔧 BUILD_VERSION=${BUILD_VERSION}" && \
       echo "✅ CACHE_VERSION injectée"; \
     fi
 
-# ⚡ NE PAS METTRE NODE_ENV=production ICI
 ENV NEXT_TELEMETRY_DISABLED=1
-# ENV NODE_ENV=production  ← ❌ RETIRÉ (empêche l'install des devDeps)
 
 RUN npm run build
 
@@ -57,20 +56,28 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/next.config.js* ./
+# ✅ COPY avec --chown : permissions correctes dès la copie
+#    (plus rapide que chown -R après coup)
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 
-RUN chown -R nextjs:nodejs /app
+# next.config.js peut être .js, .ts ou .mjs — on utilise un wildcard
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.js* ./
+
+# ✅ Plus de `RUN chown -R nextjs:nodejs /app` — supprimé car inutile
 
 USER nextjs
 
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+
+# Healthcheck pour que Coolify détecte mieux l'état du conteneur
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
 
 CMD ["npm", "run", "start"]
