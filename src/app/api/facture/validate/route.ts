@@ -348,7 +348,7 @@ export async function POST(request: NextRequest) {
         const placeholders = uniqueReservationIds.map(() => '?').join(',');
         await connection.query(
           `UPDATE reservation 
-           SET statut = 'En attente',
+           SET statut = 'brouillon',
                est_verrouille = 0,
                date_verrouillage = NULL,
                updated_at = NOW()

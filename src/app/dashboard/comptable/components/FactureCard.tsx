@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,10 +33,10 @@ export function FactureCard({
   isComptable = true
 }: FactureCardProps) {
   const getBorderColor = () => {
-    if (facture.statut === 'EN_ATTENTE') return 'border-amber-200 hover:border-amber-400';
-    if (facture.statut === 'VALIDE') return 'border-green-200 hover:border-green-400';
-    if (facture.statut === 'REJETEE') return 'border-red-200 hover:border-red-400';
-    if (facture.statut === 'PAYEE') return 'border-blue-200 hover:border-blue-400';
+    if (facture.statut === 'brouillon') return 'border-amber-200 hover:border-amber-400';
+    if (facture.statut === 'envoye') return 'border-green-200 hover:border-green-400';
+    if (facture.statut === 'annule') return 'border-red-200 hover:border-red-400';
+    if (facture.statut === 'paye') return 'border-blue-200 hover:border-blue-400';
     return 'border-gray-200 hover:border-gray-400';
   };
 
@@ -127,7 +127,7 @@ export function FactureCard({
             Détails
           </button>
           
-          {facture.statut === 'EN_ATTENTE' && isComptable && onValidate && (
+          {facture.statut === 'brouillon' && isComptable && onValidate && (
             <>
               <button
                 onClick={() => onValidate(facture)}
@@ -150,7 +150,7 @@ export function FactureCard({
             </>
           )}
 
-          {(facture.statut === 'VALIDE' || facture.statut === 'EN_ATTENTE') && montantRestant > 0 && isComptable && onPayment && (
+          {(facture.statut === 'envoye' || facture.statut === 'brouillon') && montantRestant > 0 && isComptable && onPayment && (
             <button
               onClick={() => onPayment(facture)}
               disabled={actionLoading}
@@ -161,7 +161,7 @@ export function FactureCard({
             </button>
           )}
 
-          {facture.statut === 'EN_ATTENTE' && isComptable && onDelete && (
+          {facture.statut === 'brouillon' && isComptable && onDelete && (
             <button
               onClick={() => onDelete(facture.id_facture, facture.numero_facture)}
               disabled={actionLoading}

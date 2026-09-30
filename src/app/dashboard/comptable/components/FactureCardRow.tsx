@@ -1,4 +1,4 @@
-// src/app/dashboard/comptable/components/FactureCardRow.tsx
+﻿// src/app/dashboard/comptable/components/FactureCardRow.tsx
 
 'use client';
 
@@ -37,16 +37,16 @@ export function FactureCardRow({
 
   // Couleur de bordure selon le statut
   const borderAccent =
-    facture.statut === 'EN_ATTENTE' ? 'border-l-amber-400' :
-    facture.statut === 'VALIDE' ? 'border-l-emerald-400' :
-    facture.statut === 'REJETEE' ? 'border-l-red-400' :
-    facture.statut === 'PAYEE' ? 'border-l-blue-400' : 'border-l-gray-300';
+    facture.statut === 'brouillon' ? 'border-l-amber-400' :
+    facture.statut === 'envoye' ? 'border-l-emerald-400' :
+    facture.statut === 'annule' ? 'border-l-red-400' :
+    facture.statut === 'paye' ? 'border-l-blue-400' : 'border-l-gray-300';
 
   const statutBg =
-    facture.statut === 'EN_ATTENTE' ? 'bg-amber-50/40' :
-    facture.statut === 'VALIDE' ? 'bg-emerald-50/40' :
-    facture.statut === 'REJETEE' ? 'bg-red-50/40' :
-    facture.statut === 'PAYEE' ? 'bg-blue-50/40' : 'bg-white';
+    facture.statut === 'brouillon' ? 'bg-amber-50/40' :
+    facture.statut === 'envoye' ? 'bg-emerald-50/40' :
+    facture.statut === 'annule' ? 'bg-red-50/40' :
+    facture.statut === 'paye' ? 'bg-blue-50/40' : 'bg-white';
 
   return (
     <div
@@ -180,7 +180,7 @@ export function FactureCardRow({
             </button>
 
             {/* Valider */}
-            {facture.statut === 'EN_ATTENTE' && onValidate && (
+            {facture.statut === 'brouillon' && onValidate && (
               <button
                 onClick={() => onValidate(facture)}
                 className="flex-1 xl:flex-none px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm hover:scale-[1.02] active:scale-95"
@@ -191,7 +191,7 @@ export function FactureCardRow({
             )}
 
             {/* Encaisser */}
-            {(facture.statut === 'VALIDE' || facture.statut === 'EN_ATTENTE') &&
+            {(facture.statut === 'envoye' || facture.statut === 'brouillon') &&
               reste > 0 && onPayment && (
                 <button
                   onClick={() => onPayment(facture)}

@@ -1,4 +1,4 @@
-// src/app/api/comptable/stats/route.ts
+﻿// src/app/api/comptable/stats/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
@@ -49,13 +49,13 @@ export async function GET(request: NextRequest) {
     const [statsGlobales] = await connection.query(`
       SELECT 
         COUNT(*) AS total_factures,
-        COALESCE(SUM(CASE WHEN statut = 'EN_ATTENTE' THEN 1 ELSE 0 END), 0) AS en_attente,
-        COALESCE(SUM(CASE WHEN statut = 'VALIDE' THEN 1 ELSE 0 END), 0) AS validees,
-        COALESCE(SUM(CASE WHEN statut = 'REJETEE' THEN 1 ELSE 0 END), 0) AS rejetees,
-        COALESCE(SUM(CASE WHEN statut = 'PAYEE' THEN 1 ELSE 0 END), 0) AS payees,
+        COALESCE(SUM(CASE WHEN statut = 'brouillon' THEN 1 ELSE 0 END), 0) AS en_attente,
+        COALESCE(SUM(CASE WHEN statut = 'envoye' THEN 1 ELSE 0 END), 0) AS validees,
+        COALESCE(SUM(CASE WHEN statut = 'annule' THEN 1 ELSE 0 END), 0) AS rejetees,
+        COALESCE(SUM(CASE WHEN statut = 'paye' THEN 1 ELSE 0 END), 0) AS payees,
         COALESCE(SUM(total_ttc), 0) AS total_ttc_global,
-        COALESCE(SUM(CASE WHEN statut = 'PAYEE' THEN total_ttc ELSE 0 END), 0) AS total_paye_global,
-        COALESCE(SUM(CASE WHEN statut IN ('EN_ATTENTE', 'VALIDE') THEN total_ttc ELSE 0 END), 0) AS total_restant_global
+        COALESCE(SUM(CASE WHEN statut = 'paye' THEN total_ttc ELSE 0 END), 0) AS total_paye_global,
+        COALESCE(SUM(CASE WHEN statut IN ('brouillon', 'envoye') THEN total_ttc ELSE 0 END), 0) AS total_restant_global
       FROM facture
     `);
 
@@ -65,13 +65,13 @@ export async function GET(request: NextRequest) {
     const [statsMois] = await connection.query(`
       SELECT 
         COUNT(*) AS total_factures_mois,
-        COALESCE(SUM(CASE WHEN statut = 'PAYEE' THEN 1 ELSE 0 END), 0) AS payees_mois,
-        COALESCE(SUM(CASE WHEN statut = 'VALIDE' THEN 1 ELSE 0 END), 0) AS validees_mois,
-        COALESCE(SUM(CASE WHEN statut = 'EN_ATTENTE' THEN 1 ELSE 0 END), 0) AS en_attente_mois,
-        COALESCE(SUM(CASE WHEN statut = 'REJETEE' THEN 1 ELSE 0 END), 0) AS rejetees_mois,
+        COALESCE(SUM(CASE WHEN statut = 'paye' THEN 1 ELSE 0 END), 0) AS payees_mois,
+        COALESCE(SUM(CASE WHEN statut = 'envoye' THEN 1 ELSE 0 END), 0) AS validees_mois,
+        COALESCE(SUM(CASE WHEN statut = 'brouillon' THEN 1 ELSE 0 END), 0) AS en_attente_mois,
+        COALESCE(SUM(CASE WHEN statut = 'annule' THEN 1 ELSE 0 END), 0) AS rejetees_mois,
         COALESCE(SUM(total_ttc), 0) AS total_ttc_mois,
-        COALESCE(SUM(CASE WHEN statut = 'PAYEE' THEN total_ttc ELSE 0 END), 0) AS total_paye_mois,
-        COALESCE(SUM(CASE WHEN statut IN ('EN_ATTENTE', 'VALIDE') THEN total_ttc ELSE 0 END), 0) AS total_restant_mois
+        COALESCE(SUM(CASE WHEN statut = 'paye' THEN total_ttc ELSE 0 END), 0) AS total_paye_mois,
+        COALESCE(SUM(CASE WHEN statut IN ('brouillon', 'envoye') THEN total_ttc ELSE 0 END), 0) AS total_restant_mois
       FROM facture
       WHERE MONTH(date_creation) = MONTH(CURDATE()) AND YEAR(date_creation) = YEAR(CURDATE())
     `);
@@ -97,12 +97,12 @@ export async function GET(request: NextRequest) {
         DATE_FORMAT(date_creation, '%b %Y') AS mois_label,
         COUNT(*) AS total_factures,
         COALESCE(SUM(total_ttc), 0) AS total_ttc,
-        COALESCE(SUM(CASE WHEN statut = 'PAYEE' THEN total_ttc ELSE 0 END), 0) AS total_paye,
-        COALESCE(SUM(CASE WHEN statut IN ('EN_ATTENTE', 'VALIDE') THEN total_ttc ELSE 0 END), 0) AS total_restant,
-        COALESCE(SUM(CASE WHEN statut = 'PAYEE' THEN 1 ELSE 0 END), 0) AS nb_payees,
-        COALESCE(SUM(CASE WHEN statut = 'VALIDE' THEN 1 ELSE 0 END), 0) AS nb_validees,
-        COALESCE(SUM(CASE WHEN statut = 'REJETEE' THEN 1 ELSE 0 END), 0) AS nb_rejetees,
-        COALESCE(SUM(CASE WHEN statut = 'EN_ATTENTE' THEN 1 ELSE 0 END), 0) AS nb_en_attente
+        COALESCE(SUM(CASE WHEN statut = 'paye' THEN total_ttc ELSE 0 END), 0) AS total_paye,
+        COALESCE(SUM(CASE WHEN statut IN ('brouillon', 'envoye') THEN total_ttc ELSE 0 END), 0) AS total_restant,
+        COALESCE(SUM(CASE WHEN statut = 'paye' THEN 1 ELSE 0 END), 0) AS nb_payees,
+        COALESCE(SUM(CASE WHEN statut = 'envoye' THEN 1 ELSE 0 END), 0) AS nb_validees,
+        COALESCE(SUM(CASE WHEN statut = 'annule' THEN 1 ELSE 0 END), 0) AS nb_rejetees,
+        COALESCE(SUM(CASE WHEN statut = 'brouillon' THEN 1 ELSE 0 END), 0) AS nb_en_attente
       FROM facture
       WHERE date_creation >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
       GROUP BY DATE_FORMAT(date_creation, '%Y-%m'), DATE_FORMAT(date_creation, '%b %Y')
@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
         c.raison_sociale AS client,
         COUNT(*) AS nb_factures,
         COALESCE(SUM(f.total_ttc), 0) AS total_ttc,
-        COALESCE(SUM(CASE WHEN f.statut = 'PAYEE' THEN f.total_ttc ELSE 0 END), 0) AS total_paye
+        COALESCE(SUM(CASE WHEN f.statut = 'paye' THEN f.total_ttc ELSE 0 END), 0) AS total_paye
       FROM facture f
       INNER JOIN client c ON f.id_client = c.id_client
       GROUP BY c.id_client, c.raison_sociale
@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
         COUNT(*) AS nombre,
         COALESCE(SUM(total_ttc), 0) AS montant
       FROM facture
-      WHERE statut IN ('EN_ATTENTE', 'VALIDE')
+      WHERE statut IN ('brouillon', 'envoye')
       GROUP BY tranche
     `);
 
@@ -204,7 +204,7 @@ export async function GET(request: NextRequest) {
 
     const [facturesEnAttente] = await connection.query(`
       ${factureSelectQuery}
-      WHERE f.statut IN ('EN_ATTENTE', 'VALIDE')
+      WHERE f.statut IN ('brouillon', 'envoye')
         AND COALESCE(
           (SELECT SUM(ft.montant) FROM facture_tranche ft 
            WHERE ft.id_facture = f.id_facture AND ft.statut = 'paye'), 0

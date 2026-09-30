@@ -1,4 +1,4 @@
-// src/app/dashboard/comptable/components/FactureFilters.tsx
+﻿// src/app/dashboard/comptable/components/FactureFilters.tsx
 
 'use client';
 
@@ -26,10 +26,10 @@ export function FactureFilters({
 }: FactureFiltersProps) {
   const options = [
     { value: 'TOUS', label: 'Tous', color: 'bg-slate-600' },
-    { value: 'EN_ATTENTE', label: 'En attente', color: 'bg-amber-500' },
-    { value: 'VALIDE', label: 'Validées', color: 'bg-emerald-600' },
-    { value: 'REJETEE', label: 'Rejetées', color: 'bg-red-600' },
-    { value: 'PAYEE', label: 'Payées', color: 'bg-blue-600' },
+    { value: 'brouillon', label: 'brouillon', color: 'bg-amber-500' },
+    { value: 'envoye', label: 'Validées', color: 'bg-emerald-600' },
+    { value: 'annule', label: 'Rejetées', color: 'bg-red-600' },
+    { value: 'paye', label: 'Payées', color: 'bg-blue-600' },
   ];
 
   return (

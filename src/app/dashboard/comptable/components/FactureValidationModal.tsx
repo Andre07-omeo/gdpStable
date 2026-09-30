@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,8 +130,8 @@ export function FactureValidationModal({
   };
 
   // ✅ Statut de la facture
-  const isPayee = facture.statut === 'PAYEE';
-  const isRejetee = facture.statut === 'REJETEE';
+  const isPayee = facture.statut === 'paye';
+  const isRejetee = facture.statut === 'annule';
   const isActionPossible = !isPayee && !isRejetee;
 
   return (

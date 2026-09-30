@@ -1,4 +1,4 @@
-// src/app/dashboard/comptable/factures/page.tsx
+﻿// src/app/dashboard/comptable/factures/page.tsx
 
 'use client';
 
@@ -82,10 +82,10 @@ export default function ComptableFacturesPage() {
 
         setStats({
           total: list.length,
-          en_attente: list.filter(f => f.statut === 'EN_ATTENTE').length,
-          validees: list.filter(f => f.statut === 'VALIDE').length,
-          rejetees: list.filter(f => f.statut === 'REJETEE').length,
-          payees: list.filter(f => f.statut === 'PAYEE').length,
+          en_attente: list.filter(f => f.statut === 'brouillon').length,
+          validees: list.filter(f => f.statut === 'envoye').length,
+          rejetees: list.filter(f => f.statut === 'annule').length,
+          payees: list.filter(f => f.statut === 'paye').length,
           total_ttc: list.reduce((s, f) => s + Number(f.total_ttc || f.total_ht || 0), 0),
         });
       } else {
@@ -122,10 +122,10 @@ export default function ComptableFacturesPage() {
   // Compteurs pour les filtres
   const counts = useMemo(() => ({
     TOUS: factures.length,
-    EN_ATTENTE: factures.filter(f => f.statut === 'EN_ATTENTE').length,
-    VALIDE: factures.filter(f => f.statut === 'VALIDE').length,
-    REJETEE: factures.filter(f => f.statut === 'REJETEE').length,
-    PAYEE: factures.filter(f => f.statut === 'PAYEE').length,
+    EN_ATTENTE: factures.filter(f => f.statut === 'brouillon').length,
+    VALIDE: factures.filter(f => f.statut === 'envoye').length,
+    REJETEE: factures.filter(f => f.statut === 'annule').length,
+    PAYEE: factures.filter(f => f.statut === 'paye').length,
   }), [factures]);
 
   // ─── ACTIONS ─────────────────────────────────────────
@@ -201,10 +201,10 @@ export default function ComptableFacturesPage() {
   const getStatusBadge = (statut: string) => {
     const n = (statut || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const styles: Record<string, { color: string; label: string; dot: string }> = {
-      EN_ATTENTE: { color: 'bg-amber-50 text-amber-700 border-amber-200', label: 'En attente', dot: 'bg-amber-500' },
-      VALIDE: { color: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Validée', dot: 'bg-emerald-500' },
-      REJETEE: { color: 'bg-red-50 text-red-700 border-red-200', label: 'Rejetée', dot: 'bg-red-500' },
-      PAYEE: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Payée', dot: 'bg-blue-500' },
+      EN_ATTENTE: { color: 'bg-amber-50 text-amber-700 border-amber-200', label: 'brouillon', dot: 'bg-amber-500' },
+      VALIDE: { color: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'envoye', dot: 'bg-emerald-500' },
+      REJETEE: { color: 'bg-red-50 text-red-700 border-red-200', label: 'annule', dot: 'bg-red-500' },
+      PAYEE: { color: 'bg-blue-50 text-blue-700 border-blue-200', label: 'paye', dot: 'bg-blue-500' },
     };
     const s = styles[n] || { color: 'bg-gray-50 text-gray-700 border-gray-200', label: statut || 'Inconnu', dot: 'bg-gray-400' };
     return (
@@ -285,11 +285,11 @@ export default function ComptableFacturesPage() {
             <p className="text-gray-400 text-xs sm:text-sm mt-1 text-center">
               {statusFilter === 'TOUS'
                 ? 'Aucune facture dans la liste'
-                : statusFilter === 'EN_ATTENTE'
+                : statusFilter === 'brouillon'
                 ? 'Aucune facture en attente'
-                : statusFilter === 'VALIDE'
+                : statusFilter === 'envoye'
                 ? 'Aucune facture validée'
-                : statusFilter === 'REJETEE'
+                : statusFilter === 'annule'
                 ? 'Aucune facture rejetée'
                 : 'Aucune facture payée'}
             </p>
