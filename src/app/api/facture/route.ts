@@ -32,13 +32,22 @@ function getUserIdFromToken(request: NextRequest): number | null {
   }
 }
 
-// ✅ Normaliser le type de document
-function normaliserTypeDocument(valeur: any): string {
-  const val = String(valeur || 'PROFORMA').trim().toUpperCase();
-  const typesValides = ['FACTURE', 'PROFORMA', 'DEVIS', 'AVOIR', 'COMMANDE'];
-  if (typesValides.includes(val)) return val;
-  console.warn(`⚠️ type_document invalide: "${valeur}", remplacé par "PROFORMA"`);
-  return 'PROFORMA';
+// ✅ CORRIGÉ : Normaliser le type de document (aligné sur l'ENUM MySQL : 'proformat','facture','avoir')
+function normaliserTypeDocument(valeur: any): 'proformat' | 'facture' | 'avoir' {
+  const val = String(valeur || 'proformat').trim().toLowerCase();
+
+  // Alias pour accepter les anciennes valeurs (majuscules, orthographe sans "t", etc.)
+  const alias: Record<string, 'proformat' | 'facture' | 'avoir'> = {
+    proforma: 'proformat',   // ancien code sans "t"
+    proformat: 'proformat',  // ✅ valeur ENUM
+    facture: 'facture',      // ✅ valeur ENUM
+    avoir: 'avoir',          // ✅ valeur ENUM
+  };
+
+  if (alias[val]) return alias[val];
+
+  console.warn(`⚠️ type_document invalide: "${valeur}", remplacé par "proformat"`);
+  return 'proformat';
 }
 
 // ✅ Normaliser la devise (CDF ou USD uniquement)
@@ -85,7 +94,6 @@ async function generateNumeroFacture(prefix: string = 'PRO'): Promise<string> {
 
   const connection = await pool.getConnection();
   try {
-    // ✅ Chercher le PLUS GRAND numéro existant (MAX + 1)
     const [rows] = await connection.query(
       `SELECT numero_facture 
        FROM facture 
@@ -127,7 +135,6 @@ export async function POST(request: NextRequest) {
     console.log('📥 Données reçues:', body);
 
     const {
-      // ✅ NOUVEAU : numéro envoyé par le frontend
       numero_facture: numero_facture_front,
       client_nom,
       client_id,
@@ -137,10 +144,9 @@ export async function POST(request: NextRequest) {
       reservations,
       notes = '',
       conditions_paiement = 'Paiement à 3 jours',
-      type_document = 'PROFORMA',
+      type_document = 'proformat',  // ✅ CORRIGÉ : minuscules
     } = body;
 
-    // ✅ Récupérer le numéro fourni par le front
     const numeroFourni: string = (numero_facture_front || '').trim();
 
     if (!reservations || reservations.length === 0) {
@@ -152,7 +158,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ Calculer les totaux SÉPARÉMENT par devise (aucune conversion)
     let totalHTCDF = 0;
     let totalHTUSD = 0;
 
@@ -170,7 +175,6 @@ export async function POST(request: NextRequest) {
     const totalTTCCDF = Number((totalHTCDF * (1 + tauxTVA)).toFixed(2));
     const totalTTCUSD = Number((totalHTUSD * (1 + tauxTVA)).toFixed(2));
 
-    // ✅ Devises utilisées (pour info)
     const devisesUtilisees = [
       ...new Set(reservations.map((r: any) => normaliserDevise(r.devise))),
     ].sort();
@@ -187,7 +191,6 @@ export async function POST(request: NextRequest) {
       devisesUtilisees: devisesUtiliseesStr,
     });
 
-    // ✅ Récupérer ou créer le client
     let id_client = client_id;
     if (!id_client && client_nom) {
       const [clientResult] = await connection.query(
@@ -198,14 +201,13 @@ export async function POST(request: NextRequest) {
         id_client = (clientResult as any[])[0].id_client;
       } else {
         const [insertClient] = await connection.query(
-          'INSERT INTO client (raison_sociale, created_at) VALUES (?, NOW())',
+          'INSERT INTO client (raison_sociale, created_at, updated_at) VALUES (?, NOW(), NOW())',
           [client_nom]
         );
         id_client = (insertClient as any).insertId;
       }
     }
 
-    // ✅ Récupérer l'ID du commercial
     let id_commercial = commercial_id;
     if (!id_commercial && commercial_email) {
       const [commercialResult] = await connection.query(
@@ -233,21 +235,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ============================================================
-    // ✅ DÉTERMINER LE NUMÉRO FINAL
-    //    Priorité : numéro du frontend → sinon génération serveur
-    //    Vérification d'unicité pour éviter toute collision
-    // ============================================================
     let numeroFacture: string = numeroFourni;
 
     if (!numeroFacture) {
-      // Aucun numéro fourni → génération serveur
       numeroFacture = await generateNumeroFacture('PRO');
       console.log('🔢 Numéro généré côté serveur (fallback):', numeroFacture);
     } else {
       console.log('🔢 Numéro fourni par le frontend:', numeroFacture);
 
-      // Vérification d'unicité en BD
       const existe = await numeroExiste(connection, numeroFacture);
       if (existe) {
         const nouveau = await generateNumeroFacture('PRO');
@@ -263,12 +258,12 @@ export async function POST(request: NextRequest) {
     const typeDocumentFinal = normaliserTypeDocument(type_document);
     const statutFinal = normaliserStatut('EN_ATTENTE');
 
-    // ⚠️ Colonnes legacy total_ht / total_ttc = somme des deux devises (info globale)
     const totalHTGlobal = Number((totalHTCDF + totalHTUSD).toFixed(2));
     const totalTTCGlobal = Number((totalTTCCDF + totalTTCUSD).toFixed(2));
 
     console.log('💰 Insertion facture:', {
       numeroFacture,
+      typeDocumentFinal,
       totalHTGlobal,
       totalTTCGlobal,
       totalHTCDF,
@@ -279,7 +274,6 @@ export async function POST(request: NextRequest) {
       devisesUtiliseesStr,
     });
 
-    // ✅ Insertion de la facture AVEC le numéro exact
     const [insertResult] = await connection.query(
       `INSERT INTO facture (
         numero_facture,
@@ -316,7 +310,7 @@ export async function POST(request: NextRequest) {
         ?, ?, NOW(), NOW()
       )`,
       [
-        numeroFacture, // ✅ NUMÉRO ENVOYÉ PAR LE FRONTEND (ou fallback)
+        numeroFacture,
         id_client,
         id_commercial,
         typeDocumentFinal,
@@ -337,8 +331,8 @@ export async function POST(request: NextRequest) {
     const idFacture = (insertResult as any).insertId;
     console.log('✅ Facture créée avec ID:', idFacture);
     console.log('✅ Numéro enregistré en BD:', numeroFacture);
+    console.log('✅ Type de document enregistré:', typeDocumentFinal);
 
-    // ✅ Insérer les lignes AVEC leur devise propre
     for (const reservation of reservations) {
       const libelle = `${reservation.panneau_nom || 'Panneau'} - Face ${reservation.orientation || 'N/A'} (${reservation.type_face || 'Standard'})`;
       const prix = Number(reservation.prix_saisi) || 0;
@@ -392,7 +386,6 @@ export async function POST(request: NextRequest) {
       console.log(`✅ Ligne: ${libelle} - ${prix} ${deviseLigne}`);
     }
 
-    // ✅ Historique
     await connection.query(
       `INSERT INTO facture_historique (
         id_facture, action, ancien_statut, nouveau_statut, description, id_utilisateur, date_action
@@ -405,7 +398,6 @@ export async function POST(request: NextRequest) {
       ]
     );
 
-    // ✅ Mise à jour des réservations
     try {
       for (const reservation of reservations) {
         const reservationId = reservation.id_reservation || null;
@@ -428,7 +420,7 @@ export async function POST(request: NextRequest) {
       message: 'Proformat enregistré avec succès',
       data: {
         id_facture: idFacture,
-        numero_facture: numeroFacture, // ✅ LE MÊME NUMÉRO QUE CELUI AFFICHÉ
+        numero_facture: numeroFacture,
         total_ht: totalHTGlobal,
         total_ttc: totalTTCGlobal,
         devise: devisePrincipale,
