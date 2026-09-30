@@ -9,7 +9,7 @@ const pool = mysql.createPool({
   host: process.env.MYSQL_HOST || 'localhost',
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'gestion_panneaux_pro',
+  database: process.env.MYSQL_DATABASE || 'default',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -31,36 +31,85 @@ function getUserIdFromToken(request: NextRequest): number | null {
   }
 }
 
-// ✅ Normaliser le statut (évite "Data truncated" sur ENUM)
-function normaliserStatut(valeur: any, defaut = 'brouillon'): string {
-  const val = String(valeur || defaut).trim().toUpperCase();
-  const statutsValides = [
-    'brouillon',
-    'envoye',
-    'paye',
-    'annule',
-    'ANNULEE',
-    'BROUILLON',
-  ];
-  if (statutsValides.includes(val)) return val;
-  console.warn(`⚠️ statut invalide: "${valeur}", remplacé par "${defaut}"`);
-  return defaut;
+// ============================================================
+// ✅ NORMALISATION DES STATUTS
+// ============================================================
+
+/** facture.statut → 'brouillon' | 'envoye' | 'paye' | 'annule' */
+function normaliserStatutFacture(valeur: any, defaut: 'brouillon' | 'envoye' | 'paye' | 'annule' = 'brouillon'): 'brouillon' | 'envoye' | 'paye' | 'annule' {
+  const val = String(valeur || defaut).trim().toLowerCase();
+  const alias: Record<string, 'brouillon' | 'envoye' | 'paye' | 'annule'> = {
+    brouillon: 'brouillon',
+    envoye: 'envoye',
+    paye: 'paye',
+    annule: 'annule',
+    // Compatibilité anciens statuts
+    en_attente: 'brouillon',
+    valide: 'envoye',
+    payee: 'paye',
+    rejetee: 'annule',
+    annulee: 'annule',
+  };
+  return alias[val] || defaut;
 }
 
-// ✅ Normaliser le mode de paiement
-function normaliserModePaiement(valeur: any, defaut = 'comptant'): string {
+/** facture_tranche.statut → 'en_attente' | 'paye' | 'retard' */
+function normaliserStatutTranche(valeur: any, defaut: 'en_attente' | 'paye' | 'retard' = 'en_attente'): 'en_attente' | 'paye' | 'retard' {
   const val = String(valeur || defaut).trim().toLowerCase();
-  const modesValides = [
-    'comptant',
-    'virement',
-    'cheque',
-    'carte',
-    'espece',
-    'mobile_money',
-    'credit',
-  ];
-  if (modesValides.includes(val)) return val;
-  return defaut;
+  const alias: Record<string, 'en_attente' | 'paye' | 'retard'> = {
+    en_attente: 'en_attente',
+    paye: 'paye',
+    retard: 'retard',
+    // Compatibilité
+    payee: 'paye',
+    valide: 'paye',
+  };
+  return alias[val] || defaut;
+}
+
+// ============================================================
+// ✅ NORMALISATION DES MODES DE PAIEMENT (2 ENUM DIFFÉRENTS !)
+// ============================================================
+
+/**
+ * facture.mode_paiement → UNIQUEMENT 'comptant' | 'tranche'
+ * (c'est le mode GLOBAL de la facture, pas le mode de chaque tranche)
+ */
+function normaliserFactureModePaiement(valeur: any, defaut: 'comptant' | 'tranche' = 'comptant'): 'comptant' | 'tranche' {
+  const val = String(valeur || defaut).trim().toLowerCase();
+  const alias: Record<string, 'comptant' | 'tranche'> = {
+    comptant: 'comptant',
+    tranche: 'tranche',
+    // Si l'utilisateur envoie un mode précis, on le convertit en 'tranche'
+    especes: 'tranche',
+    espece: 'tranche',
+    cheque: 'tranche',
+    virement: 'tranche',
+    carte: 'tranche',
+    mobile_money: 'tranche',
+    credit: 'tranche',
+  };
+  return alias[val] || defaut;
+}
+
+/**
+ * facture_tranche.mode_paiement → UNIQUEMENT les modes PRÉCIS
+ * 'especes' | 'cheque' | 'virement' | 'carte' | 'mobile_money'
+ */
+function normaliserTrancheModePaiement(valeur: any, defaut: 'especes' | 'cheque' | 'virement' | 'carte' | 'mobile_money' = 'especes'): 'especes' | 'cheque' | 'virement' | 'carte' | 'mobile_money' {
+  const val = String(valeur || defaut).trim().toLowerCase();
+  const alias: Record<string, 'especes' | 'cheque' | 'virement' | 'carte' | 'mobile_money'> = {
+    especes: 'especes',
+    espece: 'especes',
+    cheque: 'cheque',
+    virement: 'virement',
+    carte: 'carte',
+    mobile_money: 'mobile_money',
+    mobilemoney: 'mobile_money',
+    // ⚠️ Si on reçoit 'comptant' ou 'tranche', on ne peut PAS les mettre ici
+    // On utilise 'especes' par défaut (paiement le plus courant en RDC)
+  };
+  return alias[val] || defaut;
 }
 
 export async function POST(request: NextRequest) {
@@ -156,7 +205,14 @@ export async function POST(request: NextRequest) {
     // ============================================
     if (action === 'valider') {
       const montantPaye = Number(montant_recu) || 0;
-      const modePaiementFinal = normaliserModePaiement(mode_paiement);
+
+      // ✅ Séparer les deux normalisations !
+      const modePaiementFacture = normaliserFactureModePaiement(mode_paiement);
+      const modePaiementTranche = normaliserTrancheModePaiement(mode_paiement);
+
+      console.log(`💳 Mode paiement reçu: "${mode_paiement}"`);
+      console.log(`   → facture.mode_paiement = "${modePaiementFacture}"`);
+      console.log(`   → facture_tranche.mode_paiement = "${modePaiementTranche}"`);
 
       if (montantPaye <= 0) {
         await connection.rollback();
@@ -184,15 +240,18 @@ export async function POST(request: NextRequest) {
       const dejaPaye = Number((paymentsRows as any[])[0]?.deja_paye || 0);
       const totalPayeApres = dejaPaye + montantPaye;
 
-      // ✅ Normaliser le statut AVANT update
-      const statutBrut = totalPayeApres >= totalFacture ? 'paye' : 'envoye';
-      const nouveauStatut = normaliserStatut(statutBrut);
+      // ✅ Normaliser le statut (facture) — 'paye' si totalement payé, sinon 'envoye'
+      const statutBrut: 'paye' | 'envoye' = totalPayeApres >= totalFacture ? 'paye' : 'envoye';
+      const nouveauStatut = normaliserStatutFacture(statutBrut);
+
+      // ✅ Normaliser le statut (tranche) — toujours 'paye' car c'est un paiement effectué
+      const statutTranche = normaliserStatutTranche('paye');
 
       console.log(
-        `💰 Déjà payé: ${dejaPaye}, nouveau paiement: ${montantPaye}, total: ${totalPayeApres}, statut: ${nouveauStatut}`
+        `💰 Déjà payé: ${dejaPaye}, nouveau paiement: ${montantPaye}, total: ${totalPayeApres}, statut facture: ${nouveauStatut}, statut tranche: ${statutTranche}`
       );
 
-      // 2️⃣ Enregistrer le paiement
+      // 2️⃣ Enregistrer le paiement — AVEC LES BONNES VALEURS
       const [maxTranche] = await connection.query(
         `SELECT COALESCE(MAX(numero_tranche), 0) as max_num FROM facture_tranche WHERE id_facture = ?`,
         [id_facture]
@@ -202,12 +261,18 @@ export async function POST(request: NextRequest) {
       await connection.query(
         `INSERT INTO facture_tranche 
          (id_facture, numero_tranche, montant, date_paiement, mode_paiement, statut, created_at)
-         VALUES (?, ?, ?, NOW(), ?, 'paye', NOW())`,
-        [id_facture, numeroTranche, montantPaye, modePaiementFinal]
+         VALUES (?, ?, ?, NOW(), ?, ?, NOW())`,
+        [
+          id_facture,
+          numeroTranche,
+          montantPaye,
+          modePaiementTranche,  // ✅ 'especes' | 'cheque' | ...
+          statutTranche,         // ✅ 'en_attente' | 'paye' | 'retard'
+        ]
       );
-      console.log(`✅ Tranche ${numeroTranche} enregistrée`);
+      console.log(`✅ Tranche ${numeroTranche} enregistrée avec mode "${modePaiementTranche}"`);
 
-      // 3️⃣ Mettre à jour la facture
+      // 3️⃣ Mettre à jour la facture — mode GLOBAL
       await connection.query(
         `UPDATE facture 
          SET statut = ?,
@@ -219,13 +284,13 @@ export async function POST(request: NextRequest) {
          WHERE id_facture = ?`,
         [
           nouveauStatut,
-          modePaiementFinal,
+          modePaiementFacture,  // ✅ 'comptant' | 'tranche'
           nombre_tranches,
           comptableId,
           id_facture,
         ]
       );
-      console.log(`✅ Facture passée à ${nouveauStatut}`);
+      console.log(`✅ Facture passée à ${nouveauStatut} (mode=${modePaiementFacture})`);
 
       // 4️⃣ ACTIVER les réservations
       if (uniqueReservationIds.length > 0) {
@@ -274,7 +339,7 @@ export async function POST(request: NextRequest) {
           id_facture,
           statutActuel || 'brouillon',
           nouveauStatut,
-          `Facture ${nouveauStatut} - Paiement ${montantPaye} FC - ${uniqueReservationIds.length} résa activée(s)`,
+          `Facture ${nouveauStatut} - Paiement ${montantPaye} FC (${modePaiementTranche}) - ${uniqueReservationIds.length} résa activée(s)`,
           comptableId,
         ]
       );
@@ -308,6 +373,8 @@ export async function POST(request: NextRequest) {
           id_facture,
           numero_facture: facture.numero_facture,
           statut: nouveauStatut,
+          mode_paiement_facture: modePaiementFacture,
+          mode_paiement_tranche: modePaiementTranche,
           montant_paye: montantPaye,
           total_paye: totalPayeApres,
           montant_total: totalFacture,
@@ -331,7 +398,7 @@ export async function POST(request: NextRequest) {
       }
 
       // ✅ Normaliser le statut REJETEE
-      const statutRejet = normaliserStatut('annule');
+      const statutRejet = normaliserStatutFacture('annule');
 
       await connection.query(
         `UPDATE facture 
