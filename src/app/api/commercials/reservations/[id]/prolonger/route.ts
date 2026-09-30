@@ -1,4 +1,4 @@
-// src/app/api/commercials/reservations/[id]/prolonger/route.ts
+﻿// src/app/api/commercials/reservations/[id]/prolonger/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
@@ -280,7 +280,7 @@ export async function POST(
           conditions_paiement,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, NOW(), CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'PROLONGATION', 'EN_ATTENTE', ?, ?, ?, ?, 'Paiement à 30 jours', NOW(), NOW())`,
+        ) VALUES (?, ?, ?, NOW(), CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'PROLONGATION', 'brouillon', ?, ?, ?, ?, 'Paiement à 30 jours', NOW(), NOW())`,
         [
           numero_facture_prolongation,
           reservation.id_client,

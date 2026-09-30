@@ -1,6 +1,4 @@
-'use client';
-
-export const dynamic = 'force-dynamic';
+﻿'use client';
 
 // src/app/dashboard/admin/users/components/UserForm.tsx
 import { useState, useEffect } from 'react';

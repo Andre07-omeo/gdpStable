@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 export const dynamic = 'force-dynamic';
 
@@ -228,7 +228,6 @@ export default function MapComponent({
           mapTypeControl={false}       // ❌ désactivé : on a notre propre switcher
           fullscreenControl={true}
           rotateControl={true}
-          tiltControl={true}
 
           zoomControlOptions={{ position: 6 /* RIGHT_BOTTOM */ }}
           fullscreenControlOptions={{ position: 3 /* TOP_RIGHT */ }}

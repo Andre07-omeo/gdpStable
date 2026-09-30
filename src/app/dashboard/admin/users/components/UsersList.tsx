@@ -1,6 +1,4 @@
-'use client';
-
-export const dynamic = 'force-dynamic';
+﻿'use client';
 
 // ============================================
 // COMPOSANT - LISTE DES UTILISATEURS

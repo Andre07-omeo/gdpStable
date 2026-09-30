@@ -1,4 +1,4 @@
-// src/app/api/facture/validate/route.ts
+﻿// src/app/api/facture/validate/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
@@ -32,13 +32,13 @@ function getUserIdFromToken(request: NextRequest): number | null {
 }
 
 // ✅ Normaliser le statut (évite "Data truncated" sur ENUM)
-function normaliserStatut(valeur: any, defaut = 'EN_ATTENTE'): string {
+function normaliserStatut(valeur: any, defaut = 'brouillon'): string {
   const val = String(valeur || defaut).trim().toUpperCase();
   const statutsValides = [
-    'EN_ATTENTE',
-    'VALIDE',
-    'PAYEE',
-    'REJETEE',
+    'brouillon',
+    'envoye',
+    'paye',
+    'annule',
     'ANNULEE',
     'BROUILLON',
   ];
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
       const totalPayeApres = dejaPaye + montantPaye;
 
       // ✅ Normaliser le statut AVANT update
-      const statutBrut = totalPayeApres >= totalFacture ? 'PAYEE' : 'VALIDE';
+      const statutBrut = totalPayeApres >= totalFacture ? 'paye' : 'envoye';
       const nouveauStatut = normaliserStatut(statutBrut);
 
       console.log(
@@ -272,7 +272,7 @@ export async function POST(request: NextRequest) {
          VALUES (?, 'VALIDATION', ?, ?, ?, ?, NOW())`,
         [
           id_facture,
-          statutActuel || 'EN_ATTENTE',
+          statutActuel || 'brouillon',
           nouveauStatut,
           `Facture ${nouveauStatut} - Paiement ${montantPaye} FC - ${uniqueReservationIds.length} résa activée(s)`,
           comptableId,
@@ -331,7 +331,7 @@ export async function POST(request: NextRequest) {
       }
 
       // ✅ Normaliser le statut REJETEE
-      const statutRejet = normaliserStatut('REJETEE');
+      const statutRejet = normaliserStatut('annule');
 
       await connection.query(
         `UPDATE facture 
@@ -363,7 +363,7 @@ export async function POST(request: NextRequest) {
          VALUES (?, 'REJET', ?, ?, ?, ?, NOW())`,
         [
           id_facture,
-          statutActuel || 'EN_ATTENTE',
+          statutActuel || 'brouillon',
           statutRejet,
           `Facture rejetée: ${motif_rejet}`,
           comptableId,

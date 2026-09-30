@@ -1,4 +1,4 @@
-// src/app/api/facture/route.ts
+﻿// src/app/api/facture/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
@@ -67,7 +67,7 @@ const STATUTS_INT: Record<string, number> = {
   BROUILLON: 0,
 };
 
-function normaliserStatut(valeur: any, defaut = 'EN_ATTENTE'): number {
+function normaliserStatut(valeur: any, defaut = 'brouillon'): number {
   const val = String(valeur || defaut).trim().toUpperCase();
   return STATUTS_INT[val] ?? STATUTS_INT[defaut] ?? 1;
 }
@@ -256,7 +256,7 @@ export async function POST(request: NextRequest) {
     console.log('✅ Numéro final utilisé:', numeroFacture);
 
     const typeDocumentFinal = normaliserTypeDocument(type_document);
-    const statutFinal = normaliserStatut('EN_ATTENTE');
+    const statutFinal = normaliserStatut('brouillon');
 
     const totalHTGlobal = Number((totalHTCDF + totalHTUSD).toFixed(2));
     const totalTTCGlobal = Number((totalTTCCDF + totalTTCUSD).toFixed(2));
