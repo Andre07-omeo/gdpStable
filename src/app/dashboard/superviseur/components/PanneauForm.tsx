@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/superviseur/components/PanneauForm.tsximport { useState, useEffect } from 'react';
+// src/app/dashboard/superviseur/components/PanneauForm.tsx
+import { useState, useEffect } from 'react';
 import {
     X, Plus, Trash2, Save, Loader2,
     ChevronRight, ChevronLeft, Layout, Ruler
@@ -16,6 +17,8 @@ interface PanneauFormProps {
     onClose: () => void;
     onSave: (data: any) => void;
     user: any;
+    /** ✅ Panneau à modifier (null = création) */
+    panneauToEdit?: any | null;
 }
 
 interface TypeFace {
@@ -27,23 +30,33 @@ interface TypeFace {
 }
 
 interface Face {
-    id: number;
+    id: number;              // id local (ou id_face si existant)
+    id_face?: number;        // ✅ id réel en BD (pour update)
     type_face_id: number;
     libelle: string;
     orientation: string;
 }
 
-export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFormProps) {
+export default function PanneauForm({
+    isOpen,
+    onClose,
+    onSave,
+    user,
+    panneauToEdit = null,
+}: PanneauFormProps) {
     // États principaux
     const [step, setStep] = useState(1);
     const [position, setPosition] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
 
+    // ✅ Mode édition
+    const isEditMode = !!panneauToEdit;
+
     // Données de localisation
     const [typesFace, setTypesFace] = useState<TypeFace[]>([]);
 
-    // Localisation sélectionnée (venant de la BD)
+    // Localisation sélectionnée
     const [location, setLocation] = useState({
         paysId: undefined as number | undefined,
         provinceId: undefined as number | undefined,
@@ -61,18 +74,138 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
         adresse_manuelle: '',
         latitude: '',
         longitude: '',
-        dimension: ''
+        // ✅ Dimension séparée : hauteur + largeur (en mètres, valeur décimale)
+        hauteur: '',
+        largeur: '',
     });
 
-    // Faces - Suppression de hauteur et largeur
+    // Faces
     const [faces, setFaces] = useState<Face[]>([
-        { id: Date.now(), type_face_id: 1, libelle: 'Trivision', orientation: '' }
+        { id: Date.now(), type_face_id: 1, libelle: '', orientation: '' }
     ]);
 
     const [errors, setErrors] = useState<{ [key: string]: string }>({});
     const [faceCounter, setFaceCounter] = useState(1);
 
-    // Gestionnaire de changement de localisation (venant de la BD)
+    // ============ CHARGEMENT DES TYPES DE FACE ============
+    const loadTypesFace = async () => {
+        try {
+            const res = await fetch('/api/type-face');
+            if (res.ok) {
+                const data = await res.json();
+                setTypesFace(data);
+                return data;
+            }
+        } catch (error) {
+            console.error('Erreur chargement types face:', error);
+        }
+        return [];
+    };
+
+    // ============ INITIALISATION (CREATE ou EDIT) ============
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const init = async () => {
+            const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|windows phone/i.test(navigator.userAgent);
+            setIsMobile(isMobileDevice);
+
+            const loadedTypes = await loadTypesFace();
+            setErrors({});
+            setFaceCounter(1);
+
+            if (isEditMode && panneauToEdit) {
+                // ✅ MODE ÉDITION : pré-remplir avec les données du panneau
+                setFormData({
+                    nom: panneauToEdit.nom || '',
+                    pays_id: panneauToEdit.pays_id?.toString() || '',
+                    province_id: panneauToEdit.province_id?.toString() || '',
+                    ville_id: panneauToEdit.ville_id?.toString() || '',
+                    commune_id: panneauToEdit.commune_id?.toString() || '',
+                    adresse_manuelle: panneauToEdit.adresse || '',
+                    latitude: panneauToEdit.latitude?.toString() || '',
+                    longitude: panneauToEdit.longitude?.toString() || '',
+                    hauteur: panneauToEdit.hauteur?.toString() || '',
+                    largeur: panneauToEdit.largeur?.toString() || '',
+                });
+
+                setLocation({
+                    paysId: panneauToEdit.pays_id || undefined,
+                    provinceId: panneauToEdit.province_id || undefined,
+                    villeId: panneauToEdit.ville_id || undefined,
+                    communeId: panneauToEdit.commune_id || undefined,
+                });
+
+                // ✅ GPS optionnel : on ne met la position que si valide
+                if (
+                    panneauToEdit.latitude != null &&
+                    panneauToEdit.longitude != null &&
+                    !isNaN(parseFloat(panneauToEdit.latitude)) &&
+                    !isNaN(parseFloat(panneauToEdit.longitude))
+                ) {
+                    setPosition({
+                        lat: parseFloat(panneauToEdit.latitude),
+                        lng: parseFloat(panneauToEdit.longitude),
+                        accuracy: panneauToEdit.precision_gps || 0,
+                    });
+                } else {
+                    setPosition(null);
+                }
+
+                // ✅ Faces existantes
+                if (Array.isArray(panneauToEdit.faces) && panneauToEdit.faces.length > 0) {
+                    setFaces(
+                        panneauToEdit.faces.map((f: any, idx: number) => ({
+                            id: f.id_face || Date.now() + idx,
+                            id_face: f.id_face,
+                            type_face_id: f.id_type_face || f.type_face_id,
+                            libelle: f.libelle || f.type_face_libelle || '',
+                            orientation: f.orientation || '',
+                        }))
+                    );
+                } else {
+                    setFaces([{
+                        id: Date.now(),
+                        type_face_id: loadedTypes[0]?.id_type_face || 1,
+                        libelle: loadedTypes[0]?.libelle || '',
+                        orientation: '',
+                    }]);
+                }
+            } else {
+                // ✅ MODE CRÉATION : tout réinitialiser
+                setPosition(null);
+                setLocation({
+                    paysId: undefined,
+                    provinceId: undefined,
+                    villeId: undefined,
+                    communeId: undefined,
+                });
+                setFormData({
+                    nom: '',
+                    pays_id: '',
+                    province_id: '',
+                    ville_id: '',
+                    commune_id: '',
+                    adresse_manuelle: '',
+                    latitude: '',
+                    longitude: '',
+                    hauteur: '',
+                    largeur: '',
+                });
+                setFaces([{
+                    id: Date.now(),
+                    type_face_id: loadedTypes[0]?.id_type_face || 1,
+                    libelle: loadedTypes[0]?.libelle || '',
+                    orientation: '',
+                }]);
+            }
+        };
+
+        init();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, panneauToEdit]);
+
+    // ============ GESTIONNAIRES ============
     const handleLocationChange = (selection: any) => {
         setLocation(selection);
         setFormData(prev => ({
@@ -82,78 +215,26 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
             ville_id: selection.villeId?.toString() || '',
             commune_id: selection.communeId?.toString() || '',
         }));
-        validateForm();
     };
 
-    // Gestionnaire de changement de position (GPS/Google Maps)
-    const handlePositionChange = (newPosition: { lat: number; lng: number; accuracy: number }) => {
+    const handlePositionChange = (newPosition: { lat: number; lng: number; accuracy: number } | null) => {
         setPosition(newPosition);
         setFormData(prev => ({
             ...prev,
-            latitude: newPosition.lat.toString(),
-            longitude: newPosition.lng.toString()
+            latitude: newPosition ? newPosition.lat.toString() : '',
+            longitude: newPosition ? newPosition.lng.toString() : '',
         }));
-        validateForm();
     };
 
-    // Charger les types de face
-    const loadTypesFace = async () => {
-        try {
-            const res = await fetch('/api/type-face');
-            if (res.ok) {
-                const data = await res.json();
-                setTypesFace(data);
-                if (data.length > 0) {
-                    setFaces([{
-                        id: Date.now(),
-                        type_face_id: data[0].id_type_face,
-                        libelle: data[0].libelle,
-                        orientation: ''
-                    }]);
-                }
-            }
-        } catch (error) {
-            console.error('Erreur chargement types face:', error);
-        }
-    };
-
-    // Initialisation
-    useEffect(() => {
-        if (isOpen) {
-            const isMobileDevice = /android|webos|iphone|ipad|ipod|blackberry|windows phone/i.test(navigator.userAgent);
-            setIsMobile(isMobileDevice);
-            loadTypesFace();
-            setErrors({});
-            setPosition(null);
-            setLocation({
-                paysId: undefined,
-                provinceId: undefined,
-                villeId: undefined,
-                communeId: undefined,
-            });
-            setFormData({
-                nom: '',
-                pays_id: '',
-                province_id: '',
-                ville_id: '',
-                commune_id: '',
-                adresse_manuelle: '',
-                latitude: '',
-                longitude: '',
-                dimension: ''
-            });
-        }
-    }, [isOpen]);
-
-    // Gestion des faces
+    // ============ FACES ============
     const addFace = () => {
         setFaceCounter(prev => prev + 1);
-        const defaultType = typesFace.length > 0 ? typesFace[0] : { id_type_face: 1, libelle: 'Standard' };
+        const defaultType = typesFace.length > 0 ? typesFace[0] : { id_type_face: 1, libelle: '' };
         setFaces([...faces, {
             id: Date.now() + faceCounter,
             type_face_id: defaultType.id_type_face,
             libelle: defaultType.libelle,
-            orientation: ''
+            orientation: '',
         }]);
     };
 
@@ -179,7 +260,7 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
         setFaces(newFaces);
     };
 
-    // Validation
+    // ============ VALIDATION (GPS optionnel) ============
     const validateForm = () => {
         const newErrors: { [key: string]: string } = {};
 
@@ -188,18 +269,38 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
         if (!formData.province_id) newErrors.province = 'La province est requise';
         if (!formData.ville_id) newErrors.ville = 'La ville est requise';
         if (!formData.commune_id) newErrors.commune = 'La commune est requise';
-        if (!formData.latitude || !formData.longitude) newErrors.position = 'La position est requise';
+
+        // ✅ GPS optionnel : on valide UNIQUEMENT si les deux sont remplis
+        const latFilled = formData.latitude.trim() !== '';
+        const lngFilled = formData.longitude.trim() !== '';
+        if (latFilled !== lngFilled) {
+            newErrors.position = 'Remplissez latitude ET longitude, ou laissez les deux vides';
+        } else if (latFilled && lngFilled) {
+            if (isNaN(parseFloat(formData.latitude)) || isNaN(parseFloat(formData.longitude))) {
+                newErrors.position = 'Latitude et longitude doivent être des nombres';
+            }
+        }
 
         faces.forEach((face, index) => {
             if (!face.type_face_id) newErrors[`face_${index}_type`] = 'Type requis';
             if (!face.orientation.trim()) newErrors[`face_${index}_orientation`] = 'Sens requis';
         });
 
+        // ✅ Validation dimensions (optionnelles mais cohérentes)
+        const hFilled = formData.hauteur.trim() !== '';
+        const lFilled = formData.largeur.trim() !== '';
+        if (hFilled && isNaN(parseFloat(formData.hauteur))) {
+            newErrors.hauteur = 'Hauteur invalide';
+        }
+        if (lFilled && isNaN(parseFloat(formData.largeur))) {
+            newErrors.largeur = 'Largeur invalide';
+        }
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
-    // Submit
+    // ============ SUBMIT (CREATE ou UPDATE) ============
     const handleSubmit = async () => {
         if (!validateForm()) {
             setStep(1);
@@ -216,41 +317,67 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
             const communeId = parseInt(formData.commune_id);
 
             if (!paysId || !provinceId || !villeId || !communeId) {
-                alert('⚠️ Veuillez sélectionner un pays, une province, une ville et une commune');
+                alert('⚠️ Veuillez sélectionner un pays, une province, une ville et un troncons');
                 setIsSubmitting(false);
                 return;
             }
 
-            const data = {
+            // ✅ GPS optionnel : null si vide
+            const lat = formData.latitude.trim() !== '' ? parseFloat(formData.latitude) : null;
+            const lng = formData.longitude.trim() !== '' ? parseFloat(formData.longitude) : null;
+
+            // ✅ Dimension : "9 X 6" si les deux remplies, sinon null
+            const hauteurVal = formData.hauteur.trim() !== '' ? parseFloat(formData.hauteur) : null;
+            const largeurVal = formData.largeur.trim() !== '' ? parseFloat(formData.largeur) : null;
+
+            let dimensionFinal: string | null = null;
+            if (hauteurVal != null && largeurVal != null) {
+                dimensionFinal = `${hauteurVal} X ${largeurVal}`;
+            } else if (hauteurVal != null) {
+                dimensionFinal = `${hauteurVal} X ?`;
+            } else if (largeurVal != null) {
+                dimensionFinal = `? X ${largeurVal}`;
+            }
+
+            const data: any = {
                 nom: formData.nom,
                 adresse: formData.adresse_manuelle || '',
-                latitude: parseFloat(formData.latitude),
-                longitude: parseFloat(formData.longitude),
+                latitude: lat,
+                longitude: lng,
                 pays_id: paysId,
                 province_id: provinceId,
                 ville_id: villeId,
                 commune_id: communeId,
-                dimension: formData.dimension || 'N/A',
+                hauteur: hauteurVal,
+                largeur: largeurVal,
+                dimension: dimensionFinal,
                 faces: faces.map(f => ({
+                    id_face: f.id_face || null,   // ✅ null = nouvelle face
                     type_face_id: f.type_face_id,
                     libelle: f.libelle,
-                    orientation: f.orientation
+                    orientation: f.orientation,
                 })),
                 created_by: user?.id_user || user?.id,
-                precision_gps: position?.accuracy || 0
+                precision_gps: position?.accuracy || 0,
             };
 
-            console.log('📤 Envoi des données:', data);
+            // ✅ URL et méthode selon mode
+            const url = isEditMode
+                ? `/api/panneaux/${panneauToEdit.id_panneau}`
+                : '/api/panneaux/enregistrer';
+            const method = isEditMode ? 'PUT' : 'POST';
 
-            const res = await fetch('/api/panneaux/enregistrer', {
-                method: 'POST',
+            console.log(`📤 ${isEditMode ? 'Modification' : 'Création'} panneau:`, data);
+
+            const res = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: JSON.stringify(data),
             });
 
             const result = await res.json();
             if (res.ok) {
-                alert('✅ Panneau enregistré avec succès !');
+                alert(`✅ Panneau ${isEditMode ? 'modifié' : 'enregistré'} avec succès !`);
                 onSave(result);
                 onClose();
             } else {
@@ -297,7 +424,8 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                 </motion.div>
                                 <div>
                                     <h2 className="text-2xl font-black text-white tracking-tighter">
-                                        Nouveau <span className="text-amber-400">Panneau</span>
+                                        {isEditMode ? 'Modifier' : 'Nouveau'}{' '}
+                                        <span className="text-amber-400">Panneau</span>
                                     </h2>
                                     <p className="text-sm text-blue-300">
                                         Étape {step}/2 • {step === 1 ? '📍 Localisation' : '📐 Configuration des faces'}
@@ -339,11 +467,14 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                 transition={{ type: "spring", damping: 20, stiffness: 300 }}
                                 className="space-y-5"
                             >
-                                {/* Position - LocationPickerSimple */}
+                                {/* Position GPS (optionnel) */}
                                 <LocationPickerSimple
                                     initialPosition={position}
                                     onPositionChange={handlePositionChange}
                                 />
+                                <p className="text-xs text-gray-400 -mt-3">
+                                    💡 GPS optionnel : laissez vide si non disponible
+                                </p>
 
                                 {/* Nom */}
                                 <motion.div
@@ -362,12 +493,11 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                         value={formData.nom}
                                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                                             setFormData({ ...formData, nom: e.target.value.toUpperCase() });
-                                            validateForm();
                                         }}
                                     />
                                 </motion.div>
 
-                                {/* Localisation - SimpleLocationSelector */}
+                                {/* Localisation */}
                                 <motion.div
                                     initial={{ y: 20, opacity: 0 }}
                                     animate={{ y: 0, opacity: 1 }}
@@ -386,20 +516,20 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                     transition={{ delay: 0.4 }}
                                 >
                                     <label className="text-sm font-bold text-gray-700 block mb-1.5">
-                                        Adresse précise (optionnel)
+                                        Référencé (optionnel)
                                     </label>
                                     <input
                                         type="text"
                                         className="w-full px-5 py-3.5 bg-white rounded-xl border-2 border-gray-200 outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition"
                                         placeholder="Ex: Avenue Lumumba, N°15"
                                         value={formData.adresse_manuelle}
-                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
+                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                                             setFormData({ ...formData, adresse_manuelle: e.target.value })
                                         }
                                     />
                                 </motion.div>
 
-                                {/* Dimension du panneau */}
+                                {/* ✅ Dimension : Hauteur + Largeur séparés */}
                                 <motion.div
                                     initial={{ y: 20, opacity: 0 }}
                                     animate={{ y: 0, opacity: 1 }}
@@ -408,20 +538,37 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                     <label className="text-sm font-bold text-gray-700 block mb-1.5">
                                         <Ruler size={16} className="inline mr-1 text-blue-500" />
                                         Dimension du panneau
-                                        {errors.dimension && <span className="text-red-500 ml-2 text-xs">{errors.dimension}</span>}
                                     </label>
-                                    <input
-                                        type="text"
-                                        className="w-full px-5 py-3.5 bg-white rounded-xl border-2 border-gray-200 outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition"
-                                        placeholder="Ex: 3m x 2m ou 300x200 cm"
-                                        value={formData.dimension}
-                                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                            setFormData({ ...formData, dimension: e.target.value });
-                                            validateForm();
-                                        }}
-                                    />
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        💡 Exemples: 3m x 2m, 300x200 cm, 4m x 3m
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex-1">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                className="w-full px-4 py-3.5 bg-white rounded-xl border-2 border-gray-200 outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition"
+                                                placeholder="Hauteur"
+                                                value={formData.hauteur}
+                                                onChange={(e) => setFormData({ ...formData, hauteur: e.target.value })}
+                                            />
+                                            <p className="text-[11px] text-gray-400 mt-1 text-center">Hauteur</p>
+                                        </div>
+                                        <span className="text-2xl font-bold text-gray-400 pb-5">×</span>
+                                        <div className="flex-1">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                className="w-full px-4 py-3.5 bg-white rounded-xl border-2 border-gray-200 outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition"
+                                                placeholder="Largeur"
+                                                value={formData.largeur}
+                                                onChange={(e) => setFormData({ ...formData, largeur: e.target.value })}
+                                            />
+                                            <p className="text-[11px] text-gray-400 mt-1 text-center">Largeur</p>
+                                        </div>
+                                        <span className="text-lg font-bold text-gray-500 pb-5">m</span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-2">
+                                        💡 Unité : mètres (le "m" n'est pas enregistré en base, seule la valeur numérique l'est)
                                     </p>
                                 </motion.div>
 
@@ -433,16 +580,11 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                     className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl font-bold hover:shadow-lg transition-all duration-300 flex items-center justify-center gap-2 text-lg"
                                 >
                                     Suivant <ChevronRight size={24} />
-                                    {Object.keys(errors).length > 0 && (
-                                        <span className="ml-2 text-sm bg-white/20 px-3 py-0.5 rounded-full">
-                                            ⚠️ {Object.keys(errors).length}
-                                        </span>
-                                    )}
                                 </motion.button>
                             </motion.div>
                         )}
 
-                        {/* Étape 2 - Configuration des faces */}
+                        {/* Étape 2 */}
                         {step === 2 && (
                             <motion.div
                                 key="step2"
@@ -486,6 +628,11 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                                             {index + 1}
                                                         </span>
                                                         Face #{index + 1}
+                                                        {face.id_face && (
+                                                            <span className="text-[10px] font-normal text-gray-400">
+                                                                (ID: {face.id_face})
+                                                            </span>
+                                                        )}
                                                     </h4>
                                                     {faces.length > 1 && (
                                                         <motion.button
@@ -509,10 +656,9 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                                         <select
                                                             className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition"
                                                             value={face.type_face_id}
-                                                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                                                                updateFace(index, 'type_face_id', parseInt(e.target.value));
-                                                                validateForm();
-                                                            }}
+                                                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                                                                updateFace(index, 'type_face_id', parseInt(e.target.value))
+                                                            }
                                                         >
                                                             {typesFace.map((type) => (
                                                                 <option key={type.id_type_face} value={type.id_type_face}>
@@ -533,10 +679,9 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                                             className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 transition uppercase"
                                                             placeholder="NORD, SUD, EST, OUEST"
                                                             value={face.orientation}
-                                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                                                updateFace(index, 'orientation', e.target.value.toUpperCase());
-                                                                validateForm();
-                                                            }}
+                                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                                                updateFace(index, 'orientation', e.target.value.toUpperCase())
+                                                            }
                                                         />
                                                     </div>
                                                 </div>
@@ -550,27 +695,25 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                     initial={{ y: 20, opacity: 0 }}
                                     animate={{ y: 0, opacity: 1 }}
                                     transition={{ delay: 0.2 }}
-                                    className="bg-gradient-to-r from-blue-50 to-emerald-50 rounded-2xl border-2 border-blue-100 p-5 flex justify-between items-center"
+                                    className="bg-gradient-to-r from-blue-50 to-emerald-50 rounded-2xl border-2 border-blue-100 p-5"
                                 >
-                                    <div>
-                                        <p className="text-sm text-gray-600">
-                                            <span className="font-bold">Total:</span> {faces.length} face(s)
+                                    <p className="text-sm text-gray-600">
+                                        <span className="font-bold">Total:</span> {faces.length} face(s)
+                                    </p>
+                                    {position && (
+                                        <p className="text-xs font-mono text-gray-500 mt-1">
+                                            📍 {position.lat.toFixed(4)}, {position.lng.toFixed(4)}
                                         </p>
-                                        {position && (
-                                            <p className="text-xs font-mono text-gray-500 mt-1">
-                                                📍 {position.lat.toFixed(4)}, {position.lng.toFixed(4)}
-                                            </p>
-                                        )}
-                                        {formData.dimension && (
-                                            <p className="text-xs font-mono text-gray-500 mt-1">
-                                                📐 Dimension: {formData.dimension}
-                                            </p>
-                                        )}
-                                    </div>
+                                    )}
+                                    {(formData.hauteur || formData.largeur) && (
+                                        <p className="text-xs font-mono text-gray-500 mt-1">
+                                            📐 Dimension: {formData.hauteur || '?'} × {formData.largeur || '?'} m
+                                        </p>
+                                    )}
                                     {Object.keys(errors).length > 0 && (
-                                        <span className="text-sm text-red-500 font-bold">
+                                        <p className="text-sm text-red-500 font-bold mt-2">
                                             ⚠️ {Object.keys(errors).length} erreur(s)
-                                        </span>
+                                        </p>
                                     )}
                                 </motion.div>
 
@@ -595,7 +738,9 @@ export default function PanneauForm({ isOpen, onClose, onSave, user }: PanneauFo
                                         }`}
                                     >
                                         {isSubmitting ? <Loader2 size={22} className="animate-spin" /> : <Save size={22} />}
-                                        {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
+                                        {isSubmitting
+                                            ? 'Enregistrement...'
+                                            : isEditMode ? 'Mettre à jour' : 'Enregistrer'}
                                     </motion.button>
                                 </div>
                             </motion.div>

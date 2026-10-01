@@ -11,7 +11,7 @@ const pool = mysql.createPool({
   database: process.env.MYSQL_DATABASE || 'gestion_panneaux_pro',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
 });
 
 export async function POST(request: NextRequest) {
@@ -21,27 +21,28 @@ export async function POST(request: NextRequest) {
     const {
       nom,
       adresse,
-      latitude,
-      longitude,
+      latitude,        // ✅ optionnel (peut être null)
+      longitude,       // ✅ optionnel (peut être null)
       pays_id,
       province_id,
       ville_id,
       commune_id,
-      dimension,        // ✅ Nouveau champ pour la dimension
+      hauteur,         // ✅ nouveau
+      largeur,         // ✅ nouveau
+      dimension,       // ✅ calculée côté front ("9 X 6")
       faces,
       created_by,
-      precision_gps
+      precision_gps,
     } = body;
 
-    // ✅ Vérification des champs obligatoires
-    if (!nom || !latitude || !longitude) {
+    // ✅ Vérification des champs obligatoires (GPS non requis)
+    if (!nom) {
       return NextResponse.json(
-        { error: 'Nom, latitude et longitude sont requis' },
+        { error: 'Le nom est requis' },
         { status: 400 }
       );
     }
 
-    // ✅ Vérifier que les IDs de localisation sont présents
     if (!pays_id || !province_id || !ville_id || !commune_id) {
       return NextResponse.json(
         { error: 'Pays, province, ville et commune sont requis' },
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // ✅ 1. Récupérer les noms des localisations pour l'adresse complète
+    // ✅ 1. Récupérer les noms des localisations
     const [paysResult] = await connection.query(
       'SELECT nom FROM pays WHERE id_pays = ?',
       [pays_id]
@@ -75,85 +76,67 @@ export async function POST(request: NextRequest) {
     const villeNom = (villeResult as any[])[0]?.nom || '';
     const communeNom = (communeResult as any[])[0]?.nom || '';
 
-    // ✅ Construire l'adresse complète
-    const adresseComplete = adresse || 
+    const adresseComplete = adresse ||
       `${communeNom} / ${villeNom} / ${provinceNom} / ${paysNom}`;
 
-    // ✅ 2. Insérer le panneau avec la dimension
+    // ✅ 2. Insérer le panneau (GPS + dimension peuvent être null)
+    const latVal = latitude != null && latitude !== '' ? latitude : null;
+    const lngVal = longitude != null && longitude !== '' ? longitude : null;
+
+    // ✅ CORRECTION : on remplit AUSSI created_at et updated_at
     const [panneauResult] = await connection.query(
-      `INSERT INTO panneau 
-       (nom, adresse, latitude, longitude, etat, 
-        pays_id, province_id, ville_id, commune_id, 
-        created_by, precision_gps, date_creation, dimension) 
-       VALUES (?, ?, ?, ?, 'Actif', ?, ?, ?, ?, ?, ?, NOW(), ?)`,
-      [nom, adresseComplete, latitude, longitude,
+      `INSERT INTO panneau
+       (nom, adresse, latitude, longitude, etat,
         pays_id, province_id, ville_id, commune_id,
-        created_by || null, precision_gps || 0,
-        dimension || 'N/A']  // ✅ Enregistrer la dimension
+        created_by, precision_gps, date_creation, dimension,
+        created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'Actif', ?, ?, ?, ?, ?, ?, NOW(), ?, NOW(), NOW())`,
+      [
+        nom,
+        adresseComplete,
+        latVal,
+        lngVal,
+        pays_id,
+        province_id,
+        ville_id,
+        commune_id,
+        created_by || null,
+        precision_gps || 0,
+        dimension || null,
+      ]
     );
 
     const panneauId = (panneauResult as any).insertId;
 
-    // ✅ 3. Insérer les faces avec référence au type_face
+    // ✅ 3. Insérer les faces
     let facesInserted = 0;
-    
-    if (faces && Array.isArray(faces) && faces.length > 0) {
-      
-      for (let i = 0; i < faces.length; i++) {
-        const face = faces[i];
-        
-        // ✅ Récupérer le type_face_id
-        let typeFaceId = face.type_face_id;
-        
-        // ✅ Si type_face_id n'est pas fourni, essayer de trouver par libelle
-        if (!typeFaceId && face.libelle) {
-          const [typeResult] = await connection.query(
-            `SELECT id_type_face FROM type_face WHERE libelle = ?`,
-            [face.libelle]
-          );
-          
-          if ((typeResult as any[]).length > 0) {
-            typeFaceId = (typeResult as any[])[0].id_type_face;
-          } else {
-            // ✅ Créer un nouveau type si pas trouvé
-            const [newTypeResult] = await connection.query(
-              `INSERT INTO type_face (libelle, hauteur_cm, largeur_cm, est_scroller) 
-               VALUES (?, ?, ?, 0)`,
-              [face.libelle, face.hauteur || 200, face.largeur || 300]
-            );
-            typeFaceId = (newTypeResult as any).insertId;
-          }
-        }
-        
-        // ✅ Vérifier que typeFaceId est valide
-        if (!typeFaceId) {
-          continue;
-        }
 
-        // ✅ Vérifier que le type existe bien dans la base
+    if (Array.isArray(faces) && faces.length > 0) {
+      for (const face of faces) {
+        const typeFaceId = face.type_face_id;
+        if (!typeFaceId) continue;
+
+        // Vérifier que le type existe
         const [verifyType] = await connection.query(
           `SELECT id_type_face FROM type_face WHERE id_type_face = ?`,
           [typeFaceId]
         );
+        if ((verifyType as any[]).length === 0) continue;
 
-        if ((verifyType as any[]).length === 0) {
-          continue;
-        }
-
-        // ✅ Insérer la face avec référence au type_face
         const orientation = face.orientation || 'NORD';
-        const [faceResult] = await connection.query(
-          `INSERT INTO face 
-           (id_panneau, id_type_face, orientation, est_active) 
-           VALUES (?, ?, ?, 1)`,
+
+        // ✅ CORRECTION : created_at et updated_at aussi pour les faces
+        await connection.query(
+          `INSERT INTO face
+           (id_panneau, id_type_face, orientation, est_active,
+            created_at, updated_at)
+           VALUES (?, ?, ?, 1, NOW(), NOW())`,
           [panneauId, typeFaceId, orientation]
         );
-        
         facesInserted++;
       }
     }
 
-    // ✅ 4. Commit de la transaction
     await connection.commit();
     connection.release();
 
@@ -161,10 +144,9 @@ export async function POST(request: NextRequest) {
       success: true,
       panneauId,
       facesInserted,
-      dimension: dimension || 'N/A',
-      message: `Panneau enregistré avec ${facesInserted} face(s)`
+      dimension: dimension || null,
+      message: `Panneau enregistré avec ${facesInserted} face(s)`,
     });
-
   } catch (error) {
     if (connection) {
       await connection.rollback();
