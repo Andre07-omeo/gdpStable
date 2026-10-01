@@ -9,6 +9,7 @@ import {
   TrendingUp, ClipboardCheck, Crown, Menu, X, LogOut,
   Settings, KeyRound, HelpCircle,
   Shield, Server, UserCog, Building2,
+  ChevronRight,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -38,9 +39,12 @@ interface AdminHeaderProps {
   onSuperviseursToggle?: () => void;
   onLocalisationToggle?: () => void;
   onProfilsToggle?: () => void;
+  // ✅ Handlers compte
   onProfileClick?: () => void;
   onChangePasswordClick?: () => void;
   onSettingsClick?: () => void;
+  onNotificationsClick?: () => void;
+  onHelpClick?: () => void;
   notificationCount: number;
 }
 
@@ -114,6 +118,8 @@ export function AdminHeader({
   onProfileClick,
   onChangePasswordClick,
   onSettingsClick,
+  onNotificationsClick,
+  onHelpClick,
   notificationCount,
 }: AdminHeaderProps) {
   const router = useRouter();
@@ -125,7 +131,7 @@ export function AdminHeader({
 
   useEffect(() => setMounted(true), []);
 
-  // ✅ Détection tablette/mobile : drawer actif jusqu'à 1024px (lg)
+  // ✅ Détection mobile/tablette
   useEffect(() => {
     const checkMobile = () => {
       const isSmall = window.innerWidth < 1024;
@@ -136,7 +142,7 @@ export function AdminHeader({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // ✅ Bloquer le scroll quand le drawer est ouvert
+  // ✅ Bloquer le scroll
   useEffect(() => {
     if (typeof document === 'undefined') return;
     document.body.style.overflow = isMobileMenuOpen ? 'hidden' : '';
@@ -166,7 +172,7 @@ export function AdminHeader({
   const isSuperAdmin = user?.profil === 'SUPER_ADMIN';
   const isAdminSystem = user?.profil === 'ADMIN_SYSTEM';
 
-  // ✅ Actions desktop (dropdown profil)
+  // ✅ Actions desktop (dropdown)
   const extraActions: DropdownExtraAction[] = useMemo(
     () => [
       { id: 'dashboard', label: 'Tableau de bord', icon: <BarChart3 size={16} />, onClick: onDashboardToggle || (() => {}), hidden: !onDashboardToggle },
@@ -190,7 +196,7 @@ export function AdminHeader({
     ]
   );
 
-  // ✅ Bouton d'action desktop
+  // ✅ Bouton desktop
   const ActionButton = ({
     onClick, icon, title, colorClass, glowColor, hidden = '',
   }: {
@@ -224,7 +230,7 @@ export function AdminHeader({
     );
   };
 
-  // ✅ Actions du drawer mobile/tablette
+  // ✅ Actions drawer mobile
   const mobileMenuActions = useMemo(() => {
     const actions: Array<{
       id: string;
@@ -259,7 +265,7 @@ export function AdminHeader({
 
   const handleMobileAction = (action?: () => void) => () => {
     setIsMobileMenuOpen(false);
-    action?.();
+    setTimeout(() => action?.(), 150); // Petit délai pour laisser le drawer se fermer
   };
 
   // ============================================
@@ -267,19 +273,12 @@ export function AdminHeader({
   // ============================================
   return (
     <>
-      {/* ============================================
-          HEADER — responsive phone → 4K
-          ============================================ */}
+      {/* ============ HEADER ============ */}
       <header className={`${theme.headerBg} shadow-2xl sticky top-0 z-50 border-b ${theme.border} w-full`}>
-        <div className="
-          w-full
-          px-2 xs:px-3 sm:px-4 md:px-6 lg:px-8
-          xl:px-10 2xl:px-12
-          py-2 sm:py-2.5 md:py-3
-        ">
+        <div className="w-full px-2 xs:px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-2 sm:py-2.5 md:py-3">
           <div className="flex items-center justify-between gap-1.5 sm:gap-2 md:gap-3">
 
-            {/* ============ 1. LOGO + TITRE ============ */}
+            {/* LOGO + TITRE */}
             <div className="flex items-center gap-2 md:gap-3 flex-shrink-0 min-w-0">
               <button
                 onClick={handleLogoClick}
@@ -287,17 +286,9 @@ export function AdminHeader({
                 title="Accueil Admin"
               >
                 <div className={`w-8 h-8 xs:w-9 xs:h-9 md:w-10 md:h-10 rounded-xl ${theme.iconBadge} flex items-center justify-center border shadow-lg overflow-hidden`}>
-                  <Image
-                    src="/icons/icon-32x32.png"
-                    alt="Logo"
-                    width={32}
-                    height={32}
-                    className="object-contain"
-                    priority
-                  />
+                  <Image src="/icons/icon-32x32.png" alt="Logo" width={32} height={32} className="object-contain" priority />
                 </div>
                 <div className={`absolute -top-1 -right-1 w-2.5 h-2.5 md:w-3 md:h-3 bg-emerald-400 rounded-full border-2 ${theme.dotBorder} animate-pulse`} />
-
                 {isSuperAdmin && (
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 md:w-5 md:h-5 rounded-full bg-gradient-to-br from-amber-300 to-amber-500 flex items-center justify-center shadow-md">
                     <Crown className="w-2.5 h-2.5 md:w-3 md:h-3 text-blue-950" />
@@ -310,7 +301,6 @@ export function AdminHeader({
                 )}
               </button>
 
-              {/* Titre desktop (sm+) */}
               <div className="hidden sm:block min-w-0">
                 <h1 className="text-base md:text-lg lg:text-xl font-bold text-white tracking-tight flex items-center gap-1.5 md:gap-2">
                   <span className={theme.accent}>GDP</span>
@@ -325,7 +315,6 @@ export function AdminHeader({
                 </p>
               </div>
 
-              {/* Titre mobile (< sm) */}
               <div className="sm:hidden min-w-0">
                 <h1 className="text-xs xs:text-sm font-bold text-white flex items-center gap-1">
                   <span className={theme.accent}>GDP</span>
@@ -337,78 +326,28 @@ export function AdminHeader({
 
             <div className="flex-1 min-w-0" />
 
-            {/* ============ 2. PROFIL desktop (lg+) ============ */}
+            {/* PROFIL desktop */}
             {mounted && displayName && (
               <div className="hidden lg:flex items-center gap-2 flex-shrink-0 mr-1 xl:mr-2">
                 <div className="text-right max-w-[140px] xl:max-w-[200px]">
-                  <p className="text-xs xl:text-sm font-semibold text-white truncate leading-tight">
-                    {displayName}
-                  </p>
-                  <p className={`text-[9px] xl:text-[10px] ${theme.profileEmail} truncate italic leading-tight`}>
-                    {displayEmail}
-                  </p>
+                  <p className="text-xs xl:text-sm font-semibold text-white truncate leading-tight">{displayName}</p>
+                  <p className={`text-[9px] xl:text-[10px] ${theme.profileEmail} truncate italic leading-tight`}>{displayEmail}</p>
                 </div>
               </div>
             )}
 
             <div className={`hidden lg:block w-px h-7 xl:h-8 ${theme.divider} mx-0.5 xl:mx-1`} />
 
-            {/* ============ 3. ICÔNES DESKTOP ============ */}
+            {/* ICÔNES DESKTOP */}
             <div className="hidden lg:flex items-center gap-1 xl:gap-1.5 flex-shrink-0">
-              <ActionButton
-                onClick={onDashboardToggle}
-                icon={<BarChart3 className="w-4 h-4 text-white" />}
-                title="Tableau de bord"
-                colorClass="bg-blue-600 hover:bg-blue-500"
-                glowColor="bg-blue-400"
-              />
-              <ActionButton
-                onClick={onPanneauxToggle}
-                icon={<MapPin className="w-4 h-4 text-white" />}
-                title="Panneaux"
-                colorClass="bg-emerald-600 hover:bg-emerald-500"
-                glowColor="bg-emerald-400"
-              />
-              <ActionButton
-                onClick={onReservationsToggle}
-                icon={<ClipboardCheck className="w-4 h-4 text-white" />}
-                title="Réservations"
-                colorClass="bg-amber-600 hover:bg-amber-500"
-                glowColor="bg-amber-400"
-              />
-              <ActionButton
-                onClick={onUsersToggle}
-                icon={<Users className="w-4 h-4 text-white" />}
-                title="Utilisateurs"
-                colorClass="bg-violet-600 hover:bg-violet-500"
-                glowColor="bg-violet-400"
-              />
-              <ActionButton
-                onClick={onStatsToggle}
-                icon={<TrendingUp className="w-4 h-4 text-white" />}
-                title="Statistiques"
-                colorClass="bg-cyan-600 hover:bg-cyan-500"
-                glowColor="bg-cyan-400"
-                hidden="hidden xl:block"
-              />
-              <ActionButton
-                onClick={isSuperAdmin ? onSuperviseursToggle : undefined}
-                icon={<UserCog className="w-4 h-4 text-white" />}
-                title="Superviseurs"
-                colorClass="bg-pink-600 hover:bg-pink-500"
-                glowColor="bg-pink-400"
-                hidden="hidden 2xl:block"
-              />
-              <ActionButton
-                onClick={onAdminSystemToggle}
-                icon={<Server className="w-4 h-4 text-white" />}
-                title="Admin Système"
-                colorClass="bg-indigo-600 hover:bg-indigo-500"
-                glowColor="bg-indigo-400"
-                hidden="hidden 2xl:block"
-              />
+              <ActionButton onClick={onDashboardToggle} icon={<BarChart3 className="w-4 h-4 text-white" />} title="Tableau de bord" colorClass="bg-blue-600 hover:bg-blue-500" glowColor="bg-blue-400" />
+              <ActionButton onClick={onPanneauxToggle} icon={<MapPin className="w-4 h-4 text-white" />} title="Panneaux" colorClass="bg-emerald-600 hover:bg-emerald-500" glowColor="bg-emerald-400" />
+              <ActionButton onClick={onReservationsToggle} icon={<ClipboardCheck className="w-4 h-4 text-white" />} title="Réservations" colorClass="bg-amber-600 hover:bg-amber-500" glowColor="bg-amber-400" />
+              <ActionButton onClick={onUsersToggle} icon={<Users className="w-4 h-4 text-white" />} title="Utilisateurs" colorClass="bg-violet-600 hover:bg-violet-500" glowColor="bg-violet-400" />
+              <ActionButton onClick={onStatsToggle} icon={<TrendingUp className="w-4 h-4 text-white" />} title="Statistiques" colorClass="bg-cyan-600 hover:bg-cyan-500" glowColor="bg-cyan-400" hidden="hidden xl:block" />
+              <ActionButton onClick={isSuperAdmin ? onSuperviseursToggle : undefined} icon={<UserCog className="w-4 h-4 text-white" />} title="Superviseurs" colorClass="bg-pink-600 hover:bg-pink-500" glowColor="bg-pink-400" hidden="hidden 2xl:block" />
+              <ActionButton onClick={onAdminSystemToggle} icon={<Server className="w-4 h-4 text-white" />} title="Admin Système" colorClass="bg-indigo-600 hover:bg-indigo-500" glowColor="bg-indigo-400" hidden="hidden 2xl:block" />
 
-              {/* Notifications */}
               {onNotificationsToggle && (
                 <button
                   onClick={onNotificationsToggle}
@@ -424,7 +363,6 @@ export function AdminHeader({
                 </button>
               )}
 
-              {/* Refresh */}
               <button
                 onClick={handleRefresh}
                 className="group relative p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white transition-all duration-300 ease-out hover:scale-110 active:scale-95"
@@ -436,7 +374,7 @@ export function AdminHeader({
 
             <div className={`hidden lg:block w-px h-7 xl:h-8 ${theme.divider} mx-0.5 xl:mx-1`} />
 
-            {/* ============ 4. AVATAR + DROPDOWN (desktop lg+) ============ */}
+            {/* AVATAR + DROPDOWN */}
             {mounted && displayName && (
               <div className="hidden lg:block flex-shrink-0">
                 <ProfileDropdown
@@ -447,24 +385,16 @@ export function AdminHeader({
                   onProfileClick={onProfileClick}
                   onChangePasswordClick={onChangePasswordClick}
                   onSettingsClick={onSettingsClick}
-                  onHelpClick={() => console.log('Aide')}
-                  extraActions={[]}
+                  onHelpClick={onHelpClick}
+                  extraActions={extraActions}
                 />
               </div>
             )}
 
-            {/* ============ 5. BOUTON MENU MOBILE/TABLETTE (< lg) ============ */}
+            {/* MENU MOBILE */}
             <button
               onClick={() => setIsMobileMenuOpen(true)}
-              className="
-                lg:hidden flex-shrink-0 relative
-                p-2 rounded-xl
-                bg-white/10 hover:bg-white/20
-                border border-white/20
-                text-white
-                transition-all duration-300
-                active:scale-95
-              "
+              className="lg:hidden flex-shrink-0 relative p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-all duration-300 active:scale-95"
               title="Menu"
               aria-label="Ouvrir le menu"
             >
@@ -479,39 +409,22 @@ export function AdminHeader({
         </div>
       </header>
 
-      {/* ============================================
-          DRAWER MOBILE / TABLETTE (< lg)
-          ============================================ */}
+      {/* ============ DRAWER MOBILE ============ */}
       {isMobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-[100]">
-          {/* Overlay */}
-          <div
-            className="absolute inset-0 bg-black/60 animate-fadeIn"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
+          <div className="absolute inset-0 bg-black/60 animate-fadeIn" onClick={() => setIsMobileMenuOpen(false)} />
 
-          {/* Panneau */}
-          <div className="
-            absolute top-0 right-0 h-full
-            w-[88%] xs:w-[85%] sm:w-[70%] md:w-[420px]
-            bg-slate-900
-            shadow-2xl
-            flex flex-col
-            animate-slideInRight
-          ">
-            {/* ---- En-tête drawer ---- */}
+          <div className="absolute top-0 right-0 h-full w-[88%] xs:w-[85%] sm:w-[70%] md:w-[420px] bg-slate-900 shadow-2xl flex flex-col animate-slideInRight">
+
+            {/* En-tête drawer */}
             <div className="flex items-center justify-between p-3 sm:p-4 border-b border-white/10 flex-shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0 ring-2 ring-white/10">
                   {displayName?.charAt(0).toUpperCase() || 'A'}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-white font-semibold text-sm truncate">
-                    {displayName || 'Administrateur'}
-                  </p>
-                  <p className="text-white/50 text-[11px] truncate">
-                    {displayEmail || ''}
-                  </p>
+                  <p className="text-white font-semibold text-sm truncate">{displayName || 'Administrateur'}</p>
+                  <p className="text-white/50 text-[11px] truncate">{displayEmail || ''}</p>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${theme.roleBadgeColor} inline-block mt-0.5`}>
                     {theme.roleLabel}
                   </span>
@@ -526,10 +439,10 @@ export function AdminHeader({
               </button>
             </div>
 
-            {/* ---- Contenu scrollable ---- */}
+            {/* Contenu scrollable */}
             <div className="flex-1 overflow-y-auto overscroll-contain mobile-menu-scroll px-3 py-3">
 
-              {/* Section Modules Admin */}
+              {/* ============ SECTION MODULES ============ */}
               <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-3 mb-1.5 mt-1">
                 Modules Admin
               </p>
@@ -538,13 +451,7 @@ export function AdminHeader({
                   <button
                     key={action.id}
                     onClick={handleMobileAction(action.onClick)}
-                    className="
-                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-                      text-white/90 hover:text-white hover:bg-white/5
-                      text-sm font-medium
-                      transition-colors duration-150
-                      active:bg-white/10
-                    "
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
                   >
                     <span className={`flex-shrink-0 ${action.color}`}>{action.icon}</span>
                     <span className="flex-1 text-left truncate">{action.label}</span>
@@ -557,48 +464,65 @@ export function AdminHeader({
                 ))}
               </div>
 
-              {/* Section Mon compte */}
+              {/* ============ SECTION MON COMPTE (CORRIGÉE) ============ */}
               <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-3 mb-1.5">
                 Mon compte
               </p>
               <div className="space-y-0.5 mb-4">
+
                 {onProfileClick && (
                   <button
                     onClick={handleMobileAction(onProfileClick)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
                   >
-                    <User size={18} className="flex-shrink-0 text-white/60" />
-                    <span>Mon profil</span>
+                    <User size={18} className="flex-shrink-0 text-blue-400" />
+                    <span className="flex-1 text-left">Mon profil</span>
+                    <ChevronRight size={14} className="text-white/30" />
                   </button>
                 )}
+
                 {onChangePasswordClick && (
                   <button
                     onClick={handleMobileAction(onChangePasswordClick)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
                   >
-                    <KeyRound size={18} className="flex-shrink-0 text-white/60" />
-                    <span>Changer le mot de passe</span>
+                    <KeyRound size={18} className="flex-shrink-0 text-amber-400" />
+                    <span className="flex-1 text-left">Changer le mot de passe</span>
+                    <ChevronRight size={14} className="text-white/30" />
                   </button>
                 )}
+
                 {onSettingsClick && (
                   <button
                     onClick={handleMobileAction(onSettingsClick)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
                   >
-                    <Settings size={18} className="flex-shrink-0 text-white/60" />
-                    <span>Paramètres</span>
+                    <Settings size={18} className="flex-shrink-0 text-violet-400" />
+                    <span className="flex-1 text-left">Paramètres</span>
+                    <ChevronRight size={14} className="text-white/30" />
                   </button>
                 )}
+
                 <button
-                  onClick={() => console.log('Aide')}
+                  onClick={handleMobileAction(onNotificationsClick)}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
                 >
-                  <HelpCircle size={18} className="flex-shrink-0 text-white/60" />
-                  <span>Aide</span>
+                  <Bell size={18} className="flex-shrink-0 text-yellow-400" />
+                  <span className="flex-1 text-left">Notifications</span>
+                  <ChevronRight size={14} className="text-white/30" />
+                </button>
+
+                <button
+                  onClick={handleMobileAction(onHelpClick)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
+                >
+                  <HelpCircle size={18} className="flex-shrink-0 text-cyan-400" />
+                  <span className="flex-1 text-left">Aide & Support</span>
+                  <ChevronRight size={14} className="text-white/30" />
                 </button>
               </div>
 
-              {/* Section Déconnexion */}
+              {/* ============ SECTION DÉCONNEXION ============ */}
               <div className="pt-3 mt-2 border-t border-white/10 pb-4">
                 <button
                   onClick={handleLogoutClick}
@@ -629,7 +553,6 @@ export function AdminHeader({
         .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
         .animate-slideInRight { animation: slideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
 
-        /* Scrollbar fine et élégante pour le drawer */
         .mobile-menu-scroll {
           scrollbar-width: thin;
           scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
@@ -644,7 +567,6 @@ export function AdminHeader({
           background: rgba(255, 255, 255, 0.3);
         }
 
-        /* Support des très petits écrans (iPhone SE 320px) */
         @media (max-width: 360px) {
           .mobile-menu-scroll { padding: 8px; }
         }
