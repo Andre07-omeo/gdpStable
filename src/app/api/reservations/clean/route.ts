@@ -53,6 +53,54 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 // ============================================
+// 🎯 RÈGLES DE NETTOYAGE (SQL réutilisable)
+// ============================================
+/**
+ * ✅ RÈGLE 1 : Réservation jamais validée par la compta
+ *              ET échéance dépassée
+ *
+ * Conditions :
+ *   - id_chef_validation IS NULL (ou 0)
+ *   - date_expiration valide (pas NULL, pas '0000-00-00')
+ *   - AUJOURD'HUI > date_expiration
+ *   → indépendant du statut
+ *
+ * ✅ RÈGLE 2 : Campagne terminée + photo + validée
+ *
+ * Conditions :
+ *   - photoCampagneUrl valide (non vide)
+ *   - id_chef_validation NON NULL et > 0
+ *   - AUJOURD'HUI > date_fin_campagne
+ *   → indépendant du statut
+ */
+const CLEANUP_WHERE_CLAUSE = `
+  (
+    -- ═══════════════════════════════════════════════
+    -- RÈGLE 1 : Jamais validée + échéance dépassée
+    -- ═══════════════════════════════════════════════
+    (id_chef_validation IS NULL OR id_chef_validation = 0)
+    AND date_expiration IS NOT NULL
+    AND date_expiration <> '0000-00-00 00:00:00'
+    AND NOW() > date_expiration
+  )
+  OR
+  (
+    -- ═══════════════════════════════════════════════
+    -- RÈGLE 2 : Campagne terminée + photo + validée
+    -- ═══════════════════════════════════════════════
+    photoCampagneUrl IS NOT NULL
+    AND TRIM(photoCampagneUrl) <> ''
+    AND LOWER(TRIM(photoCampagneUrl)) <> 'null'
+    AND LOWER(TRIM(photoCampagneUrl)) <> 'undefined'
+    AND id_chef_validation IS NOT NULL
+    AND id_chef_validation > 0
+    AND date_fin_campagne IS NOT NULL
+    AND date_fin_campagne <> '0000-00-00'
+    AND CURDATE() > date_fin_campagne
+  )
+`;
+
+// ============================================
 // 🧹 POST : Nettoyage effectif
 // ============================================
 export async function POST(request: NextRequest) {
@@ -70,25 +118,11 @@ export async function POST(request: NextRequest) {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // 🔒 SÉLECTION SELON LA NOUVELLE LOGIQUE
+    // 🔒 SÉLECTION DES CANDIDATS (basée uniquement sur dates + validations)
     const [candidates] = await connection.query<RowDataPacket[]>(
       `SELECT * FROM reservation
-       WHERE 
-         (statut = 'En attente' 
-          AND date_expiration IS NOT NULL 
-          AND date_expiration < NOW())
-         OR
-         (statut IN ('Confirmée', 'ACTIVE', 'En cours')
-          AND date_fin_campagne < CURDATE()
-          AND (
-            (photoCampagneUrl IS NOT NULL 
-             AND validation_chef_commercial = 1 
-             AND validation_superviseur = 1)
-            OR
-            (photoCampagneUrl IS NULL 
-             AND (validation_chef_commercial = 1 OR validation_superviseur = 1))
-          )
-         )
+       WHERE ${CLEANUP_WHERE_CLAUSE}
+       ORDER BY date_expiration ASC, date_fin_campagne ASC
        LIMIT ?`,
       [batchSize]
     );
@@ -98,70 +132,113 @@ export async function POST(request: NextRequest) {
     const details: any[] = [];
 
     for (const r of candidates) {
-      const estEnAttenteExpiree =
-        r.statut === 'En attente' &&
-        r.date_expiration &&
-        new Date(r.date_expiration) < new Date();
+      try {
+        // ============================================
+        // DÉTERMINER LE MOTIF + STATUT FINAL
+        // ============================================
+        const aPhoto =
+          r.photoCampagneUrl &&
+          String(r.photoCampagneUrl).trim() !== '' &&
+          String(r.photoCampagneUrl).toLowerCase() !== 'null' &&
+          String(r.photoCampagneUrl).toLowerCase() !== 'undefined';
 
-      let motifComplet: string;
-      let statutFinal: string;
+        const aValidation =
+          r.id_chef_validation !== null &&
+          r.id_chef_validation !== undefined &&
+          Number(r.id_chef_validation) > 0;
 
-      if (estEnAttenteExpiree) {
-        motifComplet = 'Échéance expirée — aucune validation comptable';
-        statutFinal = 'Expirée';
-        expirees++;
-      } else {
-        const aPhoto = !!r.photoCampagneUrl;
-        motifComplet = aPhoto
-          ? 'Campagne terminée — double validation (avec photo)'
-          : 'Campagne terminée — validation unique (sans photo)';
-        statutFinal = 'Terminée';
-        terminees++;
+        const expirationDepassee =
+          r.date_expiration &&
+          r.date_expiration !== '0000-00-00 00:00:00' &&
+          new Date(r.date_expiration) < new Date();
+
+        const campagneTerminee =
+          r.date_fin_campagne &&
+          r.date_fin_campagne !== '0000-00-00' &&
+          new Date(r.date_fin_campagne) < new Date();
+
+        let motifComplet: string;
+        let statutFinal: string;
+
+        // ✅ Priorité 1 : Jamais validée + expirée
+        if (!aValidation && expirationDepassee) {
+          motifComplet = 'Échéance expirée — aucune validation comptable';
+          statutFinal = 'Expirée';
+          expirees++;
+        }
+        // ✅ Priorité 2 : Campagne terminée + photo + validée
+        else if (aPhoto && aValidation && campagneTerminee) {
+          motifComplet = 'Campagne terminée — validée avec photo';
+          statutFinal = 'Terminée';
+          terminees++;
+        }
+        // Sécurité (ne devrait pas arriver, mais on skip)
+        else {
+          console.warn(
+            `⚠️ Réservation ${r.id_reservation} matchée mais ne respecte pas les règles — SKIP`
+          );
+          continue;
+        }
+
+        // ============================================
+        // 1. Insérer dans l'historique
+        // ============================================
+        await connection.query(
+          `INSERT INTO historique_reservation (
+            id_reservation, id_client, id_commercial, id_chef_validation,
+            id_chef_commercial, id_superviseur,
+            validation_chef_commercial, validation_superviseur,
+            date_validation_chef, date_validation_superviseur,
+            numero_commande, date_creation, date_debut_campagne, date_fin_campagne,
+            date_expiration, statut, est_verrouille, date_verrouillage,
+            notes, photoCampagneUrl, photo_metadata,
+            photo_latitude, photo_longitude, date_upload_photo,
+            date_deplacement, motif_deplacement, ancien_statut, nouveau_statut
+          )
+          SELECT 
+            id_reservation, id_client, id_commercial, id_chef_validation,
+            id_chef_commercial, id_superviseur,
+            validation_chef_commercial, validation_superviseur,
+            date_validation_chef, date_validation_superviseur,
+            numero_commande, date_creation, date_debut_campagne, date_fin_campagne,
+            date_expiration, statut, est_verrouille, date_verrouillage,
+            notes, photoCampagneUrl, photo_metadata,
+            photo_latitude, photo_longitude, date_upload_photo,
+            NOW(), ?, statut, ?
+          FROM reservation WHERE id_reservation = ?`,
+          [motifComplet, statutFinal, r.id_reservation]
+        );
+
+        // ============================================
+        // 2. Supprimer les lignes liées
+        // ============================================
+        await connection.query(
+          'DELETE FROM ligne_reservation WHERE id_reservation = ?',
+          [r.id_reservation]
+        );
+
+        // ============================================
+        // 3. Supprimer la réservation
+        // ============================================
+        await connection.query(
+          'DELETE FROM reservation WHERE id_reservation = ?',
+          [r.id_reservation]
+        );
+
+        details.push({
+          id: r.id_reservation,
+          commande: r.numero_commande,
+          motif: motifComplet,
+          a_photo: !!aPhoto,
+          a_validation: !!aValidation,
+        });
+      } catch (errResa: any) {
+        // ⚠️ Une erreur sur une résa ne bloque pas les autres
+        console.error(
+          `❌ Erreur nettoyage réservation ${r.id_reservation}:`,
+          errResa
+        );
       }
-
-      // 1. Insérer dans l'historique
-      await connection.query(
-        `INSERT INTO historique_reservation (
-          id_reservation, id_client, id_commercial, id_chef_validation,
-          id_chef_commercial, id_superviseur,
-          validation_chef_commercial, validation_superviseur,
-          date_validation_chef, date_validation_superviseur,
-          numero_commande, date_creation, date_debut_campagne, date_fin_campagne,
-          date_expiration, statut, est_verrouille, date_verrouillage,
-          notes, photoCampagneUrl, photo_metadata,
-          photo_latitude, photo_longitude, date_upload_photo,
-          date_deplacement, motif_deplacement, ancien_statut, nouveau_statut
-        )
-        SELECT 
-          id_reservation, id_client, id_commercial, id_chef_validation,
-          id_chef_commercial, id_superviseur,
-          validation_chef_commercial, validation_superviseur,
-          date_validation_chef, date_validation_superviseur,
-          numero_commande, date_creation, date_debut_campagne, date_fin_campagne,
-          date_expiration, statut, est_verrouille, date_verrouillage,
-          notes, photoCampagneUrl, photo_metadata,
-          photo_latitude, photo_longitude, date_upload_photo,
-          NOW(), ?, statut, ?
-        FROM reservation WHERE id_reservation = ?`,
-        [motifComplet, statutFinal, r.id_reservation]
-      );
-
-      // 2. Supprimer les lignes liées
-      await connection.query(
-        'DELETE FROM ligne_reservation WHERE id_reservation = ?',
-        [r.id_reservation]
-      );
-
-      // 3. Supprimer la réservation
-      await connection.query('DELETE FROM reservation WHERE id_reservation = ?', [
-        r.id_reservation,
-      ]);
-
-      details.push({
-        id: r.id_reservation,
-        commande: r.numero_commande,
-        motif: motifComplet,
-      });
     }
 
     await connection.commit();
@@ -182,7 +259,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     if (connection) {
-      try { await connection.rollback(); } catch {}
+      try {
+        await connection.rollback();
+      } catch {}
     }
     console.error('❌ Erreur nettoyage:', error);
     return NextResponse.json(
@@ -214,74 +293,70 @@ export async function GET(request: NextRequest) {
     // Réservations NETTOYABLES
     const [nettoyables] = await connection.query<RowDataPacket[]>(
       `SELECT id_reservation, numero_commande, statut, photoCampagneUrl,
-              validation_chef_commercial, validation_superviseur,
-              date_fin_campagne, date_expiration
+              id_chef_validation, validation_chef_commercial, validation_superviseur,
+              date_debut_campagne, date_fin_campagne, date_expiration
        FROM reservation
-       WHERE 
-         (statut = 'En attente' AND date_expiration IS NOT NULL AND date_expiration < NOW())
-         OR
-         (
-           statut IN ('Confirmée', 'ACTIVE', 'En cours')
-           AND date_fin_campagne < CURDATE()
-           AND (
-             (photoCampagneUrl IS NOT NULL 
-              AND validation_chef_commercial = 1 
-              AND validation_superviseur = 1)
-             OR
-             (photoCampagneUrl IS NULL 
-              AND (validation_chef_commercial = 1 OR validation_superviseur = 1))
-           )
-         )`
+       WHERE ${CLEANUP_WHERE_CLAUSE}`
     );
 
-    // Réservations EN ATTENTE de validation
+    // Réservations EN ATTENTE (non nettoyables actuellement)
     const [enAttente] = await connection.query<RowDataPacket[]>(
       `SELECT id_reservation, numero_commande, statut, photoCampagneUrl,
-              validation_chef_commercial, validation_superviseur,
-              date_fin_campagne
+              id_chef_validation, validation_chef_commercial, validation_superviseur,
+              date_fin_campagne, date_expiration
        FROM reservation
-       WHERE 
-         statut IN ('Confirmée', 'ACTIVE', 'En cours')
-         AND date_fin_campagne < CURDATE()
-         AND NOT (
-           (photoCampagneUrl IS NOT NULL 
-            AND validation_chef_commercial = 1 
-            AND validation_superviseur = 1)
+       WHERE NOT (${CLEANUP_WHERE_CLAUSE})
+         AND (
+           -- En attente d'expiration (jamais validée)
+           (
+             (id_chef_validation IS NULL OR id_chef_validation = 0)
+             AND date_expiration IS NOT NULL
+             AND date_expiration <> '0000-00-00 00:00:00'
+             AND NOW() <= date_expiration
+           )
            OR
-           (photoCampagneUrl IS NULL 
-            AND (validation_chef_commercial = 1 OR validation_superviseur = 1))
+           -- Validée + photo + campagne pas encore terminée
+           (
+             photoCampagneUrl IS NOT NULL
+             AND TRIM(photoCampagneUrl) <> ''
+             AND LOWER(TRIM(photoCampagneUrl)) <> 'null'
+             AND id_chef_validation IS NOT NULL
+             AND id_chef_validation > 0
+             AND date_fin_campagne IS NOT NULL
+             AND date_fin_campagne <> '0000-00-00'
+             AND CURDATE() <= date_fin_campagne
+           )
          )`
     );
 
     const formatDetails = (rows: RowDataPacket[]) =>
       rows.map((r: any) => {
-        const aPhoto = !!r.photoCampagneUrl;
-        const chefOk = r.validation_chef_commercial === 1;
-        const supervOk = r.validation_superviseur === 1;
+        const aPhoto =
+          r.photoCampagneUrl &&
+          String(r.photoCampagneUrl).trim() !== '' &&
+          String(r.photoCampagneUrl).toLowerCase() !== 'null';
+        const aValidation =
+          r.id_chef_validation !== null &&
+          r.id_chef_validation !== undefined &&
+          Number(r.id_chef_validation) > 0;
 
         let raison = '';
-        if (r.statut === 'En attente') {
-          raison = 'Échéance dépassée — nettoyage direct';
-        } else if (aPhoto) {
-          if (chefOk && supervOk) raison = 'Double validation OK';
-          else if (chefOk) raison = 'Manque validation superviseur';
-          else if (supervOk) raison = 'Manque validation chef commercial';
-          else raison = 'Manque les 2 validations';
+        if (!aValidation && r.date_expiration) {
+          raison = `Pas de validation — expiration le ${r.date_expiration}`;
+        } else if (aPhoto && aValidation && r.date_fin_campagne) {
+          raison = `Validée avec photo — campagne termine le ${r.date_fin_campagne}`;
         } else {
-          if (chefOk || supervOk) raison = 'Validation unique OK';
-          else raison = "Manque au moins une validation";
+          raison = 'Aucune règle de nettoyage applicable';
         }
 
         return {
           id: r.id_reservation,
           commande: r.numero_commande,
           statut: r.statut,
-          a_photo: aPhoto,
-          validations: {
-            chef: chefOk,
-            superviseur: supervOk,
-            requises: aPhoto ? 2 : 1,
-          },
+          a_photo: !!aPhoto,
+          a_validation: !!aValidation,
+          date_expiration: r.date_expiration,
+          date_fin_campagne: r.date_fin_campagne,
           raison,
         };
       });
@@ -289,16 +364,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       simulation: true,
       resume: {
-        pretes_a_nettoyer: nettoyables.length,       // ✅ OK grâce à <RowDataPacket[]>
-        en_attente_validation: enAttente.length,      // ✅ OK grâce à <RowDataPacket[]>
+        pretes_a_nettoyer: nettoyables.length,
+        en_attente: enAttente.length,
       },
       a_nettoyer: formatDetails(nettoyables),
       en_attente: formatDetails(enAttente),
       regles: {
-        cas1: "En attente + échéance expirée → nettoyage direct",
-        cas2: "Campagne terminée + photo → 2 validations obligatoires",
-        cas3: "Campagne terminée + sans photo → 1 validation suffit",
-        protection: "Réservation validée par la comptabilité → protégée jusqu'à fin de campagne",
+        cas1:
+          'NON validée par la compta (id_chef_validation NULL/0) + échéance dépassée (NOW() > date_expiration) → nettoyage direct',
+        cas2:
+          'Campagne terminée (CURDATE() > date_fin_campagne) + photo présente + validée (id_chef_validation > 0) → nettoyage',
+        protection:
+          'Les statuts ne sont PLUS pris en compte : uniquement dates + validations',
       },
     });
   } catch (error) {

@@ -6,75 +6,87 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { 
+import {
   LayoutDashboard, MapPin, Calendar, Users, BarChart3,
-  HelpCircle, LogOut, Menu, Loader2
+  HelpCircle, Loader2, Server, Shield, UserCog, Building2,
+  Construction, ArrowLeft, Activity,
 } from 'lucide-react';
 import LayoutWrapper from '@/components/layout/LayoutWrapper';
+import { AdminHeader } from './components/AdminHeader';
 import { AdminDashboardStats } from './components/AdminDashboardStats';
 import { AdminPanneauxList } from './components/AdminPanneauxList';
 import { AdminReservationsList } from './components/AdminReservationsList';
 import { AdminSupport } from './components/AdminSupport';
 import UsersManagementPage from './users/page';
 
-// ✅ Type Panneau basé sur ta table MySQL
-interface Panneau {
-  id_panneau: number;
-  nom: string;
-  adresse: string;
-  latitude: number;
-  longitude: number;
-  etat: string;
-  commune: string;
-  province: string;
-  ville: string;
-  created_at: string;
-  updated_at: string;
-  faces?: any[];
-  nbFaces?: number;
+// ✅ MONITORING SYSTÈME (maintenant en page d'accueil)
+import AdminSystemPage from './system/page';
+
+// ✅ IMPORTS DES TYPES
+import type { DashboardStats, Panneau, Reservation } from './types';
+
+// ============================================
+// PLACEHOLDER pour modules en construction
+// ============================================
+function ModulePlaceholder({
+  title,
+  description,
+  icon,
+  onBack,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  onBack: () => void;
+}) {
+  return (
+    <div className="min-h-[60vh] flex items-center justify-center px-4">
+      <div className="text-center max-w-md">
+        <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-blue-500/30">
+          {icon}
+        </div>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold mb-3">
+          <Construction size={12} />
+          Module en construction
+        </div>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">
+          {title}
+        </h2>
+        <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+          {description}
+        </p>
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold transition shadow-lg shadow-blue-500/30 active:scale-95"
+        >
+          <ArrowLeft size={16} />
+          Retour au tableau de bord
+        </button>
+      </div>
+    </div>
+  );
 }
 
-// ✅ Type pour les statistiques
-interface DashboardStats {
-  totalPanneaux: number;
-  totalFaces: number;
-  facesLibres: number;
-  facesOccupees: number;
-  facesReservees: number;
-  totalUsers: number;
-  totalClients: number;
-  totalReservations: number;
-  reservationsEnCours: number;
-  reservationsFutures: number;
-  reservationsPassees: number;
-  totalRevenue: number;
-  tauxOccupation: number;
-}
-
-interface Reservation {
-  id: string;
-  societeLocatrice: string;
-  panneau: string;
-  dateDebut: string;
-  dateFin: string;
-  statut: string;
-}
-
+// ============================================
+// COMPOSANT PRINCIPAL
+// ============================================
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const router = useRouter();
+
+  // ✅ PAR DÉFAUT : monitoring (page d'accueil)
   const [activeModule, setActiveModule] = useState('dashboard');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   const [isLoading, setIsLoading] = useState(true);
-  
+  const [notificationCount, setNotificationCount] = useState(0);
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  
-  const [panneaux, setPanneaux] = useState<Panneau[]>([]);
-  const [panneauxLoading, setPanneauxLoading] = useState(true);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [reservationsLoading, setReservationsLoading] = useState(true);
 
+  const [panneaux, setPanneaux] = useState<Panneau[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+
+  // ✅ Vérification des droits d'accès
   useEffect(() => {
     if (user && user.profil !== 'SUPER_ADMIN' && user.profil !== 'ADMIN_SYSTEM') {
       router.push('/dashboard');
@@ -82,65 +94,57 @@ export default function AdminDashboard() {
     setIsLoading(false);
   }, [user, router]);
 
-  // ✅ Charger les statistiques
+  // ✅ Chargement initial des données métier
+  //    (le monitoring a son propre fetch dans AdminSystemPage)
   useEffect(() => {
-    const loadStats = async () => {
+    const loadAll = async () => {
       setStatsLoading(true);
       try {
-        const res = await fetch('/api/admin/stats');
-        if (res.ok) {
-          const data = await res.json();
-          setStats(data);
+        const [statsRes, panneauxRes, reservationsRes] = await Promise.all([
+          fetch('/api/admin/stats'),
+          fetch('/api/panneaux'),
+          fetch('/api/admin/reservations'),
+        ]);
+
+        if (statsRes.ok) {
+          const statsData: DashboardStats = await statsRes.json();
+          setStats(statsData);
+        }
+        if (panneauxRes.ok) {
+          const panneauxData: Panneau[] = await panneauxRes.json();
+          setPanneaux(panneauxData);
+        }
+        if (reservationsRes.ok) {
+          const reservationsData: Reservation[] = await reservationsRes.json();
+          setReservations(reservationsData);
         }
       } catch (error) {
-        console.error('Erreur stats:', error);
+        console.error('❌ Erreur chargement:', error);
       } finally {
         setStatsLoading(false);
       }
     };
-    loadStats();
+    loadAll();
   }, []);
 
-  // ✅ Charger les panneaux
-  useEffect(() => {
-    const loadPanneaux = async () => {
-      setPanneauxLoading(true);
-      try {
-        const res = await fetch('/api/panneaux');
-        if (res.ok) {
-          const data = await res.json();
-          console.log('📊 Panneaux chargés:', data);
-          setPanneaux(data);
-        }
-      } catch (error) {
-        console.error('Erreur panneaux:', error);
-      } finally {
-        setPanneauxLoading(false);
-      }
-    };
-    loadPanneaux();
-  }, []);
+  // ✅ Rafraîchissement manuel (données métier)
+  const handleRefresh = async () => {
+    try {
+      const [statsRes, panneauxRes, reservationsRes] = await Promise.all([
+        fetch('/api/admin/stats'),
+        fetch('/api/panneaux'),
+        fetch('/api/admin/reservations'),
+      ]);
 
-  // ✅ Charger les réservations
-  useEffect(() => {
-    const loadReservations = async () => {
-      setReservationsLoading(true);
-      try {
-        const res = await fetch('/api/admin/reservations');
-        if (res.ok) {
-          const data = await res.json();
-          console.log('📊 Réservations chargées:', data);
-          setReservations(data);
-        }
-      } catch (error) {
-        console.error('Erreur réservations:', error);
-      } finally {
-        setReservationsLoading(false);
-      }
-    };
-    loadReservations();
-  }, []);
+      if (statsRes.ok) setStats(await statsRes.json());
+      if (panneauxRes.ok) setPanneaux(await panneauxRes.json());
+      if (reservationsRes.ok) setReservations(await reservationsRes.json());
+    } catch (error) {
+      console.error('❌ Erreur refresh:', error);
+    }
+  };
 
+  // ✅ Écran de chargement initial
   if (isLoading) {
     return (
       <LayoutWrapper>
@@ -153,79 +157,175 @@ export default function AdminDashboard() {
 
   if (!user) return null;
 
+  const isSuperAdmin = user.profil === 'SUPER_ADMIN';
+
+  // ============================================
+  // MENU NAVIGATION
+  // ============================================
   const menuItems = [
-    { id: 'dashboard', label: 'Accueil', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Monitoring', icon: Activity },      // 🎯 Page d'accueil = monitoring
+    { id: 'statistiques', label: 'Statistiques', icon: BarChart3 }, // 📊 Stats métier
     { id: 'panneaux', label: 'Panneaux', icon: MapPin },
     { id: 'reservations', label: 'Réservations', icon: Calendar },
     { id: 'users', label: 'Utilisateurs', icon: Users },
-    { id: 'statistiques', label: 'Statistiques', icon: BarChart3 },
+    { id: 'faces', label: 'Faces', icon: Building2 },
+    ...(isSuperAdmin
+      ? [{ id: 'superviseurs', label: 'Superviseurs', icon: UserCog }]
+      : []),
+    ...(isSuperAdmin
+      ? [{ id: 'profils', label: 'Profils', icon: Shield }]
+      : []),
+    { id: 'admin-system', label: 'Admin Système', icon: Server },
     { id: 'support', label: 'Support', icon: HelpCircle },
   ];
 
+  // ============================================
+  // RENDU DU CONTENU
+  // ============================================
   const renderContent = () => {
     switch (activeModule) {
+      // ============================================
+      // 🎯 1. MONITORING SYSTÈME — PAGE D'ACCUEIL
+      // ============================================
       case 'dashboard':
-        return <AdminDashboardStats stats={stats || undefined} loading={statsLoading} />;
+        return <AdminSystemPage />;
+
+      // ============================================
+      // 📊 2. STATISTIQUES — Métier (panneaux, CA, etc.)
+      // ============================================
+      case 'statistiques':
+        return (
+          <AdminDashboardStats
+            stats={stats || undefined}
+            loading={statsLoading}
+          />
+        );
+
+      // ============================================
+      // ⚙️ 3. ADMIN SYSTÈME — Redirige aussi vers monitoring
+      // ============================================
+      case 'admin-system':
+        return <AdminSystemPage />;
+
+      // ============================================
+      // 🗺️ 4. GESTION DES PANNEAUX
+      // ============================================
       case 'panneaux':
-        return <AdminPanneauxList panneaux={panneaux} onRefresh={() => window.location.reload()} />;
+        return (
+          <AdminPanneauxList
+            panneaux={panneaux}
+            onRefresh={handleRefresh}
+          />
+        );
+
+      // ============================================
+      // 📅 5. GESTION DES RÉSERVATIONS
+      // ============================================
       case 'reservations':
         return <AdminReservationsList panneaux={panneaux} />;
+
+      // ============================================
+      // 👥 6. GESTION DES UTILISATEURS
+      // ============================================
       case 'users':
         return <UsersManagementPage />;
-      case 'statistiques':
-        return <AdminDashboardStats stats={stats || undefined} loading={statsLoading} />;
+
+      // ============================================
+      // ❓ 7. SUPPORT
+      // ============================================
       case 'support':
         return <AdminSupport />;
+
+      // ============================================
+      // 🚧 MODULES EN CONSTRUCTION
+      // ============================================
+      case 'faces':
+        return (
+          <ModulePlaceholder
+            title="Gestion des Faces publicitaires"
+            description="Ce module permettra de gérer toutes les faces publicitaires disponibles sur les panneaux : ajout, modification, suppression, et suivi de leur état."
+            icon={<Building2 size={36} />}
+            onBack={() => setActiveModule('dashboard')}
+          />
+        );
+
+      case 'superviseurs':
+        return (
+          <ModulePlaceholder
+            title="Gestion des Superviseurs"
+            description="Ce module permettra de gérer les comptes superviseurs : création, attribution des zones géographiques, suivi des performances et gestion des permissions."
+            icon={<UserCog size={36} />}
+            onBack={() => setActiveModule('dashboard')}
+          />
+        );
+
+      case 'profils':
+        return (
+          <ModulePlaceholder
+            title="Gestion des Profils"
+            description="Ce module permettra de configurer les profils utilisateurs, leurs rôles, permissions et accès aux différentes fonctionnalités du système."
+            icon={<Shield size={36} />}
+            onBack={() => setActiveModule('dashboard')}
+          />
+        );
+
+      case 'localisation':
+        return (
+          <ModulePlaceholder
+            title="Gestion de la Localisation"
+            description="Ce module permettra de gérer la hiérarchie géographique : pays, provinces, villes, communes et districts."
+            icon={<MapPin size={36} />}
+            onBack={() => setActiveModule('dashboard')}
+          />
+        );
+
+      // ============================================
+      // FALLBACK → Monitoring
+      // ============================================
       default:
-        return <AdminDashboardStats stats={stats || undefined} loading={statsLoading} />;
+        return <AdminSystemPage />;
     }
   };
 
   return (
     <LayoutWrapper>
-      {/* ✅ RACINE : flex-col + w-full pour pousser le footer et occuper tout l'espace */}
       <div className="min-h-screen flex flex-col bg-gray-50 w-full">
-        
-        {/* ============================================
-            HEADER — pleine largeur, sticky
-            ============================================ */}
-        <header className="bg-gradient-to-r from-blue-800 to-blue-900 shadow-2xl sticky top-0 z-50 border-b border-white/10 w-full">
-          <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 flex justify-between items-center">
-            <div className="flex items-center gap-3 min-w-0">
-              <button 
-                className="lg:hidden text-white hover:bg-white/10 p-2 rounded-lg flex-shrink-0" 
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-              >
-                <Menu size={20} />
-              </button>
-              <div className="min-w-0">
-                <h1 className="text-base sm:text-lg font-bold text-white truncate">
-                  GDP <span className="text-amber-400">Admin</span>
-                </h1>
-                <p className="text-[10px] text-blue-200">Administration</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              <span className="text-sm text-white/80 hidden sm:inline truncate max-w-[150px]">
-                {user?.nom || ''} {user?.prenom || ''}
-              </span>
-              <span className="text-xs bg-amber-500/20 text-amber-300 px-2 py-1 rounded-full hidden sm:inline whitespace-nowrap">
-                {user?.profil || 'Admin'}
-              </span>
-              <button 
-                onClick={logout} 
-                className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition"
-              >
-                <LogOut size={18} />
-              </button>
-            </div>
-          </div>
-        </header>
 
         {/* ============================================
-            BARRE DE NAVIGATION — pleine largeur, scroll mobile
+            HEADER ADMIN
             ============================================ */}
-        <div className="bg-white border-b border-gray-200 shadow-sm w-full">
+        <AdminHeader
+          user={user}
+          variant={isSuperAdmin ? 'super-admin' : 'admin'}
+          onLogout={logout}
+          onRefresh={handleRefresh}
+          onNotificationsToggle={() => console.log('notifications')}
+          notificationCount={notificationCount}
+          // 🎯 Dashboard = Monitoring
+          onDashboardToggle={() => setActiveModule('dashboard')}
+          onPanneauxToggle={() => setActiveModule('panneaux')}
+          onReservationsToggle={() => setActiveModule('reservations')}
+          onUsersToggle={() => setActiveModule('users')}
+          onStatsToggle={() => setActiveModule('statistiques')}
+          onSupportToggle={() => setActiveModule('support')}
+          onAdminSystemToggle={() => setActiveModule('admin-system')}
+          onFacesToggle={() => setActiveModule('faces')}
+          onSuperviseursToggle={
+            isSuperAdmin ? () => setActiveModule('superviseurs') : undefined
+          }
+          onLocalisationToggle={() => setActiveModule('localisation')}
+          onProfilsToggle={
+            isSuperAdmin ? () => setActiveModule('profils') : undefined
+          }
+          onProfileClick={() => console.log('profil')}
+          onChangePasswordClick={() => console.log('password')}
+          onSettingsClick={() => console.log('settings')}
+        />
+
+        {/* ============================================
+            BARRE DE NAVIGATION
+            ============================================ */}
+        <div className="bg-white border-b border-gray-200 shadow-sm w-full sticky top-[57px] sm:top-[65px] z-40">
           <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12">
             <div className="flex gap-1 sm:gap-2 overflow-x-auto py-2 -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide">
               {menuItems.map((item) => {
@@ -251,13 +351,24 @@ export default function AdminDashboard() {
         </div>
 
         {/* ============================================
-            ✅ CONTENU PRINCIPAL — 100% largeur
+            CONTENU PRINCIPAL
             ============================================ */}
         <main className="flex-1 w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 sm:py-4 md:py-6 pb-20 sm:pb-6">
           {renderContent()}
         </main>
 
       </div>
+
+      {/* Scrollbar personnalisée */}
+      <style jsx global>{`
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
     </LayoutWrapper>
   );
 }
