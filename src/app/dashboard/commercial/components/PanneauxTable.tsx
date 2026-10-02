@@ -23,6 +23,7 @@ interface PanneauxTableProps {
 type SortKey =
   | 'panneau_nom'
   | 'adresse'
+  | 'troncon'
   | 'type_face'
   | 'orientation'
   | 'dimension'
@@ -34,6 +35,7 @@ type SortKey =
 type SortDir = 'asc' | 'desc' | null;
 
 interface ColumnFilters {
+  troncon: string[];
   type_face: string[];
   orientation: string[];
   statut: string[];
@@ -44,6 +46,7 @@ interface ColumnFilters {
 }
 
 const EMPTY_FILTERS: ColumnFilters = {
+  troncon: [],
   type_face: [],
   orientation: [],
   statut: [],
@@ -59,6 +62,98 @@ const parseDimensionValue = (dim: string): number => {
   const m = String(dim).match(/(\d+(?:[.,]\d+)?)/);
   if (!m) return 0;
   return parseFloat(m[1].replace(',', '.'));
+};
+
+// ✅ Extrait le tronçon / commune d'un panneau
+const getTroncon = (panneau: CommercialPanneau): string => {
+  const p = panneau as any;
+  return (
+    p.troncon ||
+    p.commune ||
+    p.troncon_nom ||
+    p.commune_nom ||
+    p.quartier ||
+    'N/A'
+  );
+};
+
+// ✅ Extrait hauteur et largeur en MÈTRES depuis une face
+//    Retourne { hauteur: number, largeur: number, source: string }
+const getDimensionsRaw = (face: CommercialFace): { hauteur: number; largeur: number; source: string } => {
+  const f = face as any;
+
+  // 1) Champs explicites hauteur_m / largeur_m
+  let h = parseFloat(String(f.hauteur_m ?? 0).replace(',', '.'));
+  let l = parseFloat(String(f.largeur_m ?? 0).replace(',', '.'));
+  if (h > 0 && l > 0) return { hauteur: h, largeur: l, source: 'hauteur_m/largeur_m' };
+
+  // 2) Champs hauteur / largeur (en mètres par convention)
+  h = parseFloat(String(f.hauteur ?? 0).replace(',', '.'));
+  l = parseFloat(String(f.largeur ?? 0).replace(',', '.'));
+  if (h > 0 && l > 0) return { hauteur: h, largeur: l, source: 'hauteur/largeur' };
+
+  // 3) Champs height / width (anglais)
+  h = parseFloat(String(f.height ?? 0).replace(',', '.'));
+  l = parseFloat(String(f.width ?? 0).replace(',', '.'));
+  if (h > 0 && l > 0) return { hauteur: h, largeur: l, source: 'height/width' };
+
+  // 4) Champs hauteur_cm / largeur_cm → on convertit en m
+  const hcm = parseFloat(String(f.hauteur_cm ?? 0).replace(',', '.'));
+  const lcm = parseFloat(String(f.largeur_cm ?? 0).replace(',', '.'));
+  if (hcm > 0 && lcm > 0) return { hauteur: hcm / 100, largeur: lcm / 100, source: 'hauteur_cm/largeur_cm' };
+
+  // 5) Chaîne type "4x3", "4 x 3", "4m x 3m"
+  const candidates = [
+    f.dimension,
+    f.dimensions,
+    f.format,
+    f.dimension_face,
+    f.taille,
+    f.size,
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const str = String(candidate).trim();
+    const match = str.match(/(\d+(?:[.,]\d+)?)\s*(?:m)?\s*[xX×*]\s*(\d+(?:[.,]\d+)?)\s*(?:m)?/i);
+    if (match) {
+      const a = parseFloat(match[1].replace(',', '.'));
+      const b = parseFloat(match[2].replace(',', '.'));
+      if (!isNaN(a) && !isNaN(b) && a > 0 && b > 0) {
+        return { hauteur: a, largeur: b, source: 'string' };
+      }
+    }
+  }
+
+  return { hauteur: 0, largeur: 0, source: '' };
+};
+
+// ✅ Calcule la surface en m² (hauteur × largeur)
+const getDimensionM2 = (face: CommercialFace): string => {
+  const f = face as any;
+
+  // 1) Si dimension_m2 est déjà fournie et valide → la prendre en priorité
+  const rawDim = f.dimension_m2;
+  if (rawDim !== undefined && rawDim !== null && rawDim !== '' && rawDim !== 'N/A') {
+    const num = parseFloat(String(rawDim).replace(',', '.').replace(/[^\d.]/g, ''));
+    if (!isNaN(num) && num > 0) return num.toFixed(2) + ' m²';
+  }
+
+  // 2) Sinon, calculer hauteur × largeur (en mètres)
+  const { hauteur, largeur } = getDimensionsRaw(face);
+  if (hauteur > 0 && largeur > 0) {
+    return (hauteur * largeur).toFixed(2) + ' m²';
+  }
+
+  return 'N/A';
+};
+
+// ✅ Retourne la dimension brute formatée "4.00m × 3.00m" (ou vide si indisponible)
+const getDimensionRawLabel = (face: CommercialFace): string => {
+  const { hauteur, largeur } = getDimensionsRaw(face);
+  if (hauteur > 0 && largeur > 0) {
+    return `${hauteur.toFixed(2)}m × ${largeur.toFixed(2)}m`;
+  }
+  return '';
 };
 
 export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading = false }: PanneauxTableProps) {
@@ -106,50 +201,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
       s.has(id) ? s.delete(id) : s.add(id);
       return s;
     });
-  };
-
-  // ============================================
-  // ✅ EXTRACTION ET CALCUL DE LA DIMENSION
-  // ============================================
-  const getDimensionM2 = (face: CommercialFace): string => {
-    const rawDim = (face as any).dimension_m2;
-    if (rawDim && rawDim !== 'N/A' && rawDim !== '0' && rawDim !== '0.00') {
-      const num = parseFloat(String(rawDim).replace(',', '.'));
-      if (!isNaN(num) && num > 0) return num.toFixed(2) + ' m²';
-    }
-
-    const candidates = [
-      (face as any).dimension,
-      (face as any).dimensions,
-      (face as any).format,
-      (face as any).dimension_face,
-      (face as any).taille,
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      const str = String(candidate).trim();
-      const match = str.match(/(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)/);
-      if (match) {
-        const a = parseFloat(match[1].replace(',', '.'));
-        const b = parseFloat(match[2].replace(',', '.'));
-        if (!isNaN(a) && !isNaN(b) && a > 0 && b > 0) {
-          let surface: number;
-          if (a >= 50 && b >= 50) surface = (a * b) / 10000;
-          else surface = a * b;
-          return surface.toFixed(2) + ' m²';
-        }
-      }
-    }
-
-    const h = parseFloat(String((face as any).hauteur_cm || 0).replace(',', '.'));
-    const l = parseFloat(String((face as any).largeur_cm || 0).replace(',', '.'));
-    if (h > 0 && l > 0) return ((h * l) / 10000).toFixed(2) + ' m²';
-
-    const hm = parseFloat(String((face as any).hauteur_m || 0).replace(',', '.'));
-    const lm = parseFloat(String((face as any).largeur_m || 0).replace(',', '.'));
-    if (hm > 0 && lm > 0) return (hm * lm).toFixed(2) + ' m²';
-
-    return 'N/A';
   };
 
   const getStatusColor = (statut: string): string => {
@@ -297,11 +348,14 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
   // ✅ VALEURS UNIQUES POUR LES FILTRES
   // ============================================
   const uniqueValues = useMemo(() => {
+    const troncons = new Set<string>();
     const types = new Set<string>();
     const orientations = new Set<string>();
     const statuts = new Set<string>();
 
     panneaux.forEach((p) => {
+      const tr = getTroncon(p);
+      if (tr && tr !== 'N/A') troncons.add(tr);
       (p.faces || []).forEach((f) => {
         if (f.type_face) types.add(f.type_face);
         if (f.orientation) orientations.add(f.orientation.toUpperCase());
@@ -310,6 +364,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
     });
 
     return {
+      troncons: Array.from(troncons).sort(),
       types: Array.from(types).sort(),
       orientations: Array.from(orientations).sort(),
       statuts: Array.from(statuts).sort(),
@@ -322,8 +377,13 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
   const filteredPanneaux = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
-    // Étape 1 : filtrer les faces de chaque panneau
     const result = panneaux.map((panneau) => {
+      const tronconValue = getTroncon(panneau);
+
+      if (columnFilters.troncon.length > 0 && !columnFilters.troncon.includes(tronconValue)) {
+        return { ...panneau, faces: [] };
+      }
+
       const filteredFaces = (panneau.faces || []).filter((face) => {
         const clientName = getClientFullName(face).toLowerCase();
         const commercialName = getCommercialFullName(face).toLowerCase();
@@ -332,61 +392,55 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
         const statut = (face.status || '').toLowerCase();
         const dimValue = parseDimensionValue(getDimensionM2(face));
 
-        // Recherche globale
         if (q) {
           const haystack = [
             panneau.nom,
             panneau.adresse,
             (panneau as any).ville,
             (panneau as any).quartier,
+            tronconValue,
             face.type_face,
             face.orientation,
             face.status,
             clientName,
             commercialName,
+            getDimensionM2(face),
+            getDimensionRawLabel(face),
           ].filter(Boolean).join(' ').toLowerCase();
           if (!haystack.includes(q)) return false;
         }
 
-        // Filtre Type
         if (columnFilters.type_face.length > 0 && !columnFilters.type_face.includes(face.type_face || '')) {
           return false;
         }
 
-        // Filtre Orientation
         if (columnFilters.orientation.length > 0 && !columnFilters.orientation.includes((face.orientation || '').toUpperCase())) {
           return false;
         }
 
-        // Filtre Statut
         if (columnFilters.statut.length > 0) {
           const s = face.status || 'Libre';
           if (!columnFilters.statut.includes(s)) return false;
         }
 
-        // Filtre Dimension min
         if (columnFilters.dimensionMin) {
           const min = parseFloat(columnFilters.dimensionMin.replace(',', '.'));
           if (!isNaN(min) && dimValue < min) return false;
         }
 
-        // Filtre Dimension max
         if (columnFilters.dimensionMax) {
           const max = parseFloat(columnFilters.dimensionMax.replace(',', '.'));
           if (!isNaN(max) && dimValue > max) return false;
         }
 
-        // Filtre Client
         if (columnFilters.client && !clientName.includes(columnFilters.client.toLowerCase())) {
           return false;
         }
 
-        // Filtre Commercial
         if (columnFilters.commercial && !commercialName.includes(columnFilters.commercial.toLowerCase())) {
           return false;
         }
 
-        // Filtres rapides
         if (quickFilters.has('problem') && !hasProblem(face)) return false;
         if (quickFilters.has('pending') && !isReservationPending(face.reservation)) return false;
         if (quickFilters.has('free') && (face.reservation || hasProblem(face))) return false;
@@ -402,7 +456,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
       return { ...panneau, faces: filteredFaces };
     }).filter((p) => (p.faces || []).length > 0);
 
-    // Étape 2 : trier les faces dans chaque panneau
     if (sortKey && sortDir) {
       result.forEach((p) => {
         p.faces.sort((a, b) => {
@@ -417,6 +470,10 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
             case 'adresse':
               valA = p.adresse || '';
               valB = p.adresse || '';
+              break;
+            case 'troncon':
+              valA = getTroncon(p);
+              valB = getTroncon(p);
               break;
             case 'type_face':
               valA = a.type_face || '';
@@ -457,11 +514,20 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
         });
       });
 
-      // Trier les panneaux par nom si tri actif
-      if (sortKey === 'panneau_nom' || sortKey === 'adresse') {
+      if (sortKey === 'panneau_nom' || sortKey === 'adresse' || sortKey === 'troncon') {
         result.sort((a, b) => {
-          const valA = String(sortKey === 'panneau_nom' ? a.nom || '' : a.adresse || '').toLowerCase();
-          const valB = String(sortKey === 'panneau_nom' ? b.nom || '' : b.adresse || '').toLowerCase();
+          let valA = '';
+          let valB = '';
+          if (sortKey === 'panneau_nom') {
+            valA = String(a.nom || '').toLowerCase();
+            valB = String(b.nom || '').toLowerCase();
+          } else if (sortKey === 'adresse') {
+            valA = String(a.adresse || '').toLowerCase();
+            valB = String(b.adresse || '').toLowerCase();
+          } else {
+            valA = getTroncon(a).toLowerCase();
+            valB = getTroncon(b).toLowerCase();
+          }
           return sortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
         });
       }
@@ -470,10 +536,10 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
     return result;
   }, [panneaux, searchQuery, columnFilters, quickFilters, sortKey, sortDir, items]);
 
-  // Nombre de filtres actifs
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (searchQuery.trim()) count++;
+    if (columnFilters.troncon.length > 0) count++;
     if (columnFilters.type_face.length > 0) count++;
     if (columnFilters.orientation.length > 0) count++;
     if (columnFilters.statut.length > 0) count++;
@@ -516,7 +582,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
     }
   };
 
-  const toggleMultiFilter = (field: 'type_face' | 'orientation' | 'statut', value: string) => {
+  const toggleMultiFilter = (field: 'troncon' | 'type_face' | 'orientation' | 'statut', value: string) => {
     setColumnFilters((prev) => {
       const current = prev[field];
       const exists = current.includes(value);
@@ -533,11 +599,9 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
     return <ArrowDown size={12} className="text-blue-600" />;
   };
 
-  // ============================================
-  // ✅ INDICATEURS VISUELS DE FILTRES ACTIFS DANS LES EN-TÊTES
-  // ============================================
-  const isColumnFiltered = (field: 'type_face' | 'orientation' | 'statut' | 'dimension' | 'client' | 'commercial'): boolean => {
+  const isColumnFiltered = (field: 'troncon' | 'type_face' | 'orientation' | 'statut' | 'dimension' | 'client' | 'commercial'): boolean => {
     switch (field) {
+      case 'troncon': return columnFilters.troncon.length > 0;
       case 'type_face': return columnFilters.type_face.length > 0;
       case 'orientation': return columnFilters.orientation.length > 0;
       case 'statut': return columnFilters.statut.length > 0;
@@ -566,9 +630,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
     );
   }
 
-  // ============================================
-  // ✅ RENDU DES ACTIONS D'UNE FACE
-  // ============================================
   const renderFaceActions = (panneau: CommercialPanneau, face: CommercialFace, faceHasProblem: boolean, inCart: boolean, compact: boolean = false) => (
     <div className={`flex items-center ${compact ? 'gap-1.5' : 'gap-1.5'} flex-wrap`}>
       <button
@@ -620,16 +681,14 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           ✅ BARRE DE FILTRES GLOBALE
           ============================================ */}
       <div className="border-b border-gray-200 bg-gradient-to-b from-white to-gray-50 p-3 sm:p-4">
-        {/* Ligne 1 : Recherche + bouton filtres mobile + reset */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Recherche */}
           <div className="relative flex-1 min-w-[200px]">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher panneau, client, commercial, statut..."
+              placeholder="Rechercher panneau, client, commercial, tronçon, statut..."
               className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition"
             />
             {searchQuery && (
@@ -643,7 +702,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
             )}
           </div>
 
-          {/* Bouton filtres mobile */}
           <button
             onClick={() => setShowMobileFilters((v) => !v)}
             className="lg:hidden flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition relative"
@@ -657,7 +715,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
             )}
           </button>
 
-          {/* Reset */}
           {activeFilterCount > 0 && (
             <button
               onClick={resetAllFilters}
@@ -672,7 +729,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           )}
         </div>
 
-        {/* Ligne 2 : Filtres rapides */}
         <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
           <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mr-1">
             Rapide:
@@ -729,10 +785,30 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           </button>
         </div>
 
-        {/* Panneau de filtres mobile déplié */}
         {showMobileFilters && (
           <div className="lg:hidden mt-3 pt-3 border-t border-gray-200 space-y-3">
-            {/* Type */}
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Tronçon (Commune)</div>
+              <div className="flex flex-wrap gap-1.5">
+                {uniqueValues.troncons.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => toggleMultiFilter('troncon', t)}
+                    className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition ${
+                      columnFilters.troncon.includes(t)
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+                {uniqueValues.troncons.length === 0 && (
+                  <span className="text-[11px] text-gray-400 italic">Aucun tronçon</span>
+                )}
+              </div>
+            </div>
+
             <div>
               <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Type de face</div>
               <div className="flex flex-wrap gap-1.5">
@@ -755,7 +831,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
               </div>
             </div>
 
-            {/* Orientation */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Orientation</div>
               <div className="flex flex-wrap gap-1.5">
@@ -778,7 +853,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
               </div>
             </div>
 
-            {/* Statut */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Statut</div>
               <div className="flex flex-wrap gap-1.5">
@@ -801,7 +875,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
               </div>
             </div>
 
-            {/* Dimension min/max */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Dimension (m²)</div>
               <div className="flex items-center gap-2">
@@ -825,7 +898,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
               </div>
             </div>
 
-            {/* Client / Commercial */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Client</div>
               <input
@@ -849,7 +921,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           </div>
         )}
 
-        {/* Info nombre de résultats */}
         <div className="mt-2.5 text-[11px] text-gray-500 flex items-center gap-2 flex-wrap">
           <span>
             <strong className="text-gray-700">{filteredPanneaux.length}</strong> panneau(x) ·{' '}
@@ -868,7 +939,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
       </div>
 
       {/* ============================================
-          ✅ VUE MOBILE — Cartes empilées (< lg)
+          ✅ VUE MOBILE
           ============================================ */}
       <div className="lg:hidden">
         {filteredPanneaux.length === 0 ? (
@@ -892,6 +963,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
               const panneauKey = getPanneauKey(panneau);
               const isExpanded = expandedPanneaux.has(panneauKey);
               const hasAnyProblem = faces.some((f) => hasProblem(f));
+              const tronconValue = getTroncon(panneau);
 
               return (
                 <div key={panneauKey} className="bg-white">
@@ -910,6 +982,12 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                           </span>
                         )}
                       </div>
+                      {tronconValue && tronconValue !== 'N/A' && (
+                        <div className="text-[11px] text-blue-600 font-semibold mt-0.5 flex items-center gap-1">
+                          <MapPin size={11} className="flex-shrink-0" />
+                          <span className="truncate">Tronçon : {tronconValue}</span>
+                        </div>
+                      )}
                       <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                         <MapPin size={12} className="flex-shrink-0" />
                         <span className="truncate">{panneau.adresse || 'Adresse non définie'}</span>
@@ -936,6 +1014,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                         const duration = getDuration(face.date_debut, face.date_fin);
                         const remainingTime = face.remaining_time;
                         const inCart = isFaceInCart(face);
+                        const dimRaw = getDimensionRawLabel(face);
 
                         const showTimer = isPending && !isValidated && remainingTime;
 
@@ -982,8 +1061,12 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                                 <div className="font-semibold text-gray-800 uppercase truncate">{face.orientation || 'N/A'}</div>
                               </div>
                               <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Dim.</div>
-                                <div className="font-semibold text-gray-800 truncate">{getDimensionM2(face)}</div>
+                                <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Dim. (m)</div>
+                                <div className="font-semibold text-gray-800 truncate">{dimRaw || 'N/A'}</div>
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Surface</div>
+                                <div className="font-semibold text-blue-700 truncate">{getDimensionM2(face)}</div>
                               </div>
                               <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Type</div>
@@ -1049,26 +1132,27 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
       </div>
 
       {/* ============================================
-          ✅ VUE DESKTOP — Tableau (≥ lg) avec filtres Excel
+          ✅ VUE DESKTOP — Tableau scrollable horizontalement
           ============================================ */}
       <div className="hidden lg:block" ref={filterPanelRef}>
         <div className="overflow-auto max-h-[calc(100vh-380px)] min-h-[400px]">
-          <table className="w-full border-collapse table-fixed">
+          <table className="w-full min-w-[1500px] border-collapse table-auto">
             <colgroup>
-              <col className="w-[18%] xl:w-[16%] 2xl:w-[15%] 4xl:w-[13%]" />
-              <col className="w-[6%] xl:w-[5%]" />
-              <col className="w-[20%] xl:w-[18%] 2xl:w-[16%] 4xl:w-[15%]" />
-              <col className="w-[9%] xl:w-[8%]" />
-              <col className="w-[9%] xl:w-[8%]" />
-              <col className="w-[9%] xl:w-[8%]" />
-              <col className="w-[12%] xl:w-[13%]" />
-              <col className="w-[11%] xl:w-[12%]" />
-              <col className="w-[16%] xl:w-[15%]" />
-              <col className="w-[10%] xl:w-[10%]" />
+              <col className="w-[220px]" />
+              <col className="w-[60px]" />
+              <col className="w-[240px]" />
+              <col className="w-[130px]" />
+              <col className="w-[120px]" />
+              <col className="w-[100px]" />
+              {/* Dimension : plus large pour afficher 2 lignes */}
+              <col className="w-[140px]" />
+              <col className="w-[160px]" />
+              <col className="w-[150px]" />
+              <col className="w-[180px]" />
+              <col className="w-[130px]" />
             </colgroup>
             <thead className="sticky top-0 z-30">
               <tr className="bg-gray-100 border-b border-gray-200">
-                {/* Panneau / Adresse */}
                 <th className="px-3 xl:px-4 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 sticky left-0 z-40 bg-gray-100">
                   <button
                     onClick={() => toggleSort('panneau_nom')}
@@ -1078,17 +1162,50 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   </button>
                 </th>
 
-                {/* Faces */}
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
                   Faces
                 </th>
 
-                {/* Actions */}
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
                   Actions
                 </th>
 
-                {/* Type + filtre */}
+                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
+                  <div className="flex items-center justify-between gap-1">
+                    <button
+                      onClick={() => toggleSort('troncon')}
+                      className="flex items-center gap-1 hover:text-blue-600 transition"
+                    >
+                      Tronçon {renderSortIcon('troncon')}
+                    </button>
+                    <button
+                      onClick={() => setOpenFilter(openFilter === 'troncon' ? null : 'troncon')}
+                      className={`p-0.5 rounded hover:bg-gray-200 transition ${isColumnFiltered('troncon') ? 'text-blue-600' : 'text-gray-400'}`}
+                    >
+                      <Filter size={11} fill={isColumnFiltered('troncon') ? 'currentColor' : 'none'} />
+                    </button>
+                  </div>
+                  {openFilter === 'troncon' && (
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[200px] max-h-[260px] overflow-auto">
+                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 px-1">Filtrer par tronçon</div>
+                      {uniqueValues.troncons.map((t) => (
+                        <label key={t} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded cursor-pointer text-xs normal-case">
+                          <input
+                            type="checkbox"
+                            checked={columnFilters.troncon.includes(t)}
+                            onChange={() => toggleMultiFilter('troncon', t)}
+                            className="w-3.5 h-3.5 accent-blue-600"
+                          />
+                          <span className="text-gray-700 truncate">{t}</span>
+                        </label>
+                      ))}
+                      {uniqueValues.troncons.length === 0 && (
+                        <div className="text-[11px] text-gray-400 italic px-1.5 py-1">Aucune valeur</div>
+                      )}
+                    </div>
+                  )}
+                </th>
+
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
@@ -1125,7 +1242,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   )}
                 </th>
 
-                {/* Orientation + filtre */}
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
@@ -1162,14 +1278,15 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   )}
                 </th>
 
-                {/* Dimension + filtre */}
+                {/* ✅ DIMENSION — En-tête avec filtre */}
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
                       onClick={() => toggleSort('dimension')}
                       className="flex items-center gap-1 hover:text-blue-600 transition"
+                      title="Trier par surface (m²)"
                     >
-                      Dim. (m²) {renderSortIcon('dimension')}
+                      Dimension {renderSortIcon('dimension')}
                     </button>
                     <button
                       onClick={() => setOpenFilter(openFilter === 'dimension' ? null : 'dimension')}
@@ -1179,8 +1296,8 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                     </button>
                   </div>
                   {openFilter === 'dimension' && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[220px]">
-                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Plage (m²)</div>
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[240px]">
+                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Filtrer par surface (m²)</div>
                       <div className="flex items-center gap-2">
                         <input
                           type="text"
@@ -1200,11 +1317,11 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                           className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                         />
                       </div>
+                      <div className="text-[10px] text-gray-400 mt-1.5 italic">Ex: 10 → 50 (m²)</div>
                     </div>
                   )}
                 </th>
 
-                {/* Client + filtre */}
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
@@ -1235,7 +1352,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   )}
                 </th>
 
-                {/* Commercial + filtre */}
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
@@ -1266,7 +1382,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   )}
                 </th>
 
-                {/* Période */}
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
                   <button
                     onClick={() => toggleSort('date_debut')}
@@ -1276,7 +1391,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   </button>
                 </th>
 
-                {/* Statut + filtre */}
                 <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider relative">
                   <div className="flex items-center justify-center gap-1">
                     <button
@@ -1317,7 +1431,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
             <tbody className="divide-y divide-gray-100">
               {filteredPanneaux.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12">
+                  <td colSpan={11} className="text-center py-12">
                     <div className="text-4xl mb-3 opacity-40">🔍</div>
                     <p className="text-sm font-semibold text-gray-600">Aucun résultat</p>
                     <p className="text-xs text-gray-400 mt-1">Essayez de modifier vos filtres</p>
@@ -1337,6 +1451,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   const panneauKey = getPanneauKey(panneau);
                   const isExpanded = expandedPanneaux.has(panneauKey);
                   const hasAnyProblem = faces.some((f) => hasProblem(f));
+                  const tronconValue = getTroncon(panneau);
 
                   return (
                     <React.Fragment key={panneauKey}>
@@ -1359,7 +1474,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                           </div>
                         </td>
                         <td className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-xs xl:text-sm font-bold text-gray-700 border-r border-gray-100">{faces.length}</td>
-                        <td className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-gray-400 text-[10px] xl:text-xs border-r border-gray-100" colSpan={8}>
+                        <td className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-gray-400 text-[10px] xl:text-xs border-r border-gray-100" colSpan={9}>
                           <span className="text-gray-500 font-medium">
                             {panneau.etatPanneau === 'En panne' ? '⛔ Panneau en panne' : 'Cliquez pour voir les faces'}
                           </span>
@@ -1376,6 +1491,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                         const duration = getDuration(face.date_debut, face.date_fin);
                         const remainingTime = face.remaining_time;
                         const inCart = isFaceInCart(face);
+                        const dimRaw = getDimensionRawLabel(face);
 
                         const showTimer = isPending && !isValidated && remainingTime;
 
@@ -1407,13 +1523,34 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                               )}
                             </td>
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
+                              <span className="text-[10px] xl:text-xs font-semibold text-gray-700 truncate block">
+                                {tronconValue && tronconValue !== 'N/A' ? tronconValue : '-'}
+                              </span>
+                            </td>
+                            <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
                               <div className="flex items-center gap-1 xl:gap-1.5">
                                 {getTypeFaceIcon(face.type_face)}
                                 <span className="text-[10px] xl:text-xs font-semibold text-gray-700 truncate">{face.type_face || 'Non défini'}</span>
                               </div>
                             </td>
                             <td className="px-2 xl:px-3 py-3 text-[10px] xl:text-xs font-semibold text-gray-700 uppercase border-r border-gray-100 truncate">{face.orientation || 'N/A'}</td>
-                            <td className="px-2 xl:px-3 py-3 text-[10px] xl:text-xs font-semibold text-gray-700 border-r border-gray-100 truncate">{getDimensionM2(face)}</td>
+
+                            {/* ✅ DIMENSION — Affiche les 2 lignes : brut (m) + surface (m²) */}
+                            <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
+                              <div className="flex flex-col gap-0.5">
+                                {dimRaw ? (
+                                  <span className="text-[10px] xl:text-[11px] text-gray-500 font-medium truncate">
+                                    {dimRaw}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-gray-300">-</span>
+                                )}
+                                <span className="text-[11px] xl:text-xs font-bold text-blue-700 truncate">
+                                  {getDimensionM2(face)}
+                                </span>
+                              </div>
+                            </td>
+
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
                               {hasReservation && !faceHasProblem ? (
                                 <div className="flex flex-col min-w-0">
@@ -1510,7 +1647,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
       </div>
 
       {/* ============================================
-          Footer stats (commun aux 2 vues)
+          Footer stats
           ============================================ */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 sm:py-3.5 bg-gray-50 border-t border-gray-200 text-[10px] sm:text-xs xl:text-sm text-gray-500">
         <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1">
