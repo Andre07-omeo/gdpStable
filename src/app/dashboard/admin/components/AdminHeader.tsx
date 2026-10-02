@@ -11,7 +11,7 @@ import {
   Shield, Server, UserCog, Building2,
   ChevronRight,
 } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { LogoutConfirmModal } from './LogoutConfirmModal';
 import { ProfileDropdown } from './ProfileDropdown';
@@ -22,7 +22,7 @@ import type { DropdownExtraAction } from './ProfileDropdown';
 // ============================================
 export type AdminVariant = 'admin' | 'super-admin';
 
-interface AdminHeaderProps {
+export interface AdminHeaderProps {
   user: any;
   variant?: AdminVariant;
   onLogout: () => void;
@@ -96,6 +96,22 @@ const VARIANTS: Record<AdminVariant, {
 };
 
 // ============================================
+// HOOK : détection mobile fiable
+// ============================================
+function useIsMobile(breakpoint = 1024) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < breakpoint);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
+// ============================================
 // COMPOSANT PRINCIPAL
 // ============================================
 export function AdminHeader({
@@ -128,25 +144,31 @@ export function AdminHeader({
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { getUserName, getUserEmail } = useAuth();
+  const isMobile = useIsMobile();
 
   useEffect(() => setMounted(true), []);
 
-  // ✅ Détection mobile/tablette
+  // ✅ Fermer le drawer automatiquement si on repasse en desktop
   useEffect(() => {
-    const checkMobile = () => {
-      const isSmall = window.innerWidth < 1024;
-      if (!isSmall) setIsMobileMenuOpen(false);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+    if (!isMobile) setIsMobileMenuOpen(false);
+  }, [isMobile]);
 
-  // ✅ Bloquer le scroll
+  // ✅ Bloquer le scroll quand drawer ouvert
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.body.style.overflow = isMobileMenuOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = isMobileMenuOpen ? 'hidden' : prev || '';
+    return () => { document.body.style.overflow = prev || ''; };
+  }, [isMobileMenuOpen]);
+
+  // ✅ Échap pour fermer
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMobileMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [isMobileMenuOpen]);
 
   const displayName = mounted ? getUserName() : '';
@@ -175,7 +197,7 @@ export function AdminHeader({
   // ✅ Actions desktop (dropdown)
   const extraActions: DropdownExtraAction[] = useMemo(
     () => [
-      { id: 'dashboard', label: 'Tableau de bord', icon: <BarChart3 size={16} />, onClick: onDashboardToggle || (() => {}), hidden: !onDashboardToggle },
+      { id: 'dashboard', label: 'Monitoring', icon: <BarChart3 size={16} />, onClick: onDashboardToggle || (() => {}), hidden: !onDashboardToggle },
       { id: 'panneaux', label: 'Panneaux', icon: <MapPin size={16} />, onClick: onPanneauxToggle || (() => {}), hidden: !onPanneauxToggle },
       { id: 'reservations', label: 'Réservations', icon: <ClipboardCheck size={16} />, onClick: onReservationsToggle || (() => {}), hidden: !onReservationsToggle },
       { id: 'users', label: 'Utilisateurs', icon: <Users size={16} />, onClick: onUsersToggle || (() => {}), hidden: !onUsersToggle },
@@ -188,6 +210,7 @@ export function AdminHeader({
       { id: 'notifications', label: 'Notifications', icon: <Bell size={16} />, onClick: onNotificationsToggle, badge: notificationCount, hidden: !onNotificationsToggle },
       { id: 'refresh', label: 'Actualiser', icon: <RefreshCw size={16} />, onClick: handleRefresh },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       onDashboardToggle, onPanneauxToggle, onReservationsToggle, onUsersToggle,
       onStatsToggle, onAdminSystemToggle, onFacesToggle, onSuperviseursToggle,
@@ -196,7 +219,53 @@ export function AdminHeader({
     ]
   );
 
-  // ✅ Bouton desktop
+  // ✅ Actions drawer mobile
+  const mobileMenuActions = useMemo(() => {
+    const actions: Array<{
+      id: string;
+      label: string;
+      icon: React.ReactNode;
+      onClick?: () => void;
+      badge?: number;
+      color: string;
+    }> = [];
+
+    if (onDashboardToggle) actions.push({ id: 'dashboard', label: 'Monitoring', icon: <BarChart3 size={18} />, onClick: onDashboardToggle, color: 'text-blue-400' });
+    if (onStatsToggle) actions.push({ id: 'stats', label: 'Statistiques', icon: <TrendingUp size={18} />, onClick: onStatsToggle, color: 'text-cyan-400' });
+    if (onPanneauxToggle) actions.push({ id: 'panneaux', label: 'Panneaux', icon: <MapPin size={18} />, onClick: onPanneauxToggle, color: 'text-emerald-400' });
+    if (onReservationsToggle) actions.push({ id: 'reservations', label: 'Réservations', icon: <ClipboardCheck size={18} />, onClick: onReservationsToggle, color: 'text-amber-400' });
+    if (onUsersToggle) actions.push({ id: 'users', label: 'Utilisateurs', icon: <Users size={18} />, onClick: onUsersToggle, color: 'text-violet-400' });
+    if (onFacesToggle) actions.push({ id: 'faces', label: 'Faces publicitaires', icon: <Building2 size={18} />, onClick: onFacesToggle, color: 'text-orange-400' });
+    if (isSuperAdmin && onSuperviseursToggle) actions.push({ id: 'superviseurs', label: 'Superviseurs', icon: <UserCog size={18} />, onClick: onSuperviseursToggle, color: 'text-pink-400' });
+    if (onLocalisationToggle) actions.push({ id: 'localisation', label: 'Localisation', icon: <MapPin size={18} />, onClick: onLocalisationToggle, color: 'text-teal-400' });
+    if (isSuperAdmin && onProfilsToggle) actions.push({ id: 'profils', label: 'Profils', icon: <Shield size={18} />, onClick: onProfilsToggle, color: 'text-red-400' });
+    if (onAdminSystemToggle) actions.push({ id: 'admin-system', label: 'Admin Système', icon: <Server size={18} />, onClick: onAdminSystemToggle, color: 'text-indigo-400' });
+    if (onSupportToggle) actions.push({ id: 'support', label: 'Support', icon: <HelpCircle size={18} />, onClick: onSupportToggle, color: 'text-sky-400' });
+    if (onNotificationsToggle) actions.push({ id: 'notifications', label: 'Notifications', icon: <Bell size={18} />, onClick: onNotificationsToggle, badge: notificationCount, color: 'text-yellow-400' });
+    actions.push({ id: 'refresh', label: 'Actualiser', icon: <RefreshCw size={18} />, onClick: handleRefresh, color: 'text-white/60' });
+
+    return actions;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    onDashboardToggle, onPanneauxToggle, onReservationsToggle, onUsersToggle,
+    onStatsToggle, onFacesToggle, onSuperviseursToggle, onLocalisationToggle,
+    onProfilsToggle, onAdminSystemToggle, onSupportToggle, onNotificationsToggle,
+    isSuperAdmin, notificationCount,
+  ]);
+
+  // ✅ Fermer le drawer PUIS exécuter l'action
+  const handleMobileAction = useCallback((action?: () => void) => () => {
+    setIsMobileMenuOpen(false);
+    if (!action) return;
+    // Utiliser requestAnimationFrame pour laisser le drawer se fermer proprement
+    requestAnimationFrame(() => {
+      setTimeout(() => action(), 120);
+    });
+  }, []);
+
+  // ============================================
+  // BOUTON ACTION DESKTOP
+  // ============================================
   const ActionButton = ({
     onClick, icon, title, colorClass, glowColor, hidden = '',
   }: {
@@ -221,6 +290,7 @@ export function AdminHeader({
           ${hidden}
         `}
         title={title}
+        aria-label={title}
       >
         <span className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-60 transition-opacity duration-500 blur-lg -z-10 ${glowColor}`} />
         <span className="relative z-10 block transition-transform duration-300 group-hover:rotate-6">
@@ -228,44 +298,6 @@ export function AdminHeader({
         </span>
       </button>
     );
-  };
-
-  // ✅ Actions drawer mobile
-  const mobileMenuActions = useMemo(() => {
-    const actions: Array<{
-      id: string;
-      label: string;
-      icon: React.ReactNode;
-      onClick?: () => void;
-      badge?: number;
-      color: string;
-    }> = [];
-
-    if (onDashboardToggle) actions.push({ id: 'dashboard', label: 'Tableau de bord', icon: <BarChart3 size={18} />, onClick: onDashboardToggle, color: 'text-blue-400' });
-    if (onPanneauxToggle) actions.push({ id: 'panneaux', label: 'Panneaux', icon: <MapPin size={18} />, onClick: onPanneauxToggle, color: 'text-emerald-400' });
-    if (onReservationsToggle) actions.push({ id: 'reservations', label: 'Réservations', icon: <ClipboardCheck size={18} />, onClick: onReservationsToggle, color: 'text-amber-400' });
-    if (onUsersToggle) actions.push({ id: 'users', label: 'Utilisateurs', icon: <Users size={18} />, onClick: onUsersToggle, color: 'text-violet-400' });
-    if (onStatsToggle) actions.push({ id: 'stats', label: 'Statistiques', icon: <TrendingUp size={18} />, onClick: onStatsToggle, color: 'text-cyan-400' });
-    if (onFacesToggle) actions.push({ id: 'faces', label: 'Faces publicitaires', icon: <Building2 size={18} />, onClick: onFacesToggle, color: 'text-orange-400' });
-    if (isSuperAdmin && onSuperviseursToggle) actions.push({ id: 'superviseurs', label: 'Superviseurs', icon: <UserCog size={18} />, onClick: onSuperviseursToggle, color: 'text-pink-400' });
-    if (onLocalisationToggle) actions.push({ id: 'localisation', label: 'Localisation', icon: <MapPin size={18} />, onClick: onLocalisationToggle, color: 'text-teal-400' });
-    if (isSuperAdmin && onProfilsToggle) actions.push({ id: 'profils', label: 'Profils', icon: <Shield size={18} />, onClick: onProfilsToggle, color: 'text-red-400' });
-    if (onAdminSystemToggle) actions.push({ id: 'admin-system', label: 'Admin Système', icon: <Server size={18} />, onClick: onAdminSystemToggle, color: 'text-indigo-400' });
-    if (onSupportToggle) actions.push({ id: 'support', label: 'Support', icon: <HelpCircle size={18} />, onClick: onSupportToggle, color: 'text-sky-400' });
-    if (onNotificationsToggle) actions.push({ id: 'notifications', label: 'Notifications', icon: <Bell size={18} />, onClick: onNotificationsToggle, badge: notificationCount, color: 'text-yellow-400' });
-    actions.push({ id: 'refresh', label: 'Actualiser', icon: <RefreshCw size={18} />, onClick: handleRefresh, color: 'text-white/60' });
-
-    return actions;
-  }, [
-    onDashboardToggle, onPanneauxToggle, onReservationsToggle, onUsersToggle,
-    onStatsToggle, onFacesToggle, onSuperviseursToggle, onLocalisationToggle,
-    onProfilsToggle, onAdminSystemToggle, onSupportToggle, onNotificationsToggle,
-    isSuperAdmin, notificationCount,
-  ]);
-
-  const handleMobileAction = (action?: () => void) => () => {
-    setIsMobileMenuOpen(false);
-    setTimeout(() => action?.(), 150); // Petit délai pour laisser le drawer se fermer
   };
 
   // ============================================
@@ -340,7 +372,7 @@ export function AdminHeader({
 
             {/* ICÔNES DESKTOP */}
             <div className="hidden lg:flex items-center gap-1 xl:gap-1.5 flex-shrink-0">
-              <ActionButton onClick={onDashboardToggle} icon={<BarChart3 className="w-4 h-4 text-white" />} title="Tableau de bord" colorClass="bg-blue-600 hover:bg-blue-500" glowColor="bg-blue-400" />
+              <ActionButton onClick={onDashboardToggle} icon={<BarChart3 className="w-4 h-4 text-white" />} title="Monitoring" colorClass="bg-blue-600 hover:bg-blue-500" glowColor="bg-blue-400" />
               <ActionButton onClick={onPanneauxToggle} icon={<MapPin className="w-4 h-4 text-white" />} title="Panneaux" colorClass="bg-emerald-600 hover:bg-emerald-500" glowColor="bg-emerald-400" />
               <ActionButton onClick={onReservationsToggle} icon={<ClipboardCheck className="w-4 h-4 text-white" />} title="Réservations" colorClass="bg-amber-600 hover:bg-amber-500" glowColor="bg-amber-400" />
               <ActionButton onClick={onUsersToggle} icon={<Users className="w-4 h-4 text-white" />} title="Utilisateurs" colorClass="bg-violet-600 hover:bg-violet-500" glowColor="bg-violet-400" />
@@ -353,6 +385,7 @@ export function AdminHeader({
                   onClick={onNotificationsToggle}
                   className="group relative p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white transition-all duration-300 ease-out hover:scale-110 active:scale-95"
                   title="Notifications"
+                  aria-label="Notifications"
                 >
                   <Bell className="w-4 h-4 transition-transform duration-300 group-hover:rotate-12" />
                   {notificationCount > 0 && (
@@ -367,6 +400,7 @@ export function AdminHeader({
                 onClick={handleRefresh}
                 className="group relative p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white transition-all duration-300 ease-out hover:scale-110 active:scale-95"
                 title="Actualiser"
+                aria-label="Actualiser"
               >
                 <RefreshCw className={`w-4 h-4 transition-transform duration-300 group-hover:rotate-180 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
@@ -391,31 +425,35 @@ export function AdminHeader({
               </div>
             )}
 
-            {/* MENU MOBILE */}
-            <button
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden flex-shrink-0 relative p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-all duration-300 active:scale-95"
-              title="Menu"
-              aria-label="Ouvrir le menu"
-            >
-              <Menu className="w-5 h-5" />
-              {notificationCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-red-500 rounded-full text-[8px] font-bold text-white flex items-center justify-center">
-                  {notificationCount > 99 ? '99+' : notificationCount}
-                </span>
-              )}
-            </button>
+            {/* BOUTON MENU MOBILE — conditionné par state JS ET CSS */}
+            {isMobile && (
+              <button
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="lg:hidden flex-shrink-0 relative p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white transition-all duration-300 active:scale-95"
+                title="Menu"
+                aria-label="Ouvrir le menu"
+              >
+                <Menu className="w-5 h-5" />
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 bg-red-500 rounded-full text-[8px] font-bold text-white flex items-center justify-center">
+                    {notificationCount > 99 ? '99+' : notificationCount}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </header>
 
       {/* ============ DRAWER MOBILE ============ */}
-      {isMobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-[100]">
-          <div className="absolute inset-0 bg-black/60 animate-fadeIn" onClick={() => setIsMobileMenuOpen(false)} />
+      {isMobile && isMobileMenuOpen && (
+        <div className="fixed inset-0 z-[100]" role="dialog" aria-modal="true">
+          <div
+            className="absolute inset-0 bg-black/60 animate-fadeIn"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
 
           <div className="absolute top-0 right-0 h-full w-[88%] xs:w-[85%] sm:w-[70%] md:w-[420px] bg-slate-900 shadow-2xl flex flex-col animate-slideInRight">
-
             {/* En-tête drawer */}
             <div className="flex items-center justify-between p-3 sm:p-4 border-b border-white/10 flex-shrink-0">
               <div className="flex items-center gap-3 min-w-0">
@@ -441,8 +479,7 @@ export function AdminHeader({
 
             {/* Contenu scrollable */}
             <div className="flex-1 overflow-y-auto overscroll-contain mobile-menu-scroll px-3 py-3">
-
-              {/* ============ SECTION MODULES ============ */}
+              {/* SECTION MODULES */}
               <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-3 mb-1.5 mt-1">
                 Modules Admin
               </p>
@@ -464,12 +501,11 @@ export function AdminHeader({
                 ))}
               </div>
 
-              {/* ============ SECTION MON COMPTE (CORRIGÉE) ============ */}
+              {/* SECTION MON COMPTE */}
               <p className="text-[10px] uppercase tracking-wider text-white/40 font-bold px-3 mb-1.5">
                 Mon compte
               </p>
               <div className="space-y-0.5 mb-4">
-
                 {onProfileClick && (
                   <button
                     onClick={handleMobileAction(onProfileClick)}
@@ -503,26 +539,30 @@ export function AdminHeader({
                   </button>
                 )}
 
-                <button
-                  onClick={handleMobileAction(onNotificationsClick)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
-                >
-                  <Bell size={18} className="flex-shrink-0 text-yellow-400" />
-                  <span className="flex-1 text-left">Notifications</span>
-                  <ChevronRight size={14} className="text-white/30" />
-                </button>
+                {onNotificationsClick && (
+                  <button
+                    onClick={handleMobileAction(onNotificationsClick)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
+                  >
+                    <Bell size={18} className="flex-shrink-0 text-yellow-400" />
+                    <span className="flex-1 text-left">Notifications</span>
+                    <ChevronRight size={14} className="text-white/30" />
+                  </button>
+                )}
 
-                <button
-                  onClick={handleMobileAction(onHelpClick)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
-                >
-                  <HelpCircle size={18} className="flex-shrink-0 text-cyan-400" />
-                  <span className="flex-1 text-left">Aide & Support</span>
-                  <ChevronRight size={14} className="text-white/30" />
-                </button>
+                {onHelpClick && (
+                  <button
+                    onClick={handleMobileAction(onHelpClick)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-white/90 hover:text-white hover:bg-white/5 text-sm font-medium transition-colors duration-150 active:bg-white/10"
+                  >
+                    <HelpCircle size={18} className="flex-shrink-0 text-cyan-400" />
+                    <span className="flex-1 text-left">Aide & Support</span>
+                    <ChevronRight size={14} className="text-white/30" />
+                  </button>
+                )}
               </div>
 
-              {/* ============ SECTION DÉCONNEXION ============ */}
+              {/* SECTION DÉCONNEXION */}
               <div className="pt-3 mt-2 border-t border-white/10 pb-4">
                 <button
                   onClick={handleLogoutClick}
@@ -565,10 +605,6 @@ export function AdminHeader({
         }
         .mobile-menu-scroll::-webkit-scrollbar-thumb:hover {
           background: rgba(255, 255, 255, 0.3);
-        }
-
-        @media (max-width: 360px) {
-          .mobile-menu-scroll { padding: 8px; }
         }
       `}</style>
     </>

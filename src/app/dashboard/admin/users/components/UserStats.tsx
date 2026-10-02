@@ -1,8 +1,7 @@
 'use client';
 
-// ============================================
-// COMPOSANT - STATISTIQUES UTILISATEURS
-// ============================================import { Users, UserCheck, UserX, UserPlus } from 'lucide-react';
+// src/app/dashboard/admin/users/components/UserStats.tsx
+import { Users, UserCheck, UserX, UserPlus } from 'lucide-react';
 import { UserStats } from '../types/user.types';
 
 interface UserStatsProps {
@@ -13,11 +12,11 @@ interface UserStatsProps {
 export function UserStatsComponent({ stats, loading = false }: UserStatsProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-3/4 mx-auto"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto mt-2"></div>
+            <div className="h-8 bg-gray-200 rounded w-3/4 mx-auto" />
+            <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto mt-2" />
           </div>
         ))}
       </div>
@@ -32,7 +31,7 @@ export function UserStatsComponent({ stats, loading = false }: UserStatsProps) {
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
       {cards.map((card, index) => {
         const Icon = card.icon;
         const colors = {
@@ -44,14 +43,19 @@ export function UserStatsComponent({ stats, loading = false }: UserStatsProps) {
         const colorClass = colors[card.color as keyof typeof colors] || colors.blue;
 
         return (
-          <div key={index} className={`bg-white rounded-xl p-4 border ${colorClass} shadow-sm hover:shadow-md transition`}>
+          <div
+            key={index}
+            className={`bg-white rounded-xl p-3 sm:p-4 border ${colorClass} shadow-sm hover:shadow-md transition`}
+          >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-2xl font-bold">{card.value}</p>
-                <p className="text-xs text-gray-500 uppercase tracking-wider">{card.label}</p>
+                <p className="text-xl sm:text-2xl font-bold">{card.value}</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wider">
+                  {card.label}
+                </p>
               </div>
               <div className={`p-2 rounded-lg ${colorClass}`}>
-                <Icon size={20} />
+                <Icon size={18} className="sm:w-5 sm:h-5" />
               </div>
             </div>
           </div>

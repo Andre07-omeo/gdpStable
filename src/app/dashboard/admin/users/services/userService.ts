@@ -3,14 +3,89 @@
 
 import { prisma } from '@/lib/db';
 import bcrypt from 'bcryptjs';
-import { CreateUserDTO, UpdateUserDTO, UserFilters, UserStats } from '../types/user.types';
+import {
+  CreateUserDTO,
+  UpdateUserDTO,
+  UserFilters,
+  UserStats,
+  User,
+  FOUNDER_EMAIL,
+  isFounder,
+} from '../types/user.types';
 
-// ✅ Utiliser le type User existant
-import { User } from '../types/user.types';
+// ============================================
+// 🔒 VÉRIFICATION DU CONTEXTE UTILISATEUR
+// ============================================
+// NOTE : en prod, récupère l'utilisateur depuis la session/JWT.
+// Ici on fait confiance aux règles métier (le front envoie déjà les infos).
+// Pour être 100% sûr, ajoute un middleware qui vérifie le JWT.
 
+async function getUserContext(userId: number) {
+  const rows = await prisma.$queryRaw<any[]>`
+    SELECT u.id_user, u.email, u.id_profil, p.code as profil_code
+    FROM user u
+    LEFT JOIN profil p ON u.id_profil = p.id_profil
+    WHERE u.id_user = ${userId}
+    LIMIT 1
+  `;
+  return rows[0] || null;
+}
+
+async function assertCanModifyUser(
+  actorId: number,
+  targetUserId: number,
+  action: 'edit' | 'delete' | 'toggle' | 'assign-role'
+) {
+  const actor = await getUserContext(actorId);
+  if (!actor) throw new Error('Utilisateur non authentifié');
+
+  const actorIsFounder = actor.email?.toLowerCase() === FOUNDER_EMAIL;
+
+  const target = await getUserContext(targetUserId);
+  if (!target) throw new Error('Utilisateur cible introuvable');
+
+  const targetIsFounder = target.email?.toLowerCase() === FOUNDER_EMAIL;
+  const targetIsSuperAdmin = target.profil_code === 'SUPER_ADMIN';
+
+  // 🔒 Le fondateur est intouchable sauf par lui-même
+  if (targetIsFounder && !actorIsFounder) {
+    throw new Error('Ce compte fondateur est protégé.');
+  }
+
+  // 🔒 SUPER_ADMIN intouchable sauf par le fondateur
+  if (targetIsSuperAdmin && !actorIsFounder) {
+    throw new Error('Seul le fondateur peut modifier un SUPER_ADMIN.');
+  }
+
+  // 🔒 Auto-suppression / auto-désactivation interdite
+  if ((action === 'delete' || action === 'toggle') && actorId === targetUserId) {
+    throw new Error('Vous ne pouvez pas effectuer cette action sur vous-même.');
+  }
+}
+
+async function assertCanAssignRole(actorId: number, newRoleId: number) {
+  const actor = await getUserContext(actorId);
+  if (!actor) throw new Error('Utilisateur non authentifié');
+
+  const actorIsFounder = actor.email?.toLowerCase() === FOUNDER_EMAIL;
+
+  const roleRows = await prisma.$queryRaw<any[]>`
+    SELECT id_profil, code FROM profil WHERE id_profil = ${newRoleId} LIMIT 1
+  `;
+  const role = roleRows[0];
+  if (!role) throw new Error('Rôle introuvable');
+
+  if (role.code === 'SUPER_ADMIN' && !actorIsFounder) {
+    throw new Error('Seul le fondateur peut attribuer le rôle SUPER_ADMIN.');
+  }
+}
+
+// ============================================
+// FORMATAGE
+// ============================================
 function formatUser(user: any): User {
   return {
-    id: user.id_user,  // ✅ Garder en number
+    id: user.id_user,
     id_user: user.id_user || 0,
     nom: user.nom || '',
     prenom: user.prenom || '',
@@ -21,8 +96,8 @@ function formatUser(user: any): User {
     ville_nom: user.ville_nom || null,
     departement: user.departement || '',
     fonction: user.fonction || '',
-    profil: user.profil?.libelle || 'Visiteur',
-    profilLibelle: user.profil?.libelle || 'Visiteur',
+    profil: user.profil?.code || user.profil_code || 'VISITEUR',
+    profilLibelle: user.profil?.libelle || user.profil_libelle || 'Visiteur',
     actif: user.actif ?? true,
     zone_travail: user.zone_travail || null,
     zone_niveau: user.zone_niveau || 'National',
@@ -33,11 +108,15 @@ function formatUser(user: any): User {
     province_id: user.province_id || null,
     ville_id: user.ville_id || null,
     commune_id: user.commune_id || null,
-    pays_id: null
+    pays_id: null,
+    sexe: user.sexe || undefined,
+    id_manager: user.id_manager || null,
   };
 }
 
-// ✅ Fonctions exportées avec le bon type
+// ============================================
+// LECTURE
+// ============================================
 export async function getAllUsers(filters?: UserFilters): Promise<User[]> {
   try {
     const where: any = {};
@@ -46,26 +125,20 @@ export async function getAllUsers(filters?: UserFilters): Promise<User[]> {
       where.OR = [
         { nom: { contains: filters.search } },
         { prenom: { contains: filters.search } },
-        { email: { contains: filters.search } }
+        { email: { contains: filters.search } },
       ];
     }
-
     if (filters?.role) {
       where.profil = { code: filters.role };
     }
-
     if (filters?.actif !== undefined) {
       where.actif = filters.actif;
     }
 
     const users = await prisma.user.findMany({
       where,
-      include: {
-        profil: true
-      },
-      orderBy: {
-        nom: 'asc'
-      }
+      include: { profil: true },
+      orderBy: { nom: 'asc' },
     });
 
     return users.map((u: any) => formatUser(u));
@@ -79,11 +152,8 @@ export async function getUserById(id: number): Promise<User | null> {
   try {
     const user = await prisma.user.findUnique({
       where: { id_user: id },
-      include: {
-        profil: true
-      }
+      include: { profil: true },
     });
-
     if (!user) return null;
     return formatUser(user);
   } catch (error) {
@@ -92,31 +162,40 @@ export async function getUserById(id: number): Promise<User | null> {
   }
 }
 
-export async function createUser(data: CreateUserDTO): Promise<User> {
+// ============================================
+// CRÉATION
+// ============================================
+export async function createUser(
+  data: CreateUserDTO,
+  actorId?: number // ✅ Pour la sécurité
+): Promise<User> {
   try {
     if (!data.email) throw new Error('L\'email est requis');
     if (!data.password) throw new Error('Le mot de passe est requis');
     if (!data.id_profil || data.id_profil === 0) throw new Error('Le rôle est requis');
 
+    // 🔒 Vérifier que l'actor peut attribuer ce rôle
+    if (actorId) {
+      await assertCanAssignRole(actorId, data.id_profil);
+    }
+
     const normalizedEmail = data.email.toLowerCase().trim();
 
-    // Vérifier si l'email existe déjà
-    const existingUser = await prisma.$queryRaw`
-      SELECT * FROM user WHERE email = ${normalizedEmail}
+    const existing = await prisma.$queryRaw<any[]>`
+      SELECT id_user FROM user WHERE email = ${normalizedEmail} LIMIT 1
     `;
-
-    if (Array.isArray(existingUser) && existingUser.length > 0) {
+    if (existing.length > 0) {
       throw new Error('Un utilisateur avec cet email existe déjà');
     }
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
+    const villeNom = (data as any).ville_nom || (data as any).ville || 'À définir';
 
-    // Insertion en SQL brut
     await prisma.$executeRaw`
       INSERT INTO user (
-        nom, prenom, email, telephone, fonction, adresse, code_postal, 
-        ville_nom, departement, sexe, id_profil, mot_de_passe_hash, 
-        zone_travail, zone_niveau, province_id, ville_id, commune_id, 
+        nom, prenom, email, telephone, fonction, adresse, code_postal,
+        ville_nom, departement, sexe, id_profil, mot_de_passe_hash,
+        zone_travail, zone_niveau, province_id, ville_id, commune_id,
         actif, created_at, updated_at
       ) VALUES (
         ${data.nom.trim()},
@@ -126,7 +205,7 @@ export async function createUser(data: CreateUserDTO): Promise<User> {
         ${data.fonction?.trim() || 'Agent'},
         ${data.adresse?.trim() || 'À définir'},
         ${data.code_postal?.trim() || '0000'},
-        ${data.ville_nom || data.ville || 'À définir'},
+        ${villeNom},
         ${data.departement?.trim() || 'À définir'},
         ${data.sexe || 'Non spécifié'},
         ${data.id_profil},
@@ -142,20 +221,38 @@ export async function createUser(data: CreateUserDTO): Promise<User> {
       )
     `;
 
-    // Récupérer l'utilisateur créé
-    const user = await prisma.$queryRaw`
-      SELECT * FROM user WHERE email = ${normalizedEmail}
+    const created = await prisma.$queryRaw<any[]>`
+      SELECT u.*, p.code as profil_code, p.libelle as profil_libelle
+      FROM user u
+      LEFT JOIN profil p ON u.id_profil = p.id_profil
+      WHERE u.email = ${normalizedEmail}
+      LIMIT 1
     `;
 
-    return formatUser(Array.isArray(user) ? user[0] : user);
+    return formatUser({ ...created[0], profil: { code: created[0].profil_code, libelle: created[0].profil_libelle } });
   } catch (error) {
     console.error('❌ Erreur createUser:', error);
     throw error;
   }
 }
 
-export async function updateUser(id: number, data: UpdateUserDTO): Promise<User> {
+// ============================================
+// MISE À JOUR
+// ============================================
+export async function updateUser(
+  id: number,
+  data: UpdateUserDTO,
+  actorId?: number
+): Promise<User> {
   try {
+    // 🔒 Vérifier les permissions
+    if (actorId) {
+      await assertCanModifyUser(actorId, id, 'edit');
+      if (data.id_profil !== undefined && data.id_profil > 0) {
+        await assertCanAssignRole(actorId, data.id_profil);
+      }
+    }
+
     const updateData: any = {};
 
     if (data.nom !== undefined) updateData.nom = data.nom.trim();
@@ -172,7 +269,6 @@ export async function updateUser(id: number, data: UpdateUserDTO): Promise<User>
     if (data.zone_niveau !== undefined) updateData.zone_niveau = data.zone_niveau;
     if (data.actif !== undefined) updateData.actif = data.actif;
     if (data.sexe !== undefined) updateData.sexe = data.sexe;
-
     if (data.province_id !== undefined) updateData.province_id = data.province_id;
     if (data.ville_id !== undefined) updateData.ville_id = data.ville_id;
     if (data.commune_id !== undefined) updateData.commune_id = data.commune_id;
@@ -182,31 +278,15 @@ export async function updateUser(id: number, data: UpdateUserDTO): Promise<User>
     }
 
     if (data.id_profil !== undefined && data.id_profil > 0) {
-      const profil = await prisma.profil.findUnique({
-        where: { id_profil: data.id_profil }
-      });
-      if (!profil) {
-        throw new Error(`Profil avec l'ID ${data.id_profil} non trouvé`);
-      }
       updateData.id_profil = data.id_profil;
     }
 
     updateData.updated_at = new Date();
 
-    const existingUser = await prisma.user.findUnique({
-      where: { id_user: id }
-    });
-
-    if (!existingUser) {
-      throw new Error('Utilisateur non trouvé');
-    }
-
     const user = await prisma.user.update({
       where: { id_user: id },
       data: updateData,
-      include: {
-        profil: true
-      }
+      include: { profil: true },
     });
 
     return formatUser(user);
@@ -216,36 +296,49 @@ export async function updateUser(id: number, data: UpdateUserDTO): Promise<User>
   }
 }
 
-export async function deleteUser(id: number): Promise<void> {
+// ============================================
+// SUPPRESSION
+// ============================================
+export async function deleteUser(id: number, actorId?: number): Promise<void> {
   try {
-    const existingUser = await prisma.user.findUnique({
-      where: { id_user: id }
-    });
-
-    if (!existingUser) {
-      throw new Error('Utilisateur non trouvé');
+    if (actorId) {
+      await assertCanModifyUser(actorId, id, 'delete');
     }
 
-    await prisma.user.delete({
-      where: { id_user: id }
-    });
+    const user = await prisma.user.findUnique({ where: { id_user: id } });
+    if (!user) throw new Error('Utilisateur non trouvé');
+
+    await prisma.user.delete({ where: { id_user: id } });
   } catch (error) {
     console.error('❌ Erreur deleteUser:', error);
     throw error;
   }
 }
 
-export async function toggleUserStatus(id: number, actif: boolean): Promise<User> {
-  return updateUser(id, { actif });
+// ============================================
+// TOGGLE
+// ============================================
+export async function toggleUserStatus(
+  id: number,
+  actif: boolean,
+  actorId?: number
+): Promise<User> {
+  if (actorId) {
+    await assertCanModifyUser(actorId, id, 'toggle');
+  }
+  return updateUser(id, { actif }, actorId);
 }
 
+// ============================================
+// STATS
+// ============================================
 export async function getUsersStats(users: User[]): Promise<UserStats> {
   const total = users.length;
-  const actifs = users.filter(u => u.actif).length;
+  const actifs = users.filter((u) => u.actif).length;
   const inactifs = total - actifs;
 
   const byRole: Record<string, number> = {};
-  users.forEach(u => {
+  users.forEach((u) => {
     const role = u.profil || 'Inconnu';
     byRole[role] = (byRole[role] || 0) + 1;
   });

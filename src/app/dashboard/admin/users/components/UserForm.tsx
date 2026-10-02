@@ -1,17 +1,20 @@
 ﻿'use client';
 
 // src/app/dashboard/admin/users/components/UserForm.tsx
-import { useState, useEffect } from 'react';
-import { X, Save, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Save, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { LocationSelector } from '@/components/locations/LocationSelector';
-import { 
-  CreateUserDTO, 
-  UpdateUserDTO, 
-  User, 
+import {
+  CreateUserDTO,
+  UpdateUserDTO,
+  User,
   LocationSelection,
   stringToLocationSelection,
-  locationSelectionToString 
+  locationSelectionToString,
+  isFounder,
+  getAllowedRoles,
+  canPerformAction,
 } from '../types/user.types';
 
 interface UserFormProps {
@@ -21,9 +24,18 @@ interface UserFormProps {
   user?: User | null;
   roles: { id: number; code: string; libelle: string }[];
   loading?: boolean;
+  currentUser?: { id_user?: number; id?: number; email?: string; profil?: string } | null;
 }
 
-export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false }: UserFormProps) {
+export function UserForm({
+  isOpen,
+  onClose,
+  onSave,
+  user,
+  roles,
+  loading = false,
+  currentUser,
+}: UserFormProps) {
   const [formData, setFormData] = useState<CreateUserDTO | UpdateUserDTO>({
     nom: '',
     prenom: '',
@@ -42,6 +54,24 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
   const [locationSelection, setLocationSelection] = useState<LocationSelection>({});
   const [emailError, setEmailError] = useState('');
 
+  const isEditMode = !!user;
+  const isPasswordRequired = !isEditMode;
+
+  // 🔒 Permissions
+  const editPermission = useMemo(
+    () => canPerformAction('edit', currentUser, user || undefined),
+    [currentUser, user]
+  );
+
+  // 🔒 Filtre les rôles
+  const allowedRoles = useMemo(
+    () => getAllowedRoles(currentUser, roles),
+    [currentUser, roles]
+  );
+
+  const targetIsProtected = user ? isFounder(user) : false;
+
+  // Charger les données (édition)
   useEffect(() => {
     if (user) {
       setFormData({
@@ -50,27 +80,25 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
         email: user.email || '',
         password: '',
         telephone: user.telephone || '',
-        adresse: (user as any).adresse || '',
-        code_postal: (user as any).code_postal || '',
-        ville: (user as any).ville || '', // ✅ Correction : user.ville → (user as any).ville
-        departement: (user as any).departement || '', // ✅ Correction
-        fonction: (user as any).fonction || '', // ✅ Correction
-        id_profil: (user as any).id_profil || 0, // ✅ Correction
-        zone_travail: (user as any).zone_travail || '', // ✅ Correction
+        adresse: user.adresse || '',
+        code_postal: user.code_postal || '',
+        ville: user.ville_nom || '',
+        departement: user.departement || '',
+        fonction: user.fonction || '',
+        id_profil: user.id_profil || 0,
+        zone_travail: user.zone_travail || '',
       });
-      
-      if ((user as any).zone_travail) {
+
+      const zoneRaw = user.zone_travail;
+      if (zoneRaw && typeof zoneRaw === 'string') {
         try {
-          const parsed = stringToLocationSelection((user as any).zone_travail);
-          if (parsed.paysId) {
-            setLocationSelection(parsed);
-          } else {
-            const jsonParsed = JSON.parse((user as any).zone_travail);
-            setLocationSelection(jsonParsed);
-          }
+          const parsed = stringToLocationSelection(zoneRaw);
+          setLocationSelection(parsed);
         } catch {
           setLocationSelection({});
         }
+      } else {
+        setLocationSelection({});
       }
     } else {
       setFormData({
@@ -91,74 +119,98 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
     }
   }, [user]);
 
-  // ✅ AUTO-GÉNÉRATION DE L'EMAIL quand le prénom change
+  // Auto-génération email
   useEffect(() => {
-    // Ne générer que si c'est un nouveau formulaire (pas en mode édition)
     if (!user && formData.prenom && formData.prenom.trim() !== '') {
       const prenom = formData.prenom.trim().toLowerCase();
-      // Supprimer les accents et caractères spéciaux
       const normalizedPrenom = prenom.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const email = `${normalizedPrenom}@dispro.cd`;
-      setFormData(prev => ({ ...prev, email }));
+      setFormData((prev) => ({ ...prev, email }));
       setEmailError('');
     }
   }, [formData.prenom, user]);
 
   if (!isOpen) return null;
 
+  // 🔒 Formulaire bloqué
+  if (isEditMode && !editPermission.allowed) {
+    return (
+      <>
+        <div className="fixed inset-0 z-[200] bg-black/50 backdrop-blur-sm" onClick={onClose} />
+        <div className="fixed inset-0 z-[201] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+            <div className="w-16 h-16 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-4">
+              <ShieldAlert className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2">Action non autorisée</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              {editPermission.reason || 'Vous n\'avez pas les droits pour modifier cet utilisateur.'}
+            </p>
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validation de l'email
+
+    // Validation email
     if (!formData.email || formData.email.trim() === '') {
       setEmailError('L\'email est requis');
       return;
     }
-
-    // Validation du format email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       setEmailError('Format d\'email invalide');
       return;
     }
-    
-    // Construire la zone de travail
-    let zoneTravail = '';
-    
-    if (locationSelection.paysId) {
-      const parts = [];
-      if (locationSelection.provinceIds?.length) {
-        parts.push(`provinces:${locationSelection.provinceIds.join(',')}`);
-      }
-      if (locationSelection.villeIds?.length) {
-        parts.push(`villes:${locationSelection.villeIds.join(',')}`);
-      }
-      if (locationSelection.communeIds?.length) {
-        parts.push(`communes:${locationSelection.communeIds.join(',')}`);
-      }
-      zoneTravail = parts.length > 0 
-        ? `pays:${locationSelection.paysId}|${parts.join('|')}` 
-        : `pays:${locationSelection.paysId}`;
+
+    // Validation mot de passe
+    if (isPasswordRequired && (!formData.password || formData.password.length < 6)) {
+      alert('Le mot de passe doit contenir au moins 6 caractères');
+      return;
     }
-    
-    const dataToSave = {
+
+    // Validation rôle
+    if (!formData.id_profil || formData.id_profil === 0) {
+      alert('Veuillez sélectionner un rôle');
+      return;
+    }
+
+    // ✅ Construire la zone de travail
+    let zoneTravail: string | null = null;
+    if (locationSelection.paysId) {
+      zoneTravail = locationSelectionToString(locationSelection);
+    } else if (formData.zone_travail) {
+      zoneTravail = formData.zone_travail;
+    }
+
+    // ✅ Payload final
+    const dataToSave: any = {
       ...formData,
-      zone_travail: zoneTravail || formData.zone_travail,
+      zone_travail: zoneTravail,
     };
-    
+
+    // ✅ Mapper ville → ville_nom
+    if (formData.ville) {
+      dataToSave.ville_nom = formData.ville;
+    }
+
     await onSave(dataToSave);
   };
 
-  // ✅ Fonction pour normaliser le prénom en email
   const generateEmailFromPrenom = (prenom: string) => {
     if (!prenom || prenom.trim() === '') return '';
     const normalized = prenom.trim().toLowerCase();
-    // Supprimer les accents
     return normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   };
-
-  const isEditMode = !!user;
-  const isPasswordRequired = !isEditMode;
 
   return (
     <>
@@ -177,11 +229,13 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
                 {isEditMode ? 'Modification' : 'Nouvel utilisateur'}
               </p>
               <h2 className="text-xl font-bold text-white">
-                {isEditMode ? `Modifier ${user?.nom || ''} ${user?.prenom || ''}` : 'Créer un compte'}
+                {isEditMode
+                  ? `Modifier ${user?.nom || ''} ${user?.prenom || ''}`
+                  : 'Créer un compte'}
               </h2>
             </div>
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="p-2 bg-white/20 hover:bg-red-500 rounded-lg transition text-white"
               type="button"
             >
@@ -189,6 +243,16 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
             </button>
           </div>
         </div>
+
+        {/* Bandeau compte protégé */}
+        {targetIsProtected && (
+          <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-start gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800">
+              <strong>Compte fondateur protégé.</strong> Certaines actions sont restreintes.
+            </p>
+          </div>
+        )}
 
         {/* Formulaire */}
         <div className="flex-1 overflow-y-auto p-6">
@@ -217,9 +281,6 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
                   value={formData.prenom || ''}
                   onChange={(e) => setFormData({ ...formData, prenom: e.target.value })}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  L'email sera généré automatiquement : {formData.prenom ? `${generateEmailFromPrenom(formData.prenom)}@dispro.cd` : ''}
-                </p>
               </div>
             </div>
 
@@ -240,24 +301,19 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
                 }}
                 placeholder="prenom@dispro.cd"
               />
-              {emailError && (
-                <p className="text-xs text-red-500 mt-1">{emailError}</p>
-              )}
-              {!isEditMode && formData.prenom && (
-                <p className="text-xs text-blue-500 mt-1">
-                  💡 Suggestion : {generateEmailFromPrenom(formData.prenom)}@dispro.cd
-                </p>
-              )}
+              {emailError && <p className="text-xs text-red-500 mt-1">{emailError}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Mot de passe {isPasswordRequired ? <span className="text-red-500">*</span> : '(laisser vide pour conserver)'}
+                Mot de passe{' '}
+                {isPasswordRequired ? <span className="text-red-500">*</span> : '(laisser vide pour conserver)'}
               </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required={isPasswordRequired}
+                  minLength={6}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pr-10"
                   value={formData.password || ''}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -291,15 +347,24 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 value={formData.id_profil || 0}
-                onChange={(e) => setFormData({ ...formData, id_profil: parseInt(e.target.value) })}
+                // ✅ FIX : éviter NaN quand valeur vide
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormData({ ...formData, id_profil: val === '' ? 0 : parseInt(val) });
+                }}
               >
                 <option value="">Sélectionner un rôle</option>
-                {roles.map((role) => (
+                {allowedRoles.map((role) => (
                   <option key={role.id} value={role.id}>
                     {role.libelle} ({role.code})
                   </option>
                 ))}
               </select>
+              {allowedRoles.length < roles.length && (
+                <p className="text-xs text-amber-600 mt-1">
+                  ⚠️ Certains rôles protégés ne sont pas affichés.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -358,16 +423,13 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Zone de travail
-                <span className="text-xs text-gray-500 ml-2">
-                  (sélectionnez les zones)
-                </span>
               </label>
               <LocationSelector
                 value={locationSelection}
                 onChange={setLocationSelection}
                 className="mb-4"
               />
-              
+
               {locationSelection.paysId && (
                 <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <p className="font-medium text-blue-800 text-sm">Zones sélectionnées :</p>
@@ -380,11 +442,6 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
                     )}
                     {locationSelection.communeIds && locationSelection.communeIds.length > 0 && (
                       <li>• {locationSelection.communeIds.length} commune(s)</li>
-                    )}
-                    {!locationSelection.provinceIds?.length && 
-                     !locationSelection.villeIds?.length && 
-                     !locationSelection.communeIds?.length && (
-                      <li>• Toutes les zones du pays sélectionné</li>
                     )}
                   </ul>
                 </div>
@@ -404,11 +461,7 @@ export function UserForm({ isOpen, onClose, onSave, user, roles, loading = false
                 disabled={loading}
                 className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save size={18} />
-                )}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save size={18} />}
                 {isEditMode ? 'Mettre à jour' : 'Créer'}
               </button>
             </div>

@@ -34,12 +34,13 @@
     "lucide-react": "^1.32.0",
     "mysql2": "^3.23.3",
     "next": "^14.0.4",
-    "nodemailer": "^10.0.10",
+    "nodemailer": "^10.0.13",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.48.2",
     "recharts": "^3.10.1",
+    "resend": "^6.32.0",
     "sharp": "^0.35.4"
   },
   "devDependencies": {

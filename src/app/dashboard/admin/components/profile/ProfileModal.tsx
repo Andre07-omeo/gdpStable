@@ -1,130 +1,149 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-// src/app/dashboard/commercial/components/profile/ProfileModal.tsximport { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+// src/app/dashboard/admin/components/profile/ProfileModal.tsx
+import { useState, useEffect } from 'react';
+import { X, User, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { ProfileView } from './ProfileView';
 import { ProfileEditForm } from './ProfileEditForm';
 
-export interface UserProfile {
-  id_user: number;
-  id_profil: number;
-  nom: string;
-  prenom: string;
-  sexe: string;
-  adresse: string;
-  code_postal: string;
-  telephone: string;
-  departement: string;
-  fonction: string;
-  email: string;
-  actif: number;
-  derniere_connexion: string;
-  created_at: string;
-}
-
-interface Props {
+interface ProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUserUpdated?: (user: UserProfile) => void;
+  user: any;
 }
 
-export function ProfileModal({ isOpen, onClose, onUserUpdated }: Props) {
-  const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+export function ProfileModal({ isOpen, onClose, user }: ProfileModalProps) {
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ Charger le profil à l'ouverture
+  useEffect(() => {
+    if (!isOpen) {
+      setMode('view');
+      setError(null);
+      return;
+    }
+
+    const loadProfile = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch('/api/auth/me', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          // ✅ Extraire l'utilisateur si l'API renvoie { user: {...} }
+          setProfile(data.user || data);
+        } else {
+          setProfile(user);
+        }
+      } catch (err) {
+        console.error('Erreur chargement profil:', err);
+        setProfile(user);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [isOpen, user]);
+
+  // Échap pour fermer
   useEffect(() => {
     if (!isOpen) return;
-    setEditing(false);
-    setLoading(true);
-    setError(null);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
-    fetch('/api/user/me', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        setUser(data);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+  // Bloquer le scroll
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
   }, [isOpen]);
 
   if (!isOpen) return null;
 
+  const currentProfile = profile || user;
+
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-4">
+      {/* Backdrop */}
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn"
+        onClick={onClose}
+      />
+
+      {/* Contenu */}
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-scaleIn">
+
         {/* Header */}
-        <div className="bg-gradient-to-br from-blue-800 to-blue-700 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-white font-bold text-lg">
-            {editing ? '✏️ Modifier mon profil' : '👤 Mon profil'}
-          </h2>
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-2xl">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+              <User className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-white font-bold text-base sm:text-lg truncate">
+                {mode === 'view' ? 'Mon profil' : 'Modifier le profil'}
+              </h2>
+              <p className="text-blue-100 text-[11px] truncate">
+                {mode === 'view' ? 'Informations personnelles' : 'Mettre à jour vos informations'}
+              </p>
+            </div>
+          </div>
           <button
             onClick={onClose}
-            className="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-1.5 transition"
+            className="p-1.5 rounded-lg hover:bg-white/20 text-white transition flex-shrink-0"
+            aria-label="Fermer"
           >
-            <X size={20} />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading && (
-            <div className="flex justify-center py-12">
-              <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-3" />
+              <p className="text-sm text-gray-500">Chargement du profil...</p>
             </div>
-          )}
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
-              ❌ {error}
+          ) : error ? (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
             </div>
-          )}
-
-          {user && !loading && !error && (
-            editing ? (
-              <ProfileEditForm
-                user={user}
-                onCancel={() => setEditing(false)}
-                onSaved={(updated) => {
-                  setUser(updated);
-                  setEditing(false);
-                  onUserUpdated?.(updated);
-                }}
-              />
-            ) : (
-              <ProfileView user={user} />
-            )
+          ) : mode === 'view' ? (
+            <ProfileView
+              profile={currentProfile}
+              onEdit={() => setMode('edit')}
+            />
+          ) : (
+            <ProfileEditForm
+              profile={currentProfile}
+              onCancel={() => setMode('view')}
+              onSaved={(updated) => {
+                // ✅ Merger avec les relations existantes pour ne pas les perdre
+                setProfile((prev: any) => ({ ...prev, ...updated }));
+                setMode('view');
+              }}
+            />
           )}
         </div>
-
-        {/* Footer */}
-        {user && !loading && !error && !editing && (
-          <div className="border-t border-gray-200 px-6 py-4 flex justify-end gap-3 bg-gray-50">
-            <button
-              onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-sm hover:bg-gray-100 transition"
-            >
-              Fermer
-            </button>
-            <button
-              onClick={() => setEditing(true)}
-              className="px-5 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition shadow-lg shadow-blue-600/20"
-            >
-              ✏️ Éditer
-            </button>
-          </div>
-        )}
       </div>
+
+      <style jsx global>{`
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+        .animate-scaleIn { animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+      `}</style>
     </div>
   );
 }

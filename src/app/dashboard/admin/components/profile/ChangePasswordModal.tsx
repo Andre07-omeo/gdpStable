@@ -1,159 +1,228 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
+// src/app/dashboard/admin/components/profile/ChangePasswordModal.tsx
+import { useState, useEffect } from 'react';
+import { KeyRound, X, Loader2, AlertCircle, CheckCircle2, Mail, ShieldCheck } from 'lucide-react';
 
-// src/app/dashboard/commercial/components/profile/ChangePasswordModal.tsximport { useState } from 'react';
-import { X, Mail, ShieldCheck, CheckCircle2 } from 'lucide-react';
-
-interface Props {
+interface ChangePasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userEmail: string;
+  userEmail?: string; // ← passée depuis le parent
+  userName?: string;
 }
 
-export function ChangePasswordModal({ isOpen, onClose, userEmail }: Props) {
-  const [step, setStep] = useState<'confirm' | 'sent'>('confirm');
+export function ChangePasswordModal({
+  isOpen,
+  onClose,
+  userEmail = '',
+  userName = '',
+}: ChangePasswordModalProps) {
+  const [email, setEmail] = useState(userEmail);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [maskedEmail, setMaskedEmail] = useState('');
+  const [sent, setSent] = useState(false);
+
+  // Réinitialiser à la fermeture
+  useEffect(() => {
+    if (!isOpen) {
+      setEmail(userEmail);
+      setError(null);
+      setSent(false);
+    }
+  }, [isOpen, userEmail]);
+
+  // Échap pour fermer
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
+  // Bloquer le scroll
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleRequest = async () => {
-    setLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Veuillez saisir une adresse email valide');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await fetch('/api/user/request-password-reset', {
+      const res = await fetch('/api/auth/request-password-reset', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ email }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erreur inconnue');
-      setMaskedEmail(data.email || userEmail);
-      setStep('sent');
-    } catch (e: any) {
-      setError(e.message);
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || data.message || 'Erreur lors de l\'envoi');
+      }
+
+      setSent(true);
+    } catch (err: any) {
+      setError(err.message || 'Erreur inconnue');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClose = () => {
-    setStep('confirm');
-    setError(null);
-    onClose();
-  };
-
   return (
-    <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-      onClick={handleClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="bg-gradient-to-br from-amber-600 to-amber-500 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-white font-bold text-lg flex items-center gap-2">
-            <ShieldCheck size={20} />
-            Sécurité du mot de passe
-          </h2>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn" onClick={onClose} />
+
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col animate-scaleIn">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-amber-500 to-orange-500 rounded-t-2xl">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
+              <KeyRound className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-white font-bold text-base sm:text-lg">
+                Changer le mot de passe
+              </h2>
+              <p className="text-amber-100 text-[11px]">
+                Vérification par email
+              </p>
+            </div>
+          </div>
           <button
-            onClick={handleClose}
-            className="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-1.5 transition"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-white/20 text-white transition"
+            aria-label="Fermer"
           >
-            <X size={20} />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6">
-          {step === 'confirm' && (
-            <>
-              <div className="text-center mb-5">
-                <div className="w-16 h-16 mx-auto rounded-full bg-amber-100 flex items-center justify-center mb-3">
-                  <Mail size={28} className="text-amber-600" />
-                </div>
-                <p className="text-gray-700 text-sm leading-relaxed">
-                  Pour des raisons de sécurité, la modification du mot de passe
-                  se fait via un <strong>lien envoyé par email</strong> à votre
-                  adresse professionnelle.
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4">
+          {sent ? (
+            // ============ ÉCRAN DE CONFIRMATION ============
+            <div className="text-center py-4">
+              <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                <Mail className="w-8 h-8 text-emerald-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">
+                Email envoyé !
+              </h3>
+              <p className="text-sm text-gray-600 leading-relaxed mb-4">
+                Un lien de réinitialisation a été envoyé à{' '}
+                <span className="font-semibold text-gray-800">{email}</span>.
+              </p>
+              <div className="text-left bg-blue-50 rounded-lg p-3 space-y-1.5">
+                <p className="text-xs text-blue-800 flex items-start gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <span>Le lien est valable <strong>1 heure</strong> seulement.</span>
+                </p>
+                <p className="text-xs text-blue-800 flex items-start gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <span>Il ne peut être utilisé qu'<strong>une seule fois</strong>.</span>
+                </p>
+                <p className="text-xs text-blue-800 flex items-start gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                  <span>Vérifiez vos <strong>spams</strong> si vous ne le voyez pas.</span>
                 </p>
               </div>
-
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-5">
-                <p className="text-xs text-blue-700 font-semibold mb-1">
-                  📧 Email de destination :
-                </p>
-                <p className="text-sm text-blue-900 font-mono break-all">
-                  {userEmail}
-                </p>
-              </div>
-
+              <button
+                onClick={onClose}
+                className="w-full mt-5 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition shadow-lg shadow-amber-500/30"
+              >
+                Fermer
+              </button>
+            </div>
+          ) : (
+            // ============ FORMULAIRE ============
+            <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm mb-4">
-                  ❌ {error}
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 text-red-700 text-sm">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{error}</span>
                 </div>
               )}
 
-              <div className="flex justify-end gap-3">
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 text-amber-800 text-xs">
+                <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  Pour des raisons de sécurité, un lien de réinitialisation sera envoyé
+                  à votre adresse email. Vous pourrez ensuite définir un nouveau mot de passe.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">
+                  Adresse email
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); setError(null); }}
+                    required
+                    readOnly={!!userEmail}
+                    className={`w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition ${
+                      userEmail ? 'bg-gray-50 text-gray-500 cursor-not-allowed' : 'bg-white'
+                    }`}
+                    placeholder="votre.email@exemple.com"
+                  />
+                </div>
+                {userEmail && (
+                  <p className="text-[10px] text-gray-400 mt-1 italic">
+                    L'email est lié à votre compte et ne peut être modifié ici.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2">
                 <button
-                  onClick={handleClose}
-                  className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-sm hover:bg-gray-100 transition"
+                  type="button"
+                  onClick={onClose}
+                  disabled={loading}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold transition disabled:opacity-50"
                 >
                   Annuler
                 </button>
                 <button
-                  onClick={handleRequest}
+                  type="submit"
                   disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white font-bold text-sm hover:bg-amber-700 transition shadow-lg shadow-amber-600/20 disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold transition shadow-lg shadow-amber-500/30 disabled:opacity-50"
                 >
                   {loading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Envoi...
-                    </>
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Envoi...</>
                   ) : (
-                    <>
-                      <Mail size={16} /> Envoyer le lien
-                    </>
+                    <><Mail className="w-4 h-4" /> Envoyer le lien</>
                   )}
                 </button>
               </div>
-            </>
-          )}
-
-          {step === 'sent' && (
-            <>
-              <div className="text-center py-4">
-                <div className="w-16 h-16 mx-auto rounded-full bg-green-100 flex items-center justify-center mb-4">
-                  <CheckCircle2 size={32} className="text-green-600" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  Email envoyé !
-                </h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  Un email de réinitialisation vient d'être envoyé à{' '}
-                  <strong className="text-gray-900">{maskedEmail}</strong>.
-                </p>
-                <p className="text-xs text-gray-500 mt-3 leading-relaxed">
-                  ⏱️ Le lien est valable <strong>15 minutes</strong> et ne peut
-                  être utilisé qu'une seule fois.
-                </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  💡 Pensez à vérifier vos spams si vous ne le voyez pas.
-                </p>
-              </div>
-
-              <button
-                onClick={handleClose}
-                className="w-full px-4 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition"
-              >
-                J'ai compris
-              </button>
-            </>
+            </form>
           )}
         </div>
       </div>
+
+      <style jsx global>{`
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+        .animate-scaleIn { animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+      `}</style>
     </div>
   );
 }

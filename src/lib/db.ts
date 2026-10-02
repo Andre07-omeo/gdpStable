@@ -4,7 +4,7 @@ import mysql from 'mysql2/promise';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 // ============================================
-// 1. PRISMA CLIENT
+// 1. PRISMA CLIENT (singleton)
 // ============================================
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
@@ -13,44 +13,56 @@ export const prisma =
   new PrismaClient({
     log:
       process.env.NODE_ENV === 'development'
-        ? ['query', 'error', 'warn']
+        ? ['error', 'warn'] // ⚠️ Retirer 'query' (trop verbeux)
         : ['error'],
   });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 // ============================================
-// 2. MYSQL POOL (pour les requêtes brutes)
+// 2. MYSQL POOL (singleton)
 // ============================================
-// Connexion MySQL interne Docker/Coolify.
-//
-// IMPORTANT :
-// - Pas de SSL forcé (MySQL Docker interne ne le supporte pas).
-// - Variables MYSQL_* utilisées en priorité.
+// ⚠️ CRUCIAL : sans le singleton `global`, Next.js dev crée
+// un NOUVEAU pool à chaque hot-reload → explosion des connexions.
+declare global {
+  // eslint-disable-next-line no-var
+  var __mysqlPool: mysql.Pool | undefined;
+}
+
+function createPool(): mysql.Pool {
+  const pool = mysql.createPool({
+    host: process.env.MYSQL_HOST || 'localhost',
+    port: Number(process.env.MYSQL_PORT || '3306'),
+    user: process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQL_PASSWORD || '',
+    database: process.env.MYSQL_DATABASE || 'gestion_panneaux_pro',
+
+    waitForConnections: true,
+    connectionLimit: Number(process.env.MYSQL_POOL_LIMIT || 5), // ✅
+    queueLimit: 0,
+    connectTimeout: 10000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
+
+    // ⚠️ Pas de SSL (Docker interne)
+  });
+
+  console.log(
+    `✅ MySQL pool créé (limit: ${process.env.MYSQL_POOL_LIMIT || 5})`
+  );
+  return pool;
+}
+
+// ✅ Singleton : réutilise le pool entre les hot-reloads
+const pool = global.__mysqlPool ?? createPool();
+if (process.env.NODE_ENV !== 'production') {
+  global.__mysqlPool = pool;
+}
+
 // ============================================
-const pool = mysql.createPool({
-  host: process.env.MYSQL_HOST || 'localhost',
-  port: Number(process.env.MYSQL_PORT || '3306'),
-  user: process.env.MYSQL_USER || 'root',
-  password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'gestion_panneaux_pro',
-
-  waitForConnections: true,
-  connectionLimit: 5,
-  queueLimit: 0,
-  connectTimeout: 10000,
-
-  // ⚠️ AUCUN SSL ici : MySQL interne Docker.
-  // ssl: ... supprimé volontairement.
-});
-
-// ============================================
-// 3. FONCTIONS UTILITAIRES (typées explicitement)
+// 3. FONCTIONS UTILITAIRES
 // ============================================
 
-/**
- * Requête SELECT → retourne un tableau de lignes typées.
- */
 export async function query<T extends RowDataPacket[] = RowDataPacket[]>(
   sql: string,
   params?: any[]
@@ -64,9 +76,6 @@ export async function query<T extends RowDataPacket[] = RowDataPacket[]>(
   }
 }
 
-/**
- * Requête INSERT/UPDATE/DELETE → retourne un ResultSetHeader.
- */
 export async function execute(
   sql: string,
   params?: any[]
@@ -80,9 +89,6 @@ export async function execute(
   }
 }
 
-/**
- * Version générique de `query` pour les SELECT.
- */
 export async function select<T extends RowDataPacket[] = RowDataPacket[]>(
   sql: string,
   params?: any[]
@@ -90,7 +96,6 @@ export async function select<T extends RowDataPacket[] = RowDataPacket[]>(
   return query<T>(sql, params);
 }
 
-// Pour les transactions
 export async function transaction<T>(
   callback: (connection: mysql.PoolConnection) => Promise<T>
 ): Promise<T> {
@@ -113,7 +118,6 @@ export async function transaction<T>(
 // ============================================
 export async function testDatabaseConnection(): Promise<boolean> {
   let connection;
-
   try {
     connection = await pool.getConnection();
     await connection.query('SELECT 1');
@@ -127,9 +131,7 @@ export async function testDatabaseConnection(): Promise<boolean> {
 }
 
 // ============================================
-// 5. EXPORTS PAR DÉFAUT
+// 5. EXPORTS
 // ============================================
 export default pool;
-
-// Export pour compatibilité
 export { pool as db };
