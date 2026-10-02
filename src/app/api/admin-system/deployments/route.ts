@@ -1,14 +1,19 @@
 // src/app/api/admin-system/deployments/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireSuperAdmin } from '../../../../lib/auth-helpers';
+import { checkAdminAccess } from '@/lib/auth/checkAdminAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-// ✅ GET : Liste des déploiements
-export async function GET() {
+// ✅ GET : liste des déploiements (ADMIN + SUPER_ADMIN)
+export async function GET(req: NextRequest) {
   try {
+    const auth = checkAdminAccess(req);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const [rows]: any = await db.query(`
       SELECT 
         d.*,
@@ -18,7 +23,6 @@ export async function GET() {
       LIMIT 100
     `);
 
-    // Statistiques
     const [stats]: any = await db.query(`
       SELECT 
         COUNT(*) AS total,
@@ -33,12 +37,8 @@ export async function GET() {
     return NextResponse.json({
       deployments: rows,
       stats: stats[0] || {
-        total: 0,
-        deployed: 0,
-        pending: 0,
-        failed: 0,
-        production: 0,
-        latest_build: 0,
+        total: 0, deployed: 0, pending: 0, failed: 0,
+        production: 0, latest_build: 0,
       },
     });
   } catch (error) {
@@ -47,32 +47,24 @@ export async function GET() {
   }
 }
 
-// ✅ POST : Créer un nouveau déploiement (en attente d'approbation)
+// ✅ POST : Créer un nouveau déploiement (ADMIN + SUPER_ADMIN)
 export async function POST(req: NextRequest) {
   try {
-    // 🔒 Vérification super admin
-    const authCheck = await requireSuperAdmin(req);
-    if (!authCheck.ok) {
-      return NextResponse.json({ error: authCheck.error }, { status: 403 });
+    const auth = checkAdminAccess(req);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const body = await req.json();
     const {
-      branch,
-      commit_hash,
-      commit_message,
-      commit_author,
-      environment = 'staging',
-      notes,
+      branch, commit_hash, commit_message, commit_author,
+      environment = 'staging', notes,
     } = body;
 
-    // Récupérer le prochain numéro de build
     const [lastBuild]: any = await db.query(
       'SELECT MAX(build_number) AS last FROM deployments'
     );
     const buildNumber = (lastBuild[0]?.last || 0) + 1;
-
-    // Versionification automatique : v1.0.{buildNumber}
     const version = `v1.0.${buildNumber}`;
 
     const [result]: any = await db.query(
@@ -82,20 +74,17 @@ export async function POST(req: NextRequest) {
       [version, buildNumber, branch, commit_hash, commit_message, commit_author, environment, notes]
     );
 
-    // Historique
     await db.query(
       `INSERT INTO update_history (deployment_id, action, performed_by, details)
        VALUES (?, 'initiated', ?, ?)`,
-      [result.insertId, authCheck.email, `Déploiement ${version} initié`]
+      [result.insertId, auth.email, `Déploiement ${version} initié`]
     );
 
     return NextResponse.json({
       success: true,
       deployment: {
-        id: result.insertId,
-        version,
-        build_number: buildNumber,
-        status: 'pending',
+        id: result.insertId, version,
+        build_number: buildNumber, status: 'pending',
       },
     });
   } catch (error) {
@@ -104,12 +93,12 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ✅ PATCH : Approuver / Rejeter / Déployer
+// ✅ PATCH : Approuver / Rejeter / Déployer (ADMIN + SUPER_ADMIN)
 export async function PATCH(req: NextRequest) {
   try {
-    const authCheck = await requireSuperAdmin(req);
-    if (!authCheck.ok) {
-      return NextResponse.json({ error: authCheck.error }, { status: 403 });
+    const auth = checkAdminAccess(req);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const body = await req.json();
@@ -127,29 +116,28 @@ export async function PATCH(req: NextRequest) {
       case 'approve':
         newStatus = 'approved';
         historyAction = 'approved';
-        details = `Approuvé par ${authCheck.email}`;
+        details = `Approuvé par ${auth.email}`;
         await db.query(
           `UPDATE deployments SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?`,
-          [newStatus, authCheck.email, id]
+          [newStatus, auth.email, id]
         );
         break;
 
       case 'reject':
         newStatus = 'failed';
         historyAction = 'rejected';
-        details = `Rejeté par ${authCheck.email}: ${reason || 'Sans raison'}`;
+        details = `Rejeté par ${auth.email}: ${reason || 'Sans raison'}`;
         await db.query(`UPDATE deployments SET status = ? WHERE id = ?`, [newStatus, id]);
         break;
 
       case 'deploy':
         newStatus = 'deploying';
         historyAction = 'deployed';
-        details = `Déploiement lancé par ${authCheck.email}`;
+        details = `Déploiement lancé par ${auth.email}`;
         await db.query(
           `UPDATE deployments SET status = ?, deployed_at = NOW() WHERE id = ?`,
           [newStatus, id]
         );
-        // Simuler un déploiement réussi après 3s
         setTimeout(async () => {
           try {
             await db.query(
@@ -163,7 +151,7 @@ export async function PATCH(req: NextRequest) {
       case 'rollback':
         newStatus = 'rolled_back';
         historyAction = 'rolled_back';
-        details = `Rollback effectué par ${authCheck.email}: ${reason || ''}`;
+        details = `Rollback effectué par ${auth.email}: ${reason || ''}`;
         await db.query(`UPDATE deployments SET status = ? WHERE id = ?`, [newStatus, id]);
         break;
 
@@ -174,7 +162,7 @@ export async function PATCH(req: NextRequest) {
     await db.query(
       `INSERT INTO update_history (deployment_id, action, performed_by, details)
        VALUES (?, ?, ?, ?)`,
-      [id, historyAction, authCheck.email, details]
+      [id, historyAction, auth.email, details]
     );
 
     return NextResponse.json({ success: true, newStatus });

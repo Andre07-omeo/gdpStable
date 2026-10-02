@@ -1,7 +1,7 @@
 // src/app/api/admin-system/applications/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { requireSuperAdmin } from '../../../../lib/auth-helpers';
+import { checkAdminAccess } from '@/lib/auth/checkAdminAccess';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -10,16 +10,20 @@ const execAsync = promisify(exec);
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function GET() {
+// ✅ GET : liste des applications (ADMIN + SUPER_ADMIN)
+export async function GET(req: NextRequest) {
   try {
+    const auth = checkAdminAccess(req);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const [apps]: any = await db.query(
       `SELECT * FROM hosted_applications ORDER BY name ASC`
     );
 
-    // Enrichir avec les infos réelles du système
     const enrichedApps = await Promise.all(
       apps.map(async (app: any) => {
-        // Vérifier si le port est en écoute
         let isAlive = false;
         try {
           if (process.platform === 'linux') {
@@ -43,7 +47,6 @@ export async function GET() {
       })
     );
 
-    // Stats globales
     const stats = {
       total: apps.length,
       running: enrichedApps.filter((a: any) => a.realStatus === 'running').length,
@@ -60,12 +63,12 @@ export async function GET() {
   }
 }
 
-// ✅ POST : Ajouter une application
+// ✅ POST : Ajouter une application (ADMIN + SUPER_ADMIN)
 export async function POST(req: NextRequest) {
   try {
-    const authCheck = await requireSuperAdmin(req);
-    if (!authCheck.ok) {
-      return NextResponse.json({ error: authCheck.error }, { status: 403 });
+    const auth = checkAdminAccess(req);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const body = await req.json();
@@ -88,12 +91,12 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ✅ PATCH : Contrôler une application (start/stop/restart)
+// ✅ PATCH : Contrôler une application (ADMIN + SUPER_ADMIN)
 export async function PATCH(req: NextRequest) {
   try {
-    const authCheck = await requireSuperAdmin(req);
-    if (!authCheck.ok) {
-      return NextResponse.json({ error: authCheck.error }, { status: 403 });
+    const auth = checkAdminAccess(req);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     const body = await req.json();
@@ -107,7 +110,6 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Application introuvable' }, { status: 404 });
     }
 
-    // Simuler une action (à connecter à Coolify / PM2 / Docker réel)
     let newStatus = apps[0].status;
     switch (action) {
       case 'start': newStatus = 'running'; break;
@@ -124,7 +126,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({
       success: true,
       newStatus,
-      message: `Action "${action}" effectuée par ${authCheck.email}`,
+      message: `Action "${action}" effectuée par ${auth.email}`,
     });
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });

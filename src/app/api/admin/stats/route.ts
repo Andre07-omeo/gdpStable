@@ -1,77 +1,61 @@
 ﻿// src/app/api/admin/stats/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
-import { verifyAuth } from "@/lib/auth";
+import { NextRequest, NextResponse } from 'next/server';
+import jwt from 'jsonwebtoken';
+import { query } from '@/lib/db';
+
 export const dynamic = 'force-dynamic';
+
+const ALLOWED_PROFILES = ['SUPER_ADMIN', 'ADMIN'];
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await verifyAuth(request);
-    if (!auth || (auth.profil !== "SUPER_ADMIN" && auth.profil !== "ADMIN_SYSTEM")) {
-      return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+    const token = request.cookies.get('auth_token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    // ✅ Utiliser des requêtes SQL avec mysql2
-    const totalPanneaux = await query(`SELECT COUNT(*) as count FROM panneau`);
-    const totalFaces = await query(`SELECT COUNT(*) as count FROM face`);
-    const totalUsers = await query(`SELECT COUNT(*) as count FROM user WHERE actif = 1`);
-    const totalClients = await query(`SELECT COUNT(*) as count FROM client`);
-    const totalReservations = await query(`SELECT COUNT(*) as count FROM ligne_reservation`);
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      return NextResponse.json({ error: 'Config serveur' }, { status: 500 });
+    }
 
-    const reservationsEnCours = await query(`
-      SELECT COUNT(*) as count 
-      FROM ligne_reservation 
-      WHERE date_debut <= CURDATE() AND date_fin >= CURDATE()
-    `);
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'Token invalide' }, { status: 401 });
+    }
 
-    const facesOccupees = await query(`
-      SELECT COUNT(DISTINCT f.id_face) as count
-      FROM face f
-      JOIN ligne_reservation lr ON f.id_face = lr.id_face
-      WHERE lr.date_debut <= CURDATE() AND lr.date_fin >= CURDATE()
-    `);
+    const profil = String(decoded.profil || '').toUpperCase();
+    if (!ALLOWED_PROFILES.includes(profil)) {
+      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
+    }
 
-    const facesReservees = await query(`
-      SELECT COUNT(DISTINCT f.id_face) as count
-      FROM face f
-      JOIN ligne_reservation lr ON f.id_face = lr.id_face
-      WHERE lr.date_debut > CURDATE()
-    `);
+    // ✅ Stats
+    const [usersRow] = (await query(
+      `SELECT COUNT(*) as total FROM user WHERE actif = 1`
+    )) as any[];
 
-    const totalPanneauxCount = Number((totalPanneaux as any[])[0]?.count || 0);
-    const totalFacesCount = Number((totalFaces as any[])[0]?.count || 0);
-    const totalUsersCount = Number((totalUsers as any[])[0]?.count || 0);
-    const totalClientsCount = Number((totalClients as any[])[0]?.count || 0);
-    const totalReservationsCount = Number((totalReservations as any[])[0]?.count || 0);
-    const reservationsEnCoursCount = Number((reservationsEnCours as any[])[0]?.count || 0);
-    const facesOccupeesCount = Number((facesOccupees as any[])[0]?.count || 0);
-    const facesReserveesCount = Number((facesReservees as any[])[0]?.count || 0);
+    const [panneauxRow] = (await query(
+      `SELECT COUNT(*) as total FROM panneau`
+    )) as any[];
 
-    const facesLibres = totalFacesCount - facesOccupeesCount - facesReserveesCount;
-    const tauxOccupation = totalFacesCount > 0 ? Math.round(((facesOccupeesCount + facesReserveesCount) / totalFacesCount) * 100) : 0;
+    const [reservationsRow] = (await query(
+      `SELECT COUNT(*) as total FROM reservation`
+    )) as any[];
 
-    const stats = {
-      totalPanneaux: totalPanneauxCount,
-      totalFaces: totalFacesCount,
-      facesLibres,
-      facesOccupees: facesOccupeesCount,
-      facesReservees: facesReserveesCount,
-      totalUsers: totalUsersCount,
-      totalClients: totalClientsCount,
-      totalReservations: totalReservationsCount,
-      reservationsEnCours: reservationsEnCoursCount,
-      reservationsFutures: 0,
-      reservationsPassees: 0,
-      totalRevenue: 0,
-      tauxOccupation
-    };
+    const [clientsRow] = (await query(
+      `SELECT COUNT(*) as total FROM client`
+    )) as any[];
 
-    return NextResponse.json(stats);
+    return NextResponse.json({
+      totalUsers: usersRow?.total || 0,
+      totalPanneaux: panneauxRow?.total || 0,
+      totalReservations: reservationsRow?.total || 0,
+      totalClients: clientsRow?.total || 0,
+    });
   } catch (error) {
-    console.error("❌ Erreur GET /api/admin/stats:", error);
-    return NextResponse.json(
-      { error: "Erreur lors du chargement des statistiques" },
-      { status: 500 }
-    );
+    console.error('❌ Erreur /api/admin/stats:', error);
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 });
   }
 }
