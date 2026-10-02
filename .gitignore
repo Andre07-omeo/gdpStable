@@ -3,6 +3,7 @@
 # ============================================
 /node_modules
 /.pnp
+.env.example
 .pnp.*
 .yarn/install-state.gz
 .yarn/cache
@@ -43,7 +44,7 @@ next-env.d.ts
 *.env.production
 
 # ⚠️ EXCEPTION : le template .env.example DOIT être versionné
-!.env.example
+*.env.example
 
 # ============================================
 # PRISMA
@@ -183,3 +184,11 @@ bfg.jar
 # src/app/Console/
 # src/app/Models/
 # src/app/Services/
+# ============================================
+# ENVIRONNEMENT — NE JAMAIS COMMIT
+# ============================================
+.env
+.env.*
+.env.local
+.env.*.local
+
