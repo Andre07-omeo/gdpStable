@@ -35,6 +35,7 @@
     "mysql2": "^3.23.3",
     "next": "^14.0.4",
     "nodemailer": "^10.0.13",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.2.0",

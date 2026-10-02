@@ -20,25 +20,36 @@ import { AdminSupport } from './components/AdminSupport';
 import UsersManagementPage from './users/page';
 import AdminSystemPage from './system/page';
 
-// ✅ IMPORTS DES MODALES
+// ✅ MODALES
 import { ProfileModal } from './components/profile/ProfileModal';
 import { ChangePasswordModal } from './components/profile/ChangePasswordModal';
 import { InfoModal } from './components/profile/InfoModal';
 import { StatsModal } from './components/profile/StatsModal';
 
+// ✅ IMPORT DU FORMULAIRE SUPERVISEUR
+import PanneauForm from '@/app/dashboard/superviseur/components/PanneauForm';
+
 import type { DashboardStats, Panneau, Reservation } from './types';
+
 // ============================================
-// ✅ TABS VALIDES (source unique de vérité)
+// ✅ CONSTANTES DE HAUTEUR (pour compenser le header fixe)
+// ============================================
+// Doit correspondre à la hauteur réelle du <AdminHeader />
+// Header : py-2 (mobile) / py-2.5 (sm) / py-3 (md) + contenu h-8/9/10
+const HEADER_HEIGHT_MOBILE = 56;   // px — mobile (< sm)
+const HEADER_HEIGHT_SM = 64;       // px — sm et +
+const TABS_HEIGHT = 52;            // px — hauteur de la barre d'onglets
+
+// ============================================
+// ✅ TABS VALIDES
 // ============================================
 const VALID_TABS = [
-  'dashboard',       // Monitoring
+  'dashboard',
   'statistiques',
   'panneaux',
   'reservations',
   'users',
-  'faces',
   'superviseurs',
-  // 'profils',
   'localisation',
   'admin-system',
   'support',
@@ -88,7 +99,7 @@ function ModulePlaceholder({
 }
 
 // ============================================
-// CONTENU (isolé car useSearchParams exige Suspense)
+// CONTENU
 // ============================================
 function AdminDashboardContent() {
   const { user, logout } = useAuth();
@@ -96,11 +107,9 @@ function AdminDashboardContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // ✅ Onglet actif = source unique : URL
   const tabParam = searchParams.get('tab');
   const activeModule: TabId = isValidTab(tabParam) ? tabParam : DEFAULT_TAB;
 
-  // ✅ Setter d'onglet → met à jour l'URL (avec replace pour ne pas polluer l'historique)
   const setActiveModule = useCallback((tab: string) => {
     if (!isValidTab(tab)) return;
     const params = new URLSearchParams(searchParams.toString());
@@ -121,7 +130,10 @@ function AdminDashboardContent() {
   const [panneaux, setPanneaux] = useState<Panneau[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
 
-  // ✅ Modales (brancher ici tes vrais composants)
+  // ✅ State pour piloter le formulaire de modification panneau
+  const [editingPanneau, setEditingPanneau] = useState<Panneau | null>(null);
+
+  // ✅ Modales profil / settings
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -173,6 +185,11 @@ function AdminDashboardContent() {
     }
   };
 
+  const handlePanneauSaved = async () => {
+    setEditingPanneau(null);
+    await handleRefresh();
+  };
+
   if (isLoading) {
     return (
       <LayoutWrapper>
@@ -187,22 +204,15 @@ function AdminDashboardContent() {
 
   const isSuperAdmin = user.profil === 'SUPER_ADMIN';
 
-  // ✅ Menu unifié (mêmes IDs que VALID_TABS)
   const menuItems: { id: TabId; label: string; icon: any }[] = [
     { id: 'dashboard', label: 'Monitoring', icon: Activity },
     { id: 'statistiques', label: 'Statistiques', icon: BarChart3 },
     { id: 'panneaux', label: 'Panneaux', icon: MapPin },
     { id: 'reservations', label: 'Réservations', icon: Calendar },
     { id: 'users', label: 'Utilisateurs', icon: Users },
-    { id: 'faces', label: 'Faces', icon: Building2 },
-    ...(isSuperAdmin ? [{ id: 'superviseurs' as TabId, label: 'Superviseurs', icon: UserCog }] : []),
-    ...(isSuperAdmin ? [{ id: 'profils' as TabId, label: 'Profils', icon: Shield }] : []),
-    { id: 'localisation', label: 'Localisation', icon: MapPin },
-    { id: 'admin-system', label: 'Admin Système', icon: Server },
     { id: 'support', label: 'Support', icon: HelpCircle },
   ];
 
-  // ✅ Rendu selon onglet actif
   const renderContent = () => {
     switch (activeModule) {
       case 'dashboard':
@@ -212,32 +222,19 @@ function AdminDashboardContent() {
       case 'admin-system':
         return <AdminSystemPage />;
       case 'panneaux':
-        return <AdminPanneauxList panneaux={panneaux} onRefresh={handleRefresh} />;
+        return (
+          <AdminPanneauxList
+            panneaux={panneaux}
+            onRefresh={handleRefresh}
+            onEdit={(p) => setEditingPanneau(p as unknown as Panneau)}
+          />
+        );
       case 'reservations':
         return <AdminReservationsList panneaux={panneaux} />;
       case 'users':
         return <UsersManagementPage />;
       case 'support':
         return <AdminSupport />;
-      case 'faces':
-        return (
-          <ModulePlaceholder
-            title="Gestion des Faces publicitaires"
-            description="Ce module permettra de gérer toutes les faces publicitaires disponibles sur les panneaux."
-            icon={<Building2 size={36} />}
-            onBack={() => setActiveModule('dashboard')}
-          />
-        );
-      case 'superviseurs':
-        return (
-          <ModulePlaceholder
-            title="Gestion des Superviseurs"
-            description="Ce module permettra de gérer les comptes superviseurs."
-            icon={<UserCog size={36} />}
-            onBack={() => setActiveModule('dashboard')}
-          />
-        );
-
       case 'localisation':
         return (
           <ModulePlaceholder
@@ -256,34 +253,52 @@ function AdminDashboardContent() {
     <LayoutWrapper>
       <div className="min-h-screen flex flex-col bg-gray-50 w-full">
 
-        {/* HEADER */}
-        <AdminHeader
-          user={user}
-          variant={isSuperAdmin ? 'super-admin' : 'admin'}
-          onLogout={logout}
-          onRefresh={handleRefresh}
-          onNotificationsToggle={() => setIsNotificationsOpen((v) => !v)}
-          notificationCount={notificationCount}
-          onDashboardToggle={() => setActiveModule('dashboard')}
-          onPanneauxToggle={() => setActiveModule('panneaux')}
-          onReservationsToggle={() => setActiveModule('reservations')}
-          onUsersToggle={() => setActiveModule('users')}
-          onStatsToggle={() => setActiveModule('statistiques')}
-          onSupportToggle={() => setActiveModule('support')}
-          onAdminSystemToggle={() => setActiveModule('admin-system')}
-          onFacesToggle={() => setActiveModule('faces')}
-          onSuperviseursToggle={isSuperAdmin ? () => setActiveModule('superviseurs') : undefined}
-          onLocalisationToggle={() => setActiveModule('localisation')}
-          onProfilsToggle={isSuperAdmin ? () => setActiveModule('profils') : undefined}
-          onProfileClick={() => setIsProfileOpen(true)}
-          onChangePasswordClick={() => setIsChangePasswordOpen(true)}
-          onSettingsClick={() => setIsSettingsOpen(true)}
-          onNotificationsClick={() => setIsNotificationsOpen(true)}
-          onHelpClick={() => setIsHelpOpen(true)}
+        {/* ============================================ */}
+        {/* ✅ HEADER FIXE */}
+        {/* ============================================ */}
+        <div className="fixed top-0 left-0 right-0 z-50">
+          <AdminHeader
+            user={user}
+            variant={isSuperAdmin ? 'super-admin' : 'admin'}
+            onLogout={logout}
+            onRefresh={handleRefresh}
+            onNotificationsToggle={() => setIsNotificationsOpen((v) => !v)}
+            notificationCount={notificationCount}
+            onDashboardToggle={() => setActiveModule('dashboard')}
+            onPanneauxToggle={() => setActiveModule('panneaux')}
+            onReservationsToggle={() => setActiveModule('reservations')}
+            onUsersToggle={() => setActiveModule('users')}
+            onStatsToggle={() => setActiveModule('statistiques')}
+            onSupportToggle={() => setActiveModule('support')}
+            onAdminSystemToggle={() => setActiveModule('admin-system')}
+            onFacesToggle={() => setActiveModule('faces')}
+            onSuperviseursToggle={isSuperAdmin ? () => setActiveModule('superviseurs') : undefined}
+            onLocalisationToggle={() => setActiveModule('localisation')}
+            onProfilsToggle={isSuperAdmin ? () => setActiveModule('profils') : undefined}
+            onProfileClick={() => setIsProfileOpen(true)}
+            onChangePasswordClick={() => setIsChangePasswordOpen(true)}
+            onSettingsClick={() => setIsSettingsOpen(true)}
+            onNotificationsClick={() => setIsNotificationsOpen(true)}
+            onHelpClick={() => setIsHelpOpen(true)}
+          />
+        </div>
+
+        {/* ============================================ */}
+        {/* ✅ SPACER : compense la hauteur du header fixe */}
+        {/* ============================================ */}
+        <div
+          className="w-full flex-shrink-0"
+          style={{ height: `${HEADER_HEIGHT_MOBILE}px` }}
+          aria-hidden="true"
         />
 
-        {/* BARRE D'ONGLETS */}
-        <div className="bg-white border-b border-gray-200 shadow-sm w-full sticky top-[57px] sm:top-[65px] z-40">
+        {/* ============================================ */}
+        {/* ✅ BARRE D'ONGLETS STICKY (sous le header fixe) */}
+        {/* ============================================ */}
+        <div
+          className="fixed left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-sm w-full"
+          style={{ top: `${HEADER_HEIGHT_MOBILE}px` }}
+        >
           <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12">
             <div
               className="flex gap-1 sm:gap-2 overflow-x-auto py-2 -mx-3 sm:mx-0 px-3 sm:px-0 scrollbar-hide"
@@ -298,10 +313,11 @@ function AdminDashboardContent() {
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setActiveModule(item.id)}
-                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition whitespace-nowrap flex-shrink-0 ${isActive
+                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition whitespace-nowrap flex-shrink-0 ${
+                      isActive
                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
                         : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-                      }`}
+                    }`}
                   >
                     <Icon size={16} className="flex-shrink-0" />
                     <span>{item.label}</span>
@@ -312,15 +328,25 @@ function AdminDashboardContent() {
           </div>
         </div>
 
-        {/* CONTENU */}
+        {/* ============================================ */}
+        {/* ✅ SPACER : compense la hauteur des onglets */}
+        {/* ============================================ */}
+        <div
+          className="w-full flex-shrink-0"
+          style={{ height: `${TABS_HEIGHT}px` }}
+          aria-hidden="true"
+        />
+
+        {/* ============================================ */}
+        {/* CONTENU PRINCIPAL */}
+        {/* ============================================ */}
         <main className="flex-1 w-full px-3 sm:px-4 md:px-6 lg:px-8 xl:px-10 2xl:px-12 py-3 sm:py-4 md:py-6 pb-20 sm:pb-6">
           {renderContent()}
         </main>
 
         {/* ============================================ */}
-        {/* MODALES — brancher tes vrais composants ici */}
+        {/* MODALES PROFIL / SETTINGS */}
         {/* ============================================ */}
-
         <ProfileModal
           isOpen={isProfileOpen}
           onClose={() => setIsProfileOpen(false)}
@@ -347,8 +373,18 @@ function AdminDashboardContent() {
           onClose={() => setIsNotificationsOpen(false)}
         />
 
+        {/* ✅ FORMULAIRE DE MODIFICATION PANNEAU */}
+        <PanneauForm
+          isOpen={!!editingPanneau}
+          onClose={() => setEditingPanneau(null)}
+          onSave={handlePanneauSaved}
+          user={user}
+          panneauToEdit={editingPanneau as any}
+        />
+
       </div>
 
+      {/* ✅ Styles globaux */}
       <style jsx global>{`
         .scrollbar-hide {
           -ms-overflow-style: none;
@@ -357,23 +393,30 @@ function AdminDashboardContent() {
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
         }
+
+        /* ✅ Compense le header fixe lors d'un scroll vers un ancrage (#id) */
+        html {
+          scroll-padding-top: 120px;
+        }
       `}</style>
     </LayoutWrapper>
   );
 }
 
 // ============================================
-// EXPORT (avec Suspense car useSearchParams)
+// EXPORT
 // ============================================
 export default function AdminDashboard() {
   return (
-    <Suspense fallback={
-      <LayoutWrapper>
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-        </div>
-      </LayoutWrapper>
-    }>
+    <Suspense
+      fallback={
+        <LayoutWrapper>
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+          </div>
+        </LayoutWrapper>
+      }
+    >
       <AdminDashboardContent />
     </Suspense>
   );

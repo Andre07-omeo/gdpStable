@@ -22,6 +22,10 @@ interface UsersListProps {
   } | null;
 }
 
+// ✅ Grille 4 colonnes : 1 → 2 → 3 → 4 selon la largeur
+const GRID_CLASSES =
+  'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3';
+
 export function UsersList({
   users,
   onEdit,
@@ -32,11 +36,11 @@ export function UsersList({
 }: UsersListProps) {
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+      <div className={GRID_CLASSES}>
         {[...Array(8)].map((_, i) => (
-          <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 animate-pulse">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gray-200 rounded-full" />
+          <div key={i} className="bg-white rounded-xl p-3 border border-gray-200 animate-pulse">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 bg-gray-200 rounded-full" />
               <div className="flex-1">
                 <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
                 <div className="h-3 bg-gray-200 rounded w-3/4" />
@@ -100,12 +104,11 @@ export function UsersList({
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+    <div className={GRID_CLASSES}>
       {users.map((user, index) => {
         const targetIsFounder = isFounder(user);
         const isSuperAdmin = user.profil === 'SUPER_ADMIN';
 
-        // ✅ FIX : compatibilité id vs id_user
         const currentId = currentUser?.id_user ?? currentUser?.id;
         const isSelf = currentId !== undefined && currentId === user.id_user;
 
@@ -119,7 +122,7 @@ export function UsersList({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: Math.min(index * 0.03, 0.3) }}
-            className={`bg-white rounded-xl p-4 border-2 transition hover:shadow-lg flex flex-col ${
+            className={`bg-white rounded-xl p-3 border-2 transition hover:shadow-lg flex flex-col ${
               targetIsFounder
                 ? 'border-amber-300 bg-gradient-to-br from-amber-50/50 to-white'
                 : isSuperAdmin
@@ -128,9 +131,9 @@ export function UsersList({
             } ${!user.actif ? 'opacity-70' : ''}`}
           >
             {/* Header carte */}
-            <div className="flex items-start gap-3 mb-3">
+            <div className="flex items-start gap-2 mb-2">
               <div
-                className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0 relative ${
+                className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0 relative ${
                   targetIsFounder
                     ? 'bg-gradient-to-br from-amber-400 to-orange-500'
                     : isSuperAdmin
@@ -141,30 +144,30 @@ export function UsersList({
                 {user.prenom?.charAt(0) || '?'}
                 {user.nom?.charAt(0) || '?'}
                 {targetIsFounder && (
-                  <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center border-2 border-white">
-                    <Lock className="w-2.5 h-2.5 text-white" />
+                  <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center border-2 border-white">
+                    <Lock className="w-2 h-2 text-white" />
                   </span>
                 )}
                 {isSuperAdmin && !targetIsFounder && (
-                  <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center border-2 border-white">
-                    <Crown className="w-2.5 h-2.5 text-white" />
+                  <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center border-2 border-white">
+                    <Crown className="w-2 h-2 text-white" />
                   </span>
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-gray-800 truncate">{getFullName(user)}</h4>
+                <h4 className="font-bold text-gray-800 truncate text-sm">{getFullName(user)}</h4>
                 <div className="flex flex-wrap items-center gap-1 mt-1">
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getRoleColor(user.profil)}`}>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${getRoleColor(user.profil)}`}>
                     {user.profil || 'VISITEUR'}
                   </span>
                   {!user.actif && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-700">
                       INACTIF
                     </span>
                   )}
                   {isSelf && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">
+                    <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700">
                       VOUS
                     </span>
                   )}
@@ -173,22 +176,22 @@ export function UsersList({
             </div>
 
             {/* Infos */}
-            <div className="space-y-1.5 text-xs text-gray-600 flex-1">
-              <div className="flex items-center gap-2 min-w-0">
-                <Mail size={13} className="text-gray-400 flex-shrink-0" />
+            <div className="space-y-1 text-[11px] text-gray-600 flex-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Mail size={12} className="text-gray-400 flex-shrink-0" />
                 <span className="truncate">{user.email || '—'}</span>
               </div>
 
               {user.telephone && user.telephone !== '0' && (
-                <div className="flex items-center gap-2 min-w-0">
-                  <Phone size={13} className="text-gray-400 flex-shrink-0" />
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Phone size={12} className="text-gray-400 flex-shrink-0" />
                   <span className="truncate">{user.telephone}</span>
                 </div>
               )}
 
               {(user.fonction || user.departement) && (
-                <div className="flex items-center gap-2 min-w-0">
-                  <Briefcase size={13} className="text-gray-400 flex-shrink-0" />
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Briefcase size={12} className="text-gray-400 flex-shrink-0" />
                   <span className="truncate">
                     {[user.fonction, user.departement].filter(Boolean).join(' • ')}
                   </span>
@@ -196,26 +199,26 @@ export function UsersList({
               )}
 
               {user.ville_nom && (
-                <div className="flex items-center gap-2 min-w-0">
-                  <Building2 size={13} className="text-gray-400 flex-shrink-0" />
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Building2 size={12} className="text-gray-400 flex-shrink-0" />
                   <span className="truncate">{user.ville_nom}</span>
                 </div>
               )}
 
               {user.zone_travail && (
-                <div className="flex items-center gap-2 min-w-0">
-                  <MapPin size={13} className="text-gray-400 flex-shrink-0" />
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <MapPin size={12} className="text-gray-400 flex-shrink-0" />
                   <span className="truncate">{formatZoneTravail(user.zone_travail)}</span>
                 </div>
               )}
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-gray-100">
+            <div className="flex items-center gap-1 mt-2 pt-2 border-t border-gray-100">
               <button
                 onClick={() => togglePerm.allowed && onToggleStatus(user.id_user, !user.actif)}
                 disabled={!togglePerm.allowed}
-                className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-semibold transition ${
+                className={`flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg text-[11px] font-semibold transition ${
                   !togglePerm.allowed
                     ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                     : user.actif
@@ -224,40 +227,40 @@ export function UsersList({
                 }`}
                 title={!togglePerm.allowed ? togglePerm.reason : user.actif ? 'Désactiver' : 'Activer'}
               >
-                {user.actif ? <UserX size={14} /> : <UserCheck size={14} />}
+                {user.actif ? <UserX size={13} /> : <UserCheck size={13} />}
                 {user.actif ? 'Désactiver' : 'Activer'}
               </button>
 
               <button
                 onClick={() => editPerm.allowed && onEdit(user)}
                 disabled={!editPerm.allowed}
-                className={`p-2 rounded-lg transition ${
+                className={`p-1.5 rounded-lg transition ${
                   !editPerm.allowed
                     ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                     : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                 }`}
                 title={!editPerm.allowed ? editPerm.reason : 'Modifier'}
               >
-                <Edit2 size={14} />
+                <Edit2 size={13} />
               </button>
 
               <button
                 onClick={() => deletePerm.allowed && onDelete(user.id_user)}
                 disabled={!deletePerm.allowed}
-                className={`p-2 rounded-lg transition ${
+                className={`p-1.5 rounded-lg transition ${
                   !deletePerm.allowed
                     ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
                     : 'bg-red-50 text-red-600 hover:bg-red-100'
                 }`}
                 title={!deletePerm.allowed ? deletePerm.reason : 'Supprimer'}
               >
-                <Trash2 size={14} />
+                <Trash2 size={13} />
               </button>
             </div>
 
             {targetIsFounder && (
-              <div className="mt-2 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 text-[10px] text-amber-800 font-semibold">
-                <ShieldAlert size={11} />
+              <div className="mt-1.5 flex items-center gap-1 px-1.5 py-1 rounded-lg bg-amber-50 text-[9px] text-amber-800 font-semibold">
+                <ShieldAlert size={10} />
                 Compte fondateur protégé
               </div>
             )}
