@@ -43,14 +43,102 @@ interface CleanupCheck {
 }
 
 // ============================================
-// ✅ HELPER : convertit '0000-00-00 00:00:00' → NULL
+// ✅ HELPER ULTIME : convertit n'importe quel format en YYYY-MM-DD[ HH:MM:SS]
 // ============================================
-function safeDate(d: any): string | null {
-  if (!d) return null;
-  const s = String(d).trim();
-  if (s === '' || s === 'null' || s === 'undefined') return null;
-  if (s === '0000-00-00 00:00:00' || s === '0000-00-00') return null;
-  return s;
+const MOIS_FR: Record<string, string> = {
+  janvier: '01',
+  février: '02',
+  fevrier: '02',
+  mars: '03',
+  avril: '04',
+  mai: '05',
+  juin: '06',
+  juillet: '07',
+  août: '08',
+  aout: '08',
+  septembre: '09',
+  octobre: '10',
+  novembre: '11',
+  décembre: '12',
+  decembre: '12',
+};
+
+function safeDate(value: any): string | null {
+  if (value === null || value === undefined) return null;
+
+  // Si c'est déjà un objet Date
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return null;
+    return value.toISOString().slice(0, 19).replace('T', ' ');
+  }
+
+  const s = String(value).trim();
+  if (!s) return null;
+
+  // Valeurs pourries
+  if (s === 'null' || s === 'undefined') return null;
+  if (s === '0000-00-00' || s === '0000-00-00 00:00:00') return null;
+
+  // Format ISO standard : 2026-09-30 ou 2026-09-30 22:32:22
+  if (/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/.test(s)) {
+    return s;
+  }
+
+  // Format ISO avec T : 2026-09-30T22:32:22
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s)) {
+    return s.slice(0, 19).replace('T', ' ');
+  }
+
+  // Format FR avec slashes : 27/09/2026 ou 27/09/2026 22:32:22
+  const frSlash = s.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (frSlash) {
+    const [, j, m, a, h, mn, sec] = frSlash;
+    const date = `${a}-${m.padStart(2, '0')}-${j.padStart(2, '0')}`;
+    if (h !== undefined) {
+      return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
+    }
+    return date;
+  }
+
+  // Format FR avec mois en toutes lettres : 13 novembre 2026
+  const frLettres = s.match(
+    /^(\d{1,2})\s+([a-zéûôA-ZÉÛÔ]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/i
+  );
+  if (frLettres) {
+    const [, j, mois, a, h, mn, sec] = frLettres;
+    const moisNum = MOIS_FR[mois.toLowerCase()];
+    if (moisNum) {
+      const date = `${a}-${moisNum}-${j.padStart(2, '0')}`;
+      if (h !== undefined) {
+        return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
+      }
+      return date;
+    }
+  }
+
+  // Format FR avec tirets : 27-09-2026
+  const frDash = s.match(
+    /^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+  );
+  if (frDash) {
+    const [, j, m, a, h, mn, sec] = frDash;
+    const date = `${a}-${m.padStart(2, '0')}-${j.padStart(2, '0')}`;
+    if (h !== undefined) {
+      return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
+    }
+    return date;
+  }
+
+  // Essayer Date.parse en dernier recours
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 19).replace('T', ' ');
+  }
+
+  console.warn(`⚠️ safeDate: format non reconnu → null : "${s}"`);
+  return null;
 }
 
 // ============================================
@@ -61,21 +149,19 @@ export class ReservationCleanupService {
   // 🔍 HELPERS DE DATE
   // ============================================
   isCampaignFinished(dateFinCampagne: Date | string | null): boolean {
-    if (!dateFinCampagne) return false;
-    const s = String(dateFinCampagne);
-    if (s === '0000-00-00 00:00:00' || s === '0000-00-00') return false;
-    return new Date(dateFinCampagne) < new Date();
+    const safe = safeDate(dateFinCampagne);
+    if (!safe) return false;
+    return new Date(safe) < new Date();
   }
 
   isExpirationPassed(dateExpiration: Date | string | null): boolean {
-    if (!dateExpiration) return false;
-    const s = String(dateExpiration);
-    if (s === '0000-00-00 00:00:00' || s === '0000-00-00') return false;
-    return new Date(dateExpiration) < new Date();
+    const safe = safeDate(dateExpiration);
+    if (!safe) return false;
+    return new Date(safe) < new Date();
   }
 
   // ============================================
-  // 🔒 RÈGLE MÉTIER : Peut-on nettoyer ?
+  // 🔒 RÈGLE MÉTIER
   // ============================================
   canBeCleaned(reservation: any): CleanupCheck {
     const statut = reservation.statut;
@@ -85,7 +171,6 @@ export class ReservationCleanupService {
     const expirationPassee = this.isExpirationPassed(reservation.date_expiration);
     const campagneFinie = this.isCampaignFinished(reservation.date_fin_campagne);
 
-    // CAS 1 : En attente + échéance expirée
     if (statut === 'En attente' && expirationPassee) {
       return {
         ok: true,
@@ -96,7 +181,6 @@ export class ReservationCleanupService {
     }
 
     const estValideeComptable = ['Confirmée', 'ACTIVE', 'En cours'].includes(statut);
-
     if (!estValideeComptable) {
       return {
         ok: false,
@@ -115,7 +199,6 @@ export class ReservationCleanupService {
       };
     }
 
-    // CAS 2 : Campagne terminée AVEC photo → 2 validations
     if (aPhoto) {
       if (chefOk && supervOk) {
         return {
@@ -149,7 +232,6 @@ export class ReservationCleanupService {
       };
     }
 
-    // CAS 3 : Campagne terminée SANS photo → 1 validation
     if (chefOk || supervOk) {
       return {
         ok: true,
@@ -168,7 +250,7 @@ export class ReservationCleanupService {
   }
 
   // ============================================
-  // 🧹 NETTOYAGE PAR BATCH
+  // 🧹 NETTOYAGE
   // ============================================
   async cleanReservationsByBatch(batchSize: number = 50): Promise<CleanupResult> {
     const resultats: CleanupResult = {
@@ -224,7 +306,7 @@ export class ReservationCleanupService {
         } catch (error: any) {
           console.error(
             `❌ Erreur réservation ${reservation.id_reservation}:`,
-            error
+            error.message
           );
           resultats.erreurs++;
         }
@@ -263,6 +345,7 @@ export class ReservationCleanupService {
               : 'validation unique (sans photo)'
           }`;
 
+    // ✅ Toutes les dates passent par safeDate
     await connection.query(
       `INSERT INTO historique_reservation (
         id_reservation, id_client, id_commercial, id_chef_validation,
@@ -284,7 +367,6 @@ export class ReservationCleanupService {
         reservation.id_superviseur,
         reservation.validation_chef_commercial,
         reservation.validation_superviseur,
-        // ✅ Dates protégées
         safeDate(reservation.date_validation_chef),
         safeDate(reservation.date_validation_superviseur),
         reservation.numero_commande,
@@ -307,7 +389,6 @@ export class ReservationCleanupService {
       ]
     );
 
-    // Nettoyer les lignes liées AVANT de supprimer la réservation
     await connection.query(
       'DELETE FROM ligne_reservation WHERE id_reservation = ?',
       [reservation.id_reservation]
@@ -332,7 +413,4 @@ export class ReservationCleanupService {
   }
 }
 
-// ============================================
-// INSTANCE PARTAGÉE
-// ============================================
 export const reservationCleanupService = new ReservationCleanupService();
