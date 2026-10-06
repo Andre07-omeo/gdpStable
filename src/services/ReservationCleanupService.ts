@@ -43,6 +43,17 @@ interface CleanupCheck {
 }
 
 // ============================================
+// ✅ HELPER : convertit '0000-00-00 00:00:00' → NULL
+// ============================================
+function safeDate(d: any): string | null {
+  if (!d) return null;
+  const s = String(d).trim();
+  if (s === '' || s === 'null' || s === 'undefined') return null;
+  if (s === '0000-00-00 00:00:00' || s === '0000-00-00') return null;
+  return s;
+}
+
+// ============================================
 // SERVICE
 // ============================================
 export class ReservationCleanupService {
@@ -51,30 +62,21 @@ export class ReservationCleanupService {
   // ============================================
   isCampaignFinished(dateFinCampagne: Date | string | null): boolean {
     if (!dateFinCampagne) return false;
+    const s = String(dateFinCampagne);
+    if (s === '0000-00-00 00:00:00' || s === '0000-00-00') return false;
     return new Date(dateFinCampagne) < new Date();
   }
 
   isExpirationPassed(dateExpiration: Date | string | null): boolean {
     if (!dateExpiration) return false;
+    const s = String(dateExpiration);
+    if (s === '0000-00-00 00:00:00' || s === '0000-00-00') return false;
     return new Date(dateExpiration) < new Date();
   }
 
   // ============================================
   // 🔒 RÈGLE MÉTIER : Peut-on nettoyer ?
   // ============================================
-  /**
-   * CAS 1 : Réservation "En attente" + échéance expirée
-   *         → Nettoyage direct (jamais validée par la comptabilité)
-   *
-   * CAS 2 : Campagne terminée + AVEC photo
-   *         → 2 validations obligatoires (chef ET superviseur)
-   *
-   * CAS 3 : Campagne terminée + SANS photo
-   *         → 1 validation suffit (chef OU superviseur)
-   *
-   * ⚠️ Une réservation validée par la comptabilité (ACTIVE / Confirmée / En cours)
-   *    ne peut être nettoyée QUE si la campagne est terminée.
-   */
   canBeCleaned(reservation: any): CleanupCheck {
     const statut = reservation.statut;
     const aPhoto = !!reservation.photoCampagneUrl;
@@ -83,10 +85,7 @@ export class ReservationCleanupService {
     const expirationPassee = this.isExpirationPassed(reservation.date_expiration);
     const campagneFinie = this.isCampaignFinished(reservation.date_fin_campagne);
 
-    // ═══════════════════════════════════════════════════════
     // CAS 1 : En attente + échéance expirée
-    //         → Nettoyage direct (non validée par la comptabilité)
-    // ═══════════════════════════════════════════════════════
     if (statut === 'En attente' && expirationPassee) {
       return {
         ok: true,
@@ -96,11 +95,6 @@ export class ReservationCleanupService {
       };
     }
 
-    // ═══════════════════════════════════════════════════════
-    // 🛡️ PROTECTION : Si la réservation a été validée par la
-    //    comptabilité (ACTIVE / Confirmée / En cours), on ne la
-    //    touche QUE si la campagne est terminée.
-    // ═══════════════════════════════════════════════════════
     const estValideeComptable = ['Confirmée', 'ACTIVE', 'En cours'].includes(statut);
 
     if (!estValideeComptable) {
@@ -112,7 +106,6 @@ export class ReservationCleanupService {
       };
     }
 
-    // Si la campagne n'est pas encore terminée → on ne touche pas
     if (!campagneFinie) {
       return {
         ok: false,
@@ -122,9 +115,7 @@ export class ReservationCleanupService {
       };
     }
 
-    // ═══════════════════════════════════════════════════════
     // CAS 2 : Campagne terminée AVEC photo → 2 validations
-    // ═══════════════════════════════════════════════════════
     if (aPhoto) {
       if (chefOk && supervOk) {
         return {
@@ -158,9 +149,7 @@ export class ReservationCleanupService {
       };
     }
 
-    // ═══════════════════════════════════════════════════════
     // CAS 3 : Campagne terminée SANS photo → 1 validation
-    // ═══════════════════════════════════════════════════════
     if (chefOk || supervOk) {
       return {
         ok: true,
@@ -222,7 +211,6 @@ export class ReservationCleanupService {
             continue;
           }
 
-          // ✅ Nettoyage autorisé
           const nouveauStatut = check.motif === 'terminée' ? 'Terminée' : 'Expirée';
 
           await this.moveReservation(
@@ -233,7 +221,7 @@ export class ReservationCleanupService {
             resultats,
             check.cas
           );
-        } catch (error) {
+        } catch (error: any) {
           console.error(
             `❌ Erreur réservation ${reservation.id_reservation}:`,
             error
@@ -270,7 +258,9 @@ export class ReservationCleanupService {
       cas === 1
         ? 'Échéance expirée — aucune validation comptable'
         : `Campagne terminée — ${
-            cas === 2 ? 'double validation (avec photo)' : 'validation unique (sans photo)'
+            cas === 2
+              ? 'double validation (avec photo)'
+              : 'validation unique (sans photo)'
           }`;
 
     await connection.query(
@@ -294,22 +284,23 @@ export class ReservationCleanupService {
         reservation.id_superviseur,
         reservation.validation_chef_commercial,
         reservation.validation_superviseur,
-        reservation.date_validation_chef,
-        reservation.date_validation_superviseur,
+        // ✅ Dates protégées
+        safeDate(reservation.date_validation_chef),
+        safeDate(reservation.date_validation_superviseur),
         reservation.numero_commande,
-        reservation.date_creation,
-        reservation.date_debut_campagne,
-        reservation.date_fin_campagne,
-        reservation.date_expiration,
+        safeDate(reservation.date_creation),
+        safeDate(reservation.date_debut_campagne),
+        safeDate(reservation.date_fin_campagne),
+        safeDate(reservation.date_expiration),
         reservation.statut,
         reservation.est_verrouille,
-        reservation.date_verrouillage,
+        safeDate(reservation.date_verrouillage),
         reservation.notes,
         reservation.photoCampagneUrl,
         reservation.photo_metadata,
         reservation.photo_latitude,
         reservation.photo_longitude,
-        reservation.date_upload_photo,
+        safeDate(reservation.date_upload_photo),
         motifComplet,
         reservation.statut,
         nouveauStatut,
