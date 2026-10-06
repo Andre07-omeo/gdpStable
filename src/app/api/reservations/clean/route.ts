@@ -81,6 +81,7 @@ const CLEANUP_WHERE_CLAUSE = `
     (id_chef_validation IS NULL OR id_chef_validation = 0)
     AND date_expiration IS NOT NULL
     AND date_expiration <> '0000-00-00 00:00:00'
+    AND date_expiration <> '0000-00-00'
     AND NOW() > date_expiration
   )
   OR
@@ -95,6 +96,7 @@ const CLEANUP_WHERE_CLAUSE = `
     AND id_chef_validation IS NOT NULL
     AND id_chef_validation > 0
     AND date_fin_campagne IS NOT NULL
+    AND date_fin_campagne <> '0000-00-00 00:00:00'
     AND date_fin_campagne <> '0000-00-00'
     AND CURDATE() > date_fin_campagne
   )
@@ -130,6 +132,7 @@ export async function POST(request: NextRequest) {
     let terminees = 0;
     let expirees = 0;
     const details: any[] = [];
+    const errors: any[] = [];
 
     for (const r of candidates) {
       try {
@@ -150,10 +153,12 @@ export async function POST(request: NextRequest) {
         const expirationDepassee =
           r.date_expiration &&
           r.date_expiration !== '0000-00-00 00:00:00' &&
+          r.date_expiration !== '0000-00-00' &&
           new Date(r.date_expiration) < new Date();
 
         const campagneTerminee =
           r.date_fin_campagne &&
+          r.date_fin_campagne !== '0000-00-00 00:00:00' &&
           r.date_fin_campagne !== '0000-00-00' &&
           new Date(r.date_fin_campagne) < new Date();
 
@@ -164,13 +169,11 @@ export async function POST(request: NextRequest) {
         if (!aValidation && expirationDepassee) {
           motifComplet = 'Échéance expirée — aucune validation comptable';
           statutFinal = 'Expirée';
-          expirees++;
         }
         // ✅ Priorité 2 : Campagne terminée + photo + validée
         else if (aPhoto && aValidation && campagneTerminee) {
           motifComplet = 'Campagne terminée — validée avec photo';
           statutFinal = 'Terminée';
-          terminees++;
         }
         // Sécurité (ne devrait pas arriver, mais on skip)
         else {
@@ -181,7 +184,7 @@ export async function POST(request: NextRequest) {
         }
 
         // ============================================
-        // 1. Insérer dans l'historique
+        // 1. Insérer dans l'historique (avec NULLIF sur toutes les dates)
         // ============================================
         await connection.query(
           `INSERT INTO historique_reservation (
@@ -199,12 +202,20 @@ export async function POST(request: NextRequest) {
             id_reservation, id_client, id_commercial, id_chef_validation,
             id_chef_commercial, id_superviseur,
             validation_chef_commercial, validation_superviseur,
-            date_validation_chef, date_validation_superviseur,
-            numero_commande, date_creation, date_debut_campagne, date_fin_campagne,
-            date_expiration, statut, est_verrouille, date_verrouillage,
+            NULLIF(NULLIF(date_validation_chef, '0000-00-00 00:00:00'), '0000-00-00'),
+            NULLIF(NULLIF(date_validation_superviseur, '0000-00-00 00:00:00'), '0000-00-00'),
+            numero_commande,
+            NULLIF(NULLIF(date_creation, '0000-00-00 00:00:00'), '0000-00-00'),
+            NULLIF(NULLIF(date_debut_campagne, '0000-00-00 00:00:00'), '0000-00-00'),
+            NULLIF(NULLIF(date_fin_campagne, '0000-00-00 00:00:00'), '0000-00-00'),
+            NULLIF(NULLIF(date_expiration, '0000-00-00 00:00:00'), '0000-00-00'),
+            statut, est_verrouille,
+            NULLIF(NULLIF(date_verrouillage, '0000-00-00 00:00:00'), '0000-00-00'),
             notes, photoCampagneUrl, photo_metadata,
-            photo_latitude, photo_longitude, date_upload_photo,
-            NOW(), ?, statut, ?
+            photo_latitude, photo_longitude,
+            NULLIF(NULLIF(date_upload_photo, '0000-00-00 00:00:00'), '0000-00-00'),
+            NULLIF(NULLIF(date_deplacement, '0000-00-00 00:00:00'), '0000-00-00'),
+            ?, statut, ?
           FROM reservation WHERE id_reservation = ?`,
           [motifComplet, statutFinal, r.id_reservation]
         );
@@ -225,10 +236,15 @@ export async function POST(request: NextRequest) {
           [r.id_reservation]
         );
 
+        // ✅ Compteurs APRÈS succès complet
+        if (statutFinal === 'Terminée') terminees++;
+        else if (statutFinal === 'Expirée') expirees++;
+
         details.push({
           id: r.id_reservation,
           commande: r.numero_commande,
           motif: motifComplet,
+          statut_final: statutFinal,
           a_photo: !!aPhoto,
           a_validation: !!aValidation,
         });
@@ -238,12 +254,20 @@ export async function POST(request: NextRequest) {
           `❌ Erreur nettoyage réservation ${r.id_reservation}:`,
           errResa
         );
+        errors.push({
+          id: r.id_reservation,
+          numero_commande: r.numero_commande,
+          error: errResa.message || String(errResa),
+          code: errResa.code || null,
+        });
       }
     }
 
     await connection.commit();
 
-    console.log(`✅ Nettoyage OK — terminées: ${terminees}, expirées: ${expirees}`);
+    console.log(
+      `✅ Nettoyage OK — terminées: ${terminees}, expirées: ${expirees}, erreurs: ${errors.length}`
+    );
 
     return NextResponse.json({
       success: true,
@@ -252,7 +276,9 @@ export async function POST(request: NextRequest) {
         terminees,
         expirees,
         total: terminees + expirees,
+        erreurs: errors.length,
         details,
+        errors: errors.length > 0 ? errors : undefined,
         traite_a: new Date().toISOString(),
         batch: batchSize,
       },
@@ -312,6 +338,7 @@ export async function GET(request: NextRequest) {
              (id_chef_validation IS NULL OR id_chef_validation = 0)
              AND date_expiration IS NOT NULL
              AND date_expiration <> '0000-00-00 00:00:00'
+             AND date_expiration <> '0000-00-00'
              AND NOW() <= date_expiration
            )
            OR
@@ -323,6 +350,7 @@ export async function GET(request: NextRequest) {
              AND id_chef_validation IS NOT NULL
              AND id_chef_validation > 0
              AND date_fin_campagne IS NOT NULL
+             AND date_fin_campagne <> '0000-00-00 00:00:00'
              AND date_fin_campagne <> '0000-00-00'
              AND CURDATE() <= date_fin_campagne
            )

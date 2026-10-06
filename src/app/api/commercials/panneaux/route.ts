@@ -45,16 +45,11 @@ function hasPhoto(photoUrl: any): boolean {
   return true;
 }
 
-/** Normalise une date en YYYY-MM-DD */
 function toDateStr(d: any): string | null {
   if (!d) return null;
   return String(d).slice(0, 10);
 }
 
-/**
- * ✅ RÈGLE OFFICIELLE pour Occupé ET Réservé :
- *    date_debut <= AUJOURD'HUI <= date_fin
- */
 function isDateInRange(r: any, todayStr: string): boolean {
   const debut = toDateStr(r?.date_debut_campagne);
   const fin = toDateStr(r?.date_fin_campagne);
@@ -62,10 +57,6 @@ function isDateInRange(r: any, todayStr: string): boolean {
   return debut <= todayStr && todayStr <= fin;
 }
 
-/**
- * ✅ RÈGLE OFFICIELLE pour Rés. Future :
- *    date_debut > AUJOURD'HUI
- */
 function isFuture(r: any, todayStr: string): boolean {
   const debut = toDateStr(r?.date_debut_campagne);
   if (!debut) return false;
@@ -80,6 +71,51 @@ function isPending(r: any): boolean {
 function isRejected(r: any): boolean {
   const s = r?.statut;
   return s === 'Expirée' || s === 'Annulée' || s === 'Rejetée';
+}
+
+// ============================================
+// ✅ PARSING DIMENSION "9 x 6" ou "9x6" ou "9 * 6"
+//    Retourne { hauteur_m, largeur_m } en mètres
+// ============================================
+function parseDimension(dim: any): { hauteur_m: number; largeur_m: number } {
+  if (!dim) return { hauteur_m: 0, largeur_m: 0 };
+  const str = String(dim).trim();
+  // Accepte : "9 x 6", "9x6", "9 X 6", "9*6", "9 * 6", "9.5x6.5", "9,5 x 6,5"
+  const match = str.match(/(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)/);
+  if (!match) return { hauteur_m: 0, largeur_m: 0 };
+
+  const a = parseFloat(match[1].replace(',', '.'));
+  const b = parseFloat(match[2].replace(',', '.'));
+  if (isNaN(a) || isNaN(b) || a <= 0 || b <= 0) {
+    return { hauteur_m: 0, largeur_m: 0 };
+  }
+  return { hauteur_m: a, largeur_m: b };
+}
+
+// ============================================
+// ✅ CALCUL DIMENSION FINALE d'une face
+//    Priorité : panneau.dimension > type_face (cm → m)
+// ============================================
+function computeFaceDimension(
+  panneauDimension: any,
+  typeFaceHauteurCm: any,
+  typeFaceLargeurCm: any
+): { hauteur_m: number; largeur_m: number; source: string } {
+  // 1️⃣ Priorité : dimension du PANNEAU
+  const parsed = parseDimension(panneauDimension);
+  if (parsed.hauteur_m > 0 && parsed.largeur_m > 0) {
+    return { hauteur_m: parsed.hauteur_m, largeur_m: parsed.largeur_m, source: 'panneau' };
+  }
+
+  // 2️⃣ Fallback : dimension du TYPE DE FACE (en cm → m)
+  const hCm = parseFloat(String(typeFaceHauteurCm ?? 0).replace(',', '.'));
+  const lCm = parseFloat(String(typeFaceLargeurCm ?? 0).replace(',', '.'));
+  if (hCm > 0 && lCm > 0) {
+    return { hauteur_m: hCm / 100, largeur_m: lCm / 100, source: 'type_face' };
+  }
+
+  // 3️⃣ Rien trouvé
+  return { hauteur_m: 0, largeur_m: 0, source: 'none' };
 }
 
 // ============================================
@@ -215,7 +251,6 @@ export async function GET(request: NextRequest) {
     const [rows] = await connection.execute(sql, params);
     const panneaux = rows as any[];
 
-    // ✅ AUJOURD'HUI en YYYY-MM-DD
     const todayStr = new Date().toISOString().slice(0, 10);
 
     const formattedPanneaux = panneaux.map((panneau: any) => {
@@ -246,18 +281,15 @@ export async function GET(request: NextRequest) {
           const validReservations = reservations.filter((r: any) => !isRejected(r));
 
           // ============================================
-          // ✅ CLASSIFICATION SELON TES RÈGLES EXACTES
+          // ✅ CLASSIFICATION RÉSERVATIONS
           // ============================================
-          // Résa ACTIVE  : date_debut <= today <= date_fin  → Occupé OU Réservé (selon photo)
           const activeReservation =
             validReservations.find((r: any) => isDateInRange(r, todayStr)) || null;
 
-          // Résa FUTURE  : date_debut > today  → Rés. Future
           const futureReservation = activeReservation
             ? null
             : validReservations.find((r: any) => isFuture(r, todayStr)) || null;
 
-          // Résa EN ATTENTE (aucune active ni future)
           const pendingReservation =
             !activeReservation && !futureReservation
               ? validReservations.find((r: any) => isPending(r)) || null
@@ -267,7 +299,7 @@ export async function GET(request: NextRequest) {
             activeReservation || futureReservation || pendingReservation || null;
 
           // ============================================
-          // 🎯 STATUT — TES RÈGLES OFFICIELLES
+          // 🎯 STATUT
           // ============================================
           let status:
             | 'Libre'
@@ -277,35 +309,41 @@ export async function GET(request: NextRequest) {
             | 'Problème' = 'Libre';
 
           if (face.a_probleme === 1) {
-            // 1. Problème prime sur tout
             status = 'Problème';
           } else if (activeReservation) {
-            // 2. Résa ACTIVE (date_debut <= today <= date_fin)
-            //    → Occupé si photo, sinon Réservé
-            status = hasPhoto(activeReservation.photoCampagneUrl)
-              ? 'Occupé'
-              : 'Réservé';
+            status = hasPhoto(activeReservation.photoCampagneUrl) ? 'Occupé' : 'Réservé';
           } else if (futureReservation) {
-            // 3. Résa FUTURE (date_debut > today)
-            //    → Rés. Future (ici affiché comme "Réservé")
             status = 'Réservé';
           } else if (pendingReservation) {
-            // 4. En attente
             status = 'En attente';
           } else {
-            // 5. Libre
             status = 'Libre';
           }
 
           // ============================================
-          // DIMENSION
+          // ✅ DIMENSION CORRIGÉE
+          //    Priorité : panneau.dimension > type_face (cm→m)
           // ============================================
-          const hauteur = face.hauteur_cm || 0;
-          const largeur = face.largeur_cm || 0;
+          const dim = computeFaceDimension(
+            panneau.dimension,
+            face.hauteur_cm,
+            face.largeur_cm
+          );
+
+          const hauteurM = dim.hauteur_m;
+          const largeurM = dim.largeur_m;
+
+          // ✅ Surface en m² = hauteur_m × largeur_m (déjà en mètres)
           let dimensionM2 = 'N/A';
-          if (hauteur > 0 && largeur > 0) {
-            dimensionM2 = ((hauteur * largeur) / 10000).toFixed(2) + ' m²';
+          if (hauteurM > 0 && largeurM > 0) {
+            dimensionM2 = (hauteurM * largeurM).toFixed(2) + ' m²';
           }
+
+          // ✅ Label brut "9.00m × 6.00m" pour l'affichage
+          const dimensionRaw =
+            hauteurM > 0 && largeurM > 0
+              ? `${hauteurM.toFixed(2)}m × ${largeurM.toFixed(2)}m`
+              : '';
 
           const hasProblem = face.a_probleme === 1;
 
@@ -352,10 +390,19 @@ export async function GET(request: NextRequest) {
             date_probleme: face.date_probleme || null,
             raison_probleme: face.raison_probleme || null,
             type_face: face.type_face || 'Non défini',
-            hauteur_cm: face.hauteur_cm || 0,
-            largeur_cm: face.largeur_cm || 0,
             est_scroller: face.est_scroller || 0,
-            dimension_m2: dimensionM2,
+
+            // ✅ Dimensions en mètres (source unique de vérité)
+            hauteur_m: hauteurM,
+            largeur_m: largeurM,
+            dimension_source: dim.source, // 'panneau' | 'type_face' | 'none'
+            dimension_raw: dimensionRaw, // "9.00m × 6.00m"
+            dimension_m2: dimensionM2,   // "54.00 m²"
+
+            // ⚠️ Champs legacy conservés pour compatibilité front
+            hauteur_cm: hauteurM * 100,
+            largeur_cm: largeurM * 100,
+
             status: status,
 
             reservations: hasProblem ? [] : validReservations,

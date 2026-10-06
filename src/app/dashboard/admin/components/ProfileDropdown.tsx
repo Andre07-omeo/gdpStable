@@ -2,11 +2,10 @@
 
 // src/app/dashboard/admin/components/ProfileDropdown.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   ChevronDown, User, KeyRound, Settings, HelpCircle,
   LogOut, Shield, Crown, Mail, BadgeCheck, ShieldCheck,
-  Activity, Sparkles, ExternalLink,
+  ExternalLink,
 } from 'lucide-react';
 
 // ============================================
@@ -92,7 +91,7 @@ function getRoleConfig(profil: string) {
 }
 
 // ============================================
-// COMPOSANT
+// COMPOSANT PRINCIPAL
 // ============================================
 export function ProfileDropdown({
   userName,
@@ -107,6 +106,7 @@ export function ProfileDropdown({
 }: ProfileDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // ✅ Fermeture au clic extérieur / Échap
   useEffect(() => {
@@ -125,6 +125,11 @@ export function ProfileDropdown({
       document.removeEventListener('keydown', handleEscape);
     };
   }, []);
+
+  // ✅ Reset scroll à l'ouverture
+  useEffect(() => {
+    if (isOpen && scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [isOpen]);
 
   // ✅ Initiales
   const initials = useMemo(() => {
@@ -165,13 +170,10 @@ export function ProfileDropdown({
         aria-expanded={isOpen}
         aria-haspopup="true"
       >
-        {/* Avatar avec bordure gradient */}
         <div className="relative">
-          {/* Halo doré pour SUPER_ADMIN */}
           {isSuperAdmin && (
             <div className="absolute -inset-0.5 rounded-full bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600 opacity-60 blur-sm group-hover:opacity-100 transition-opacity duration-300" />
           )}
-          
           <div className={`
             relative w-8 h-8 rounded-full
             bg-gradient-to-br ${isSuperAdmin ? 'from-amber-400 via-orange-500 to-red-500' : 'from-blue-500 via-indigo-500 to-purple-600'}
@@ -182,12 +184,9 @@ export function ProfileDropdown({
           `}>
             {initials}
           </div>
-          
-          {/* Point "online" */}
           <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 rounded-full border-2 border-blue-900 shadow-lg shadow-emerald-500/50 animate-pulse" />
         </div>
 
-        {/* Nom + rôle (desktop) */}
         <div className="hidden lg:block text-left max-w-[130px]">
           <p className="text-xs font-bold text-white truncate leading-tight">
             {userName}
@@ -197,7 +196,6 @@ export function ProfileDropdown({
           </p>
         </div>
 
-        {/* Chevron */}
         <ChevronDown
           className={`w-3.5 h-3.5 text-white/60 transition-transform duration-300 ${
             isOpen ? 'rotate-180' : ''
@@ -206,30 +204,32 @@ export function ProfileDropdown({
       </button>
 
       {/* ============================================
-          DROPDOWN MENU PREMIUM
+          DROPDOWN PREMIUM — FIXED ANCRÉ HAUT+BAS
           ============================================ */}
       {isOpen && (
         <div
           className="
-            absolute right-0 mt-3 w-[340px] sm:w-[360px]
+            fixed right-2 sm:right-4
+            top-[70px]
+            bottom-3
+            w-[calc(100vw-16px)] sm:w-[360px]
             bg-slate-950/95 backdrop-blur-2xl
             border border-white/10
             rounded-2xl
             shadow-2xl shadow-black/60
             overflow-hidden
-            z-[100]
+            flex flex-col
             animate-dropdownIn
           "
+          style={{ zIndex: 100 }}
           role="menu"
         >
-          {/* ---- En-tête profil avec gradient animé ---- */}
-          <div className="relative px-5 pt-5 pb-4 overflow-hidden">
-            {/* Fond décoratif animé */}
+          {/* ─────────── EN-TÊTE FIXE ─────────── */}
+          <div className="relative px-5 pt-5 pb-4 overflow-hidden flex-shrink-0">
             <div className={`absolute inset-0 bg-gradient-to-br ${roleConfig.gradient} opacity-10`} />
             <div className="absolute -top-20 -right-20 w-48 h-48 rounded-full bg-white/5 blur-3xl" />
-            
+
             <div className="relative flex items-start gap-4">
-              {/* Grand avatar */}
               <div className="relative flex-shrink-0">
                 {isSuperAdmin && (
                   <div className="absolute -inset-1 rounded-full bg-gradient-to-br from-amber-400 via-yellow-500 to-orange-500 opacity-70 blur" />
@@ -244,7 +244,6 @@ export function ProfileDropdown({
                 `}>
                   {initials}
                 </div>
-                {/* Couronne pour SUPER_ADMIN */}
                 {isSuperAdmin && (
                   <div className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-gradient-to-br from-amber-300 to-amber-500 flex items-center justify-center shadow-lg ring-2 ring-slate-950">
                     <Crown className="w-3.5 h-3.5 text-blue-950" />
@@ -252,7 +251,6 @@ export function ProfileDropdown({
                 )}
               </div>
 
-              {/* Infos */}
               <div className="min-w-0 flex-1">
                 <p className="text-base font-black text-white truncate leading-tight">
                   {userName || 'Administrateur'}
@@ -263,8 +261,7 @@ export function ProfileDropdown({
                     {userEmail || 'admin@gdp.com'}
                   </p>
                 </div>
-                
-                {/* Badge rôle premium */}
+
                 <div className={`
                   inline-flex items-center gap-1.5 mt-2 
                   px-2.5 py-1 rounded-full 
@@ -280,128 +277,132 @@ export function ProfileDropdown({
             </div>
           </div>
 
-          {/* ---- Séparateur décoratif ---- */}
-          <div className="h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+          <div className="h-px bg-gradient-to-r from-transparent via-white/15 to-transparent flex-shrink-0" />
 
-          {/* ---- Extra actions (modules admin) ---- */}
-          {visibleExtraActions.length > 0 && (
-            <div className="py-2 max-h-[240px] overflow-y-auto dropdown-scroll">
-              <p className="text-[9px] uppercase tracking-widest text-white/30 font-black px-5 py-1.5">
-                Modules
-              </p>
-              {visibleExtraActions.map((action) => (
-                <button
-                  key={action.id}
-                  onClick={handleAction(action.onClick)}
-                  className="
-                    group w-full flex items-center gap-3 px-5 py-2.5
-                    text-white/80 hover:text-white 
-                    hover:bg-gradient-to-r hover:from-white/5 hover:to-transparent
-                    text-[13px] font-medium
-                    transition-all duration-200
-                    relative
-                  "
-                  role="menuitem"
-                >
-                  {/* Barre de surbrillance */}
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 bg-blue-400 rounded-r transition-all duration-300 group-hover:h-full" />
-                  
-                  <span className="flex-shrink-0 text-white/50 group-hover:text-blue-400 transition-colors duration-200">
-                    {action.icon}
-                  </span>
-                  <span className="flex-1 text-left truncate">{action.label}</span>
-                  {action.badge !== undefined && action.badge > 0 && (
-                    <span className="min-w-[20px] h-5 px-1.5 bg-gradient-to-br from-red-500 to-rose-600 text-white rounded-full text-[10px] font-black flex items-center justify-center shadow-lg shadow-red-500/30">
-                      {action.badge > 99 ? '99+' : action.badge}
+          {/* ─────────── ZONE SCROLLABLE UNIQUE ─────────── */}
+          <div
+            ref={scrollRef}
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain dropdown-scroll"
+            style={{
+              WebkitOverflowScrolling: 'touch',
+            }}
+          >
+            {/* ---- Modules ---- */}
+            {visibleExtraActions.length > 0 && (
+              <div className="py-2">
+                <p className="text-[9px] uppercase tracking-widest text-white/30 font-black px-5 py-1.5">
+                  Modules
+                </p>
+                {visibleExtraActions.map((action) => (
+                  <button
+                    key={action.id}
+                    onClick={handleAction(action.onClick)}
+                    className="
+                      group w-full flex items-center gap-3 px-5 py-2.5
+                      text-white/80 hover:text-white 
+                      hover:bg-gradient-to-r hover:from-white/5 hover:to-transparent
+                      text-[13px] font-medium
+                      transition-all duration-200
+                      relative
+                    "
+                    role="menuitem"
+                  >
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 bg-blue-400 rounded-r transition-all duration-300 group-hover:h-full" />
+                    <span className="flex-shrink-0 text-white/50 group-hover:text-blue-400 transition-colors duration-200">
+                      {action.icon}
                     </span>
-                  )}
-                </button>
-              ))}
+                    <span className="flex-1 text-left truncate">{action.label}</span>
+                    {action.badge !== undefined && action.badge > 0 && (
+                      <span className="min-w-[20px] h-5 px-1.5 bg-gradient-to-br from-red-500 to-rose-600 text-white rounded-full text-[10px] font-black flex items-center justify-center shadow-lg shadow-red-500/30">
+                        {action.badge > 99 ? '99+' : action.badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+
+            {/* ---- Mon compte ---- */}
+            <div className="py-2">
+              <p className="text-[9px] uppercase tracking-widest text-white/30 font-black px-5 py-1.5">
+                Mon compte
+              </p>
+
+              {onProfileClick && (
+                <MenuItem
+                  icon={<User size={15} />}
+                  label="Mon profil"
+                  description="Voir mes informations"
+                  onClick={handleAction(onProfileClick)}
+                  color="blue"
+                />
+              )}
+
+              {onChangePasswordClick && (
+                <MenuItem
+                  icon={<KeyRound size={15} />}
+                  label="Changer le mot de passe"
+                  description="Sécurité du compte"
+                  onClick={handleAction(onChangePasswordClick)}
+                  color="amber"
+                />
+              )}
+
+              {onSettingsClick && (
+                <MenuItem
+                  icon={<Settings size={15} />}
+                  label="Paramètres"
+                  description="Préférences personnelles"
+                  onClick={handleAction(onSettingsClick)}
+                  color="violet"
+                />
+              )}
+
+              <MenuItem
+                icon={<HelpCircle size={15} />}
+                label="Aide & Support"
+                description="Documentation, contact"
+                onClick={handleAction(onHelpClick)}
+                color="cyan"
+                external
+              />
             </div>
-          )}
-
-          {/* ---- Séparateur ---- */}
-          <div className="h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
-
-          {/* ---- Actions compte ---- */}
-          <div className="py-2">
-            <p className="text-[9px] uppercase tracking-widest text-white/30 font-black px-5 py-1.5">
-              Mon compte
-            </p>
-
-            {onProfileClick && (
-              <MenuItem
-                icon={<User size={15} />}
-                label="Mon profil"
-                description="Voir mes informations"
-                onClick={handleAction(onProfileClick)}
-                color="blue"
-              />
-            )}
-
-            {onChangePasswordClick && (
-              <MenuItem
-                icon={<KeyRound size={15} />}
-                label="Changer le mot de passe"
-                description="Sécurité du compte"
-                onClick={handleAction(onChangePasswordClick)}
-                color="amber"
-              />
-            )}
-
-            {onSettingsClick && (
-              <MenuItem
-                icon={<Settings size={15} />}
-                label="Paramètres"
-                description="Préférences personnelles"
-                onClick={handleAction(onSettingsClick)}
-                color="violet"
-              />
-            )}
-
-            <MenuItem
-              icon={<HelpCircle size={15} />}
-              label="Aide & Support"
-              description="Documentation, contact"
-              onClick={handleAction(onHelpClick)}
-              color="cyan"
-              external
-            />
           </div>
 
-          {/* ---- Séparateur ---- */}
-          <div className="h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+          {/* ─────────── FOOTER FIXE — DÉCONNEXION ─────────── */}
+          <div className="flex-shrink-0 border-t border-white/10 bg-black/30">
+            <div className="p-2">
+              <button
+                onClick={handleAction(onLogout)}
+                className="
+                  w-full flex items-center gap-3 px-4 py-3
+                  rounded-xl
+                  text-red-400 hover:text-white
+                  bg-red-500/5 hover:bg-gradient-to-r hover:from-red-500 hover:to-rose-600
+                  text-[13px] font-bold
+                  transition-all duration-300
+                  group
+                  shadow-lg shadow-transparent hover:shadow-red-500/30
+                "
+                role="menuitem"
+              >
+                <LogOut size={16} className="flex-shrink-0 transition-transform duration-300 group-hover:-translate-x-0.5" />
+                <span>Se déconnecter</span>
+              </button>
+            </div>
 
-          {/* ---- Déconnexion ---- */}
-          <div className="p-2">
-            <button
-              onClick={handleAction(onLogout)}
-              className="
-                w-full flex items-center gap-3 px-4 py-3
-                rounded-xl
-                text-red-400 hover:text-white
-                bg-red-500/5 hover:bg-gradient-to-r hover:from-red-500 hover:to-rose-600
-                text-[13px] font-bold
-                transition-all duration-300
-                group
-                shadow-lg shadow-transparent hover:shadow-red-500/30
-              "
-              role="menuitem"
-            >
-              <LogOut size={16} className="flex-shrink-0 transition-transform duration-300 group-hover:-translate-x-0.5" />
-              <span>Se déconnecter</span>
-            </button>
-          </div>
-
-          {/* ---- Footer discret ---- */}
-          <div className="px-5 py-2.5 bg-black/30 border-t border-white/5">
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] text-white/30 font-mono uppercase tracking-widest">
-                GDP • v1.0
-              </span>
-              <div className="flex items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[9px] text-emerald-400/80 font-bold">EN LIGNE</span>
+            {/* Footer discret */}
+            <div className="px-5 py-2.5 border-t border-white/5">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] text-white/30 font-mono uppercase tracking-widest">
+                  GDP • v1.0
+                </span>
+                <div className="flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="text-[9px] text-emerald-400/80 font-bold">EN LIGNE</span>
+                </div>
               </div>
             </div>
           </div>
@@ -479,13 +480,12 @@ function MenuItem({
       "
       role="menuitem"
     >
-      {/* Barre de surbrillance */}
       <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 rounded-r transition-all duration-300 group-hover:h-8 ${colorMap[color].split(' ')[1]}`} />
-      
+
       <span className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 bg-white/5 ${colorMap[color]}`}>
         {icon}
       </span>
-      
+
       <div className="flex-1 text-left min-w-0">
         <p className="text-[13px] font-semibold truncate">{label}</p>
         {description && (
