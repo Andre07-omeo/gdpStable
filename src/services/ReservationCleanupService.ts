@@ -43,7 +43,7 @@ interface CleanupCheck {
 }
 
 // ============================================
-// ✅ HELPER ULTIME : convertit n'importe quel format en YYYY-MM-DD[ HH:MM:SS]
+// ✅ HELPER : convertit n'importe quel format en YYYY-MM-DD[ HH:MM:SS]
 // ============================================
 const MOIS_FR: Record<string, string> = {
   janvier: '01',
@@ -66,7 +66,6 @@ const MOIS_FR: Record<string, string> = {
 function safeDate(value: any): string | null {
   if (value === null || value === undefined) return null;
 
-  // Si c'est déjà un objet Date
   if (value instanceof Date) {
     if (isNaN(value.getTime())) return null;
     return value.toISOString().slice(0, 19).replace('T', ' ');
@@ -75,21 +74,18 @@ function safeDate(value: any): string | null {
   const s = String(value).trim();
   if (!s) return null;
 
-  // Valeurs pourries
   if (s === 'null' || s === 'undefined') return null;
   if (s === '0000-00-00' || s === '0000-00-00 00:00:00') return null;
 
-  // Format ISO standard : 2026-09-30 ou 2026-09-30 22:32:22
-  if (/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/.test(s)) {
-    return s;
-  }
+  // Format ISO : 2026-09-30 ou 2026-09-30 22:32:22
+  if (/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/.test(s)) return s;
 
-  // Format ISO avec T : 2026-09-30T22:32:22
+  // Format ISO avec T
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s)) {
     return s.slice(0, 19).replace('T', ' ');
   }
 
-  // Format FR avec slashes : 27/09/2026 ou 27/09/2026 22:32:22
+  // Format FR slash : 27/09/2026 ou 27/09/2026 22:32:22
   const frSlash = s.match(
     /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
   );
@@ -102,7 +98,7 @@ function safeDate(value: any): string | null {
     return date;
   }
 
-  // Format FR avec mois en toutes lettres : 13 novembre 2026
+  // Format FR mois en lettres : 13 novembre 2026
   const frLettres = s.match(
     /^(\d{1,2})\s+([a-zéûôA-ZÉÛÔ]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/i
   );
@@ -118,7 +114,7 @@ function safeDate(value: any): string | null {
     }
   }
 
-  // Format FR avec tirets : 27-09-2026
+  // Format FR tirets : 27-09-2026
   const frDash = s.match(
     /^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
   );
@@ -131,7 +127,7 @@ function safeDate(value: any): string | null {
     return date;
   }
 
-  // Essayer Date.parse en dernier recours
+  // Date.parse en dernier recours
   const parsed = new Date(s);
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().slice(0, 19).replace('T', ' ');
@@ -161,17 +157,39 @@ export class ReservationCleanupService {
   }
 
   // ============================================
-  // 🔒 RÈGLE MÉTIER
+  // 🔒 RÈGLE MÉTIER : Peut-on nettoyer ?
   // ============================================
+  /**
+   * 📋 RÈGLE 1 : Jamais validée + échéance dépassée → Expirée
+   *    - id_chef_validation IS NULL/0
+   *    - date_expiration valide
+   *    - aujourd'hui > date_expiration
+   *
+   * 📋 RÈGLE 2 : Campagne terminée + validations → Terminée
+   *    - date_fin_campagne valide
+   *    - aujourd'hui > date_fin_campagne
+   *    - Si photo → 2 validations (chef + superviseur)
+   *    - Si pas de photo → 1 validation (chef OU superviseur)
+   */
   canBeCleaned(reservation: any): CleanupCheck {
     const statut = reservation.statut;
     const aPhoto = !!reservation.photoCampagneUrl;
     const chefOk = reservation.validation_chef_commercial === 1;
     const supervOk = reservation.validation_superviseur === 1;
+
+    // ⚠️ Utilise id_chef_validation (colonne présente dans la BD)
+    const aValidationCompta =
+      reservation.id_chef_validation !== null &&
+      reservation.id_chef_validation !== undefined &&
+      Number(reservation.id_chef_validation) > 0;
+
     const expirationPassee = this.isExpirationPassed(reservation.date_expiration);
     const campagneFinie = this.isCampaignFinished(reservation.date_fin_campagne);
 
-    if (statut === 'En attente' && expirationPassee) {
+    // ═══════════════════════════════════════════════════════
+    // 📋 RÈGLE 1 : Jamais validée + échéance dépassée
+    // ═══════════════════════════════════════════════════════
+    if (!aValidationCompta && expirationPassee) {
       return {
         ok: true,
         cas: 1,
@@ -180,32 +198,28 @@ export class ReservationCleanupService {
       };
     }
 
-    const estValideeComptable = ['Confirmée', 'ACTIVE', 'En cours'].includes(statut);
-    if (!estValideeComptable) {
-      return {
-        ok: false,
-        cas: null,
-        motif: '',
-        raison: `Statut "${statut}" non éligible au nettoyage`,
-      };
-    }
-
+    // ═══════════════════════════════════════════════════════
+    // 📋 RÈGLE 2 : Campagne terminée + validation(s)
+    // ═══════════════════════════════════════════════════════
     if (!campagneFinie) {
       return {
         ok: false,
         cas: null,
         motif: '',
-        raison: 'Campagne encore active',
+        raison: `Statut "${statut}" — campagne encore active`,
       };
     }
 
+    // Campagne finie : vérifie les validations
+
+    // CAS 2a : AVEC photo → 2 validations obligatoires
     if (aPhoto) {
       if (chefOk && supervOk) {
         return {
           ok: true,
           cas: 2,
           motif: 'terminée',
-          raison: 'Double validation OK (campagne terminée avec photo)',
+          raison: 'Campagne terminée — double validation (avec photo)',
         };
       }
       if (!chefOk && !supervOk) {
@@ -232,12 +246,13 @@ export class ReservationCleanupService {
       };
     }
 
+    // CAS 2b : SANS photo → 1 validation suffit
     if (chefOk || supervOk) {
       return {
         ok: true,
         cas: 3,
         motif: 'terminée',
-        raison: '1 validation suffit (campagne terminée sans photo)',
+        raison: 'Campagne terminée — validation unique (sans photo)',
       };
     }
 
@@ -339,13 +354,15 @@ export class ReservationCleanupService {
     const motifComplet =
       cas === 1
         ? 'Échéance expirée — aucune validation comptable'
-        : `Campagne terminée — ${
-            cas === 2
-              ? 'double validation (avec photo)'
-              : 'validation unique (sans photo)'
-          }`;
+        : cas === 2
+          ? 'Campagne terminée — double validation (avec photo)'
+          : 'Campagne terminée — validation unique (sans photo)';
 
-    // ✅ Toutes les dates passent par safeDate
+    // ⚠️ IMPORTANT : `reservation` n'a PAS les colonnes
+    //    date_deplacement, motif_deplacement, ancien_statut, nouveau_statut.
+    //    Ces 4 colonnes n'existent QUE dans `historique_reservation` et
+    //    doivent être CALCULÉES au moment de l'insertion (pas copiées).
+
     await connection.query(
       `INSERT INTO historique_reservation (
         id_reservation, id_client, id_commercial, id_chef_validation,
@@ -357,7 +374,7 @@ export class ReservationCleanupService {
         notes, photoCampagneUrl, photo_metadata,
         photo_latitude, photo_longitude, date_upload_photo,
         date_deplacement, motif_deplacement, ancien_statut, nouveau_statut
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         reservation.id_reservation,
         reservation.id_client,
@@ -383,9 +400,11 @@ export class ReservationCleanupService {
         reservation.photo_latitude,
         reservation.photo_longitude,
         safeDate(reservation.date_upload_photo),
-        motifComplet,
-        reservation.statut,
-        nouveauStatut,
+        // ✅ Les 4 colonnes "calculées" (n'existent pas dans reservation)
+        new Date(),            // date_deplacement = maintenant
+        motifComplet,          // motif_deplacement = motif calculé
+        reservation.statut,    // ancien_statut = statut avant nettoyage
+        nouveauStatut,         // nouveau_statut = 'Terminée' ou 'Expirée'
       ]
     );
 
