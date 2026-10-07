@@ -8,8 +8,8 @@ import { CartProvider } from '@/context/CartContext';
 export const metadata: Metadata = {
   metadataBase:
     process.env.NODE_ENV === 'production'
-      ? new URL('https://gestiondigitalepanneaux.com/login')
-      : new URL('http://localhost:3000/login'),
+      ? new URL('https://gestiondigitalepanneaux.com')
+      : new URL('http://localhost:3000'),
   title: {
     default: 'Gestion Panneaux',
     template: '%s | Gestion Panneaux',
@@ -20,8 +20,6 @@ export const metadata: Metadata = {
   authors: [{ name: 'Gestion Panneaux Pro' }],
   manifest: '/manifest.json',
   icons: {
-    // ⚠️ favicon.ico doit être placé dans src/app/favicon.ico
-    // Next.js le détecte automatiquement, PAS besoin de le déclarer ici
     icon: [
       { url: '/icons/icon-16x16.png', sizes: '16x16', type: 'image/png' },
       { url: '/icons/icon-32x32.png', sizes: '32x32', type: 'image/png' },
@@ -36,7 +34,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'fr_FR',
-    url: 'https://gestiondigitalepanneaux.com/login',
+    url: 'https://gestiondigitalepanneaux.com',
     siteName: 'Gestion Panneaux',
     title: 'Gestion Panneaux',
     description: 'Application de gestion des panneaux publicitaires',
@@ -83,9 +81,6 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <head>
-        {/* ⚠️ NE PAS remettre les <link rel="icon"> ni <link rel="manifest"> ici
-            → ils sont déjà générés par metadata.icons et metadata.manifest.
-            Doublon = erreur 500 sur favicon.ico */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Panneaux Pro" />
