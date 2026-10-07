@@ -1,12 +1,27 @@
-const CACHE_VERSION = 'v2.3.0';   // ⚠️ IMPORTANT : incrémenter pour forcer la MàJ
+const CACHE_VERSION = 'v2.4.1';   // ⚠️ incrémenté
 const CACHE_NAME = `gestion-panneaux-${CACHE_VERSION}`;
 
-// ⚠️ NE PAS pré-cacher '/' ou '/login' → le navigateur doit gérer les navigations
+// ⚠️ NE PAS pré-cacher '/' ou '/login'
 const PRECACHE_URLS = [
-  '/manifest.json',
+  '/manifest.webmanifest',
+  '/icons/icon-16x16.png',
+  '/icons/icon-32x32.png',
+  '/icons/icon-48x48.png',
+  '/icons/icon-72x72.png',
+  '/icons/icon-96x96.png',
+  '/icons/icon-128x128.png',
+  '/icons/icon-144x144.png',
+  '/icons/icon-152x152.png',
   '/icons/icon-192x192.png',
+  '/icons/icon-384x384.png',
   '/icons/icon-512x512.png',
+  '/icons/maskable-192x192.png',
+  '/icons/maskable-512x512.png',
+  '/icons/apple-touch-icon-180x180.png',
 ];
+
+// ⏱️ Timeout pour les requêtes réseau (évite les blocages)
+const NETWORK_TIMEOUT_MS = 10000;
 
 /* ================================
    DÉTECTION CACHE
@@ -28,7 +43,8 @@ async function isCacheUsable() {
 ================================ */
 const isStaticAsset = (pathname) =>
   pathname.startsWith('/_next/static/') ||
-  /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|avif|woff|woff2|ttf|otf)$/i.test(pathname);
+  pathname.startsWith('/icons/') ||
+  /\.(?:js|css|png|jpg|jpeg|gif|svg|webp|ico|avif|woff|woff2|ttf|otf|webmanifest|json)$/i.test(pathname);
 
 const isApiRequest = (pathname) => pathname.startsWith('/api/');
 const isUploadRequest = (pathname) => pathname.startsWith('/uploads/');
@@ -44,14 +60,21 @@ function resolveStrategy(request, url) {
   if (!isSameOrigin(url)) return 'passthrough';
   if (isApiRequest(url.pathname)) return 'passthrough';
   if (isRangeRequest(request)) return 'passthrough';
-  
+
   // ✅ CRUCIAL : NE JAMAIS intercepter les navigations
-  //    → le navigateur gère les redirections nativement
   if (isNavigationRequest(request)) return 'passthrough';
-  
+
+  // ✅ Les icônes et le manifeste doivent être servis en priorité depuis le cache
+  if (url.pathname.startsWith('/icons/') || url.pathname === '/manifest.webmanifest') {
+    return 'static';
+  }
+
   if (isUploadRequest(url.pathname)) return 'network-only';
   if (isStaticAsset(url.pathname)) return 'static';
-  return 'network-first';
+
+  // ⚠️ Par défaut : passthrough (le navigateur gère nativement)
+  //    On évite networkFirst qui peut bloquer
+  return 'passthrough';
 }
 
 /* ================================
@@ -91,20 +114,43 @@ async function saveResponse(requestOrUrl, response) {
 }
 
 /* ================================
+   FETCH AVEC TIMEOUT
+================================ */
+async function fetchWithTimeout(request, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(
+      new Request(request, {
+        redirect: 'follow',
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+    );
+    clearTimeout(timeoutId);
+    return response;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
+}
+
+/* ================================
    STRATÉGIES
 ================================ */
 async function cacheFirstStatic(request, event) {
   const cached = await safeCacheMatch(request);
   if (cached) {
+    // Revalidation en arrière-plan, mais sans bloquer
     event.waitUntil(
-      fetch(request)
+      fetchWithTimeout(request, NETWORK_TIMEOUT_MS)
         .then((response) => saveResponse(request, response))
         .catch(() => {})
     );
     return cached;
   }
   try {
-    const response = await fetch(request);
+    const response = await fetchWithTimeout(request, NETWORK_TIMEOUT_MS);
     if (response.ok && !response.redirected) {
       event.waitUntil(saveResponse(request, response));
     }
@@ -118,28 +164,9 @@ async function cacheFirstStatic(request, event) {
   }
 }
 
-async function networkFirst(request) {
-  try {
-    const response = await fetch(
-      new Request(request, { redirect: 'follow', cache: 'no-store' })
-    );
-    if (response.ok && !response.redirected) {
-      await saveResponse(request, response);
-    }
-    return response;
-  } catch {
-    const cached = await safeCacheMatch(request);
-    return cached || new Response('', {
-      status: 503,
-      statusText: 'Offline',
-      headers: { 'Content-Type': 'text/plain' },
-    });
-  }
-}
-
 async function networkOnly(request) {
   try {
-    return await fetch(request);
+    return await fetchWithTimeout(request, NETWORK_TIMEOUT_MS);
   } catch {
     return new Response('', {
       status: 503,
@@ -155,7 +182,7 @@ async function networkOnly(request) {
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
-      self.skipWaiting();  // ✅ Forcer l'activation immédiate
+      self.skipWaiting();
       const usable = await isCacheUsable();
       if (!usable) {
         console.warn('[SW] Cache indisponible → precache ignoré');
@@ -229,12 +256,9 @@ self.addEventListener('fetch', (event) => {
     case 'network-only':
       event.respondWith(networkOnly(request));
       break;
-    case 'network-first':
-      event.respondWith(networkFirst(request));
-      break;
     case 'passthrough':
     default:
-      // ✅ Le navigateur gère nativement, Y COMPRIS les navigations
+      // ✅ Le navigateur gère nativement (y compris les navigations et l'API)
       break;
   }
 });
