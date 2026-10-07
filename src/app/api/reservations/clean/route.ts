@@ -53,42 +53,30 @@ function isAuthorized(request: NextRequest): boolean {
 }
 
 // ============================================
-// 🎯 RÈGLES DE NETTOYAGE (SQL réutilisable)
+// 🎯 RÈGLES DE NETTOYAGE
 // ============================================
 /**
- * ✅ RÈGLE 1 : Réservation jamais validée par la compta
- *              ET échéance dépassée
+ * ✅ RÈGLE 1 : Jamais validée + échéance dépassée → Expirée
+ *    - id_chef_validation IS NULL/0
+ *    - date_expiration IS NOT NULL
+ *    - NOW() > date_expiration
  *
- * Conditions :
- *   - id_chef_validation IS NULL (ou 0)
- *   - date_expiration valide (pas NULL, pas '0000-00-00')
- *   - AUJOURD'HUI > date_expiration
- *   → indépendant du statut
+ * ✅ RÈGLE 2 : Campagne terminée + photo + validée → Terminée
+ *    - photoCampagneUrl valide
+ *    - id_chef_validation > 0
+ *    - date_fin_campagne IS NOT NULL
+ *    - CURDATE() > date_fin_campagne
  *
- * ✅ RÈGLE 2 : Campagne terminée + photo + validée
- *
- * Conditions :
- *   - photoCampagneUrl valide (non vide)
- *   - id_chef_validation NON NULL et > 0
- *   - AUJOURD'HUI > date_fin_campagne
- *   → indépendant du statut
+ * ⚠️ AUCUNE comparaison à '0000-00-00' (interdit en mode STRICT MySQL 8+)
  */
 const CLEANUP_WHERE_CLAUSE = `
   (
-    -- ═══════════════════════════════════════════════
-    -- RÈGLE 1 : Jamais validée + échéance dépassée
-    -- ═══════════════════════════════════════════════
     (id_chef_validation IS NULL OR id_chef_validation = 0)
     AND date_expiration IS NOT NULL
-    AND date_expiration <> '0000-00-00 00:00:00'
-    AND date_expiration <> '0000-00-00'
     AND NOW() > date_expiration
   )
   OR
   (
-    -- ═══════════════════════════════════════════════
-    -- RÈGLE 2 : Campagne terminée + photo + validée
-    -- ═══════════════════════════════════════════════
     photoCampagneUrl IS NOT NULL
     AND TRIM(photoCampagneUrl) <> ''
     AND LOWER(TRIM(photoCampagneUrl)) <> 'null'
@@ -96,8 +84,6 @@ const CLEANUP_WHERE_CLAUSE = `
     AND id_chef_validation IS NOT NULL
     AND id_chef_validation > 0
     AND date_fin_campagne IS NOT NULL
-    AND date_fin_campagne <> '0000-00-00 00:00:00'
-    AND date_fin_campagne <> '0000-00-00'
     AND CURDATE() > date_fin_campagne
   )
 `;
@@ -120,7 +106,7 @@ export async function POST(request: NextRequest) {
     connection = await pool.getConnection();
     await connection.beginTransaction();
 
-    // 🔒 SÉLECTION DES CANDIDATS (basée uniquement sur dates + validations)
+    // 🔒 SÉLECTION DES CANDIDATS
     const [candidates] = await connection.query<RowDataPacket[]>(
       `SELECT * FROM reservation
        WHERE ${CLEANUP_WHERE_CLAUSE}
@@ -150,33 +136,23 @@ export async function POST(request: NextRequest) {
           r.id_chef_validation !== undefined &&
           Number(r.id_chef_validation) > 0;
 
+        // ✅ Vérifie juste que la date existe et est valide côté JS
         const expirationDepassee =
-          r.date_expiration &&
-          r.date_expiration !== '0000-00-00 00:00:00' &&
-          r.date_expiration !== '0000-00-00' &&
-          new Date(r.date_expiration) < new Date();
+          r.date_expiration && new Date(r.date_expiration) < new Date();
 
         const campagneTerminee =
-          r.date_fin_campagne &&
-          r.date_fin_campagne !== '0000-00-00 00:00:00' &&
-          r.date_fin_campagne !== '0000-00-00' &&
-          new Date(r.date_fin_campagne) < new Date();
+          r.date_fin_campagne && new Date(r.date_fin_campagne) < new Date();
 
         let motifComplet: string;
         let statutFinal: string;
 
-        // ✅ Priorité 1 : Jamais validée + expirée
         if (!aValidation && expirationDepassee) {
           motifComplet = 'Échéance expirée — aucune validation comptable';
           statutFinal = 'Expirée';
-        }
-        // ✅ Priorité 2 : Campagne terminée + photo + validée
-        else if (aPhoto && aValidation && campagneTerminee) {
+        } else if (aPhoto && aValidation && campagneTerminee) {
           motifComplet = 'Campagne terminée — validée avec photo';
           statutFinal = 'Terminée';
-        }
-        // Sécurité (ne devrait pas arriver, mais on skip)
-        else {
+        } else {
           console.warn(
             `⚠️ Réservation ${r.id_reservation} matchée mais ne respecte pas les règles — SKIP`
           );
@@ -184,7 +160,10 @@ export async function POST(request: NextRequest) {
         }
 
         // ============================================
-        // 1. Insérer dans l'historique (avec NULLIF sur toutes les dates)
+        // 1. INSERT dans l'historique
+        //    ⚠️ PAS de NULLIF, PAS de '0000-00-00'
+        //    ⚠️ On ne copie PAS date_deplacement/motif_deplacement/ancien_statut/nouveau_statut
+        //       car ces colonnes n'existent QUE dans historique_reservation.
         // ============================================
         await connection.query(
           `INSERT INTO historique_reservation (
@@ -202,20 +181,12 @@ export async function POST(request: NextRequest) {
             id_reservation, id_client, id_commercial, id_chef_validation,
             id_chef_commercial, id_superviseur,
             validation_chef_commercial, validation_superviseur,
-            NULLIF(NULLIF(date_validation_chef, '0000-00-00 00:00:00'), '0000-00-00'),
-            NULLIF(NULLIF(date_validation_superviseur, '0000-00-00 00:00:00'), '0000-00-00'),
-            numero_commande,
-            NULLIF(NULLIF(date_creation, '0000-00-00 00:00:00'), '0000-00-00'),
-            NULLIF(NULLIF(date_debut_campagne, '0000-00-00 00:00:00'), '0000-00-00'),
-            NULLIF(NULLIF(date_fin_campagne, '0000-00-00 00:00:00'), '0000-00-00'),
-            NULLIF(NULLIF(date_expiration, '0000-00-00 00:00:00'), '0000-00-00'),
-            statut, est_verrouille,
-            NULLIF(NULLIF(date_verrouillage, '0000-00-00 00:00:00'), '0000-00-00'),
+            date_validation_chef, date_validation_superviseur,
+            numero_commande, date_creation, date_debut_campagne, date_fin_campagne,
+            date_expiration, statut, est_verrouille, date_verrouillage,
             notes, photoCampagneUrl, photo_metadata,
-            photo_latitude, photo_longitude,
-            NULLIF(NULLIF(date_upload_photo, '0000-00-00 00:00:00'), '0000-00-00'),
-            NULLIF(NULLIF(date_deplacement, '0000-00-00 00:00:00'), '0000-00-00'),
-            ?, statut, ?
+            photo_latitude, photo_longitude, date_upload_photo,
+            NOW(), ?, statut, ?
           FROM reservation WHERE id_reservation = ?`,
           [motifComplet, statutFinal, r.id_reservation]
         );
@@ -236,7 +207,7 @@ export async function POST(request: NextRequest) {
           [r.id_reservation]
         );
 
-        // ✅ Compteurs APRÈS succès complet
+        // ✅ Compteurs
         if (statutFinal === 'Terminée') terminees++;
         else if (statutFinal === 'Expirée') expirees++;
 
@@ -249,10 +220,9 @@ export async function POST(request: NextRequest) {
           a_validation: !!aValidation,
         });
       } catch (errResa: any) {
-        // ⚠️ Une erreur sur une résa ne bloque pas les autres
         console.error(
           `❌ Erreur nettoyage réservation ${r.id_reservation}:`,
-          errResa
+          errResa.message || errResa
         );
         errors.push({
           id: r.id_reservation,
@@ -283,18 +253,18 @@ export async function POST(request: NextRequest) {
         batch: batchSize,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     if (connection) {
       try {
         await connection.rollback();
       } catch {}
     }
-    console.error('❌ Erreur nettoyage:', error);
+    console.error('❌ Erreur nettoyage:', error.message || error);
     return NextResponse.json(
       {
         success: false,
         error: 'Erreur lors du nettoyage',
-        details: error instanceof Error ? error.message : 'Erreur inconnue',
+        details: error.message || 'Erreur inconnue',
       },
       { status: 500 }
     );
@@ -325,7 +295,7 @@ export async function GET(request: NextRequest) {
        WHERE ${CLEANUP_WHERE_CLAUSE}`
     );
 
-    // Réservations EN ATTENTE (non nettoyables actuellement)
+    // Réservations EN ATTENTE
     const [enAttente] = await connection.query<RowDataPacket[]>(
       `SELECT id_reservation, numero_commande, statut, photoCampagneUrl,
               id_chef_validation, validation_chef_commercial, validation_superviseur,
@@ -333,16 +303,12 @@ export async function GET(request: NextRequest) {
        FROM reservation
        WHERE NOT (${CLEANUP_WHERE_CLAUSE})
          AND (
-           -- En attente d'expiration (jamais validée)
            (
              (id_chef_validation IS NULL OR id_chef_validation = 0)
              AND date_expiration IS NOT NULL
-             AND date_expiration <> '0000-00-00 00:00:00'
-             AND date_expiration <> '0000-00-00'
              AND NOW() <= date_expiration
            )
            OR
-           -- Validée + photo + campagne pas encore terminée
            (
              photoCampagneUrl IS NOT NULL
              AND TRIM(photoCampagneUrl) <> ''
@@ -350,8 +316,6 @@ export async function GET(request: NextRequest) {
              AND id_chef_validation IS NOT NULL
              AND id_chef_validation > 0
              AND date_fin_campagne IS NOT NULL
-             AND date_fin_campagne <> '0000-00-00 00:00:00'
-             AND date_fin_campagne <> '0000-00-00'
              AND CURDATE() <= date_fin_campagne
            )
          )`
@@ -399,19 +363,19 @@ export async function GET(request: NextRequest) {
       en_attente: formatDetails(enAttente),
       regles: {
         cas1:
-          'NON validée par la compta (id_chef_validation NULL/0) + échéance dépassée (NOW() > date_expiration) → nettoyage direct',
+          'NON validée par la compta (id_chef_validation NULL/0) + échéance dépassée → nettoyage direct',
         cas2:
-          'Campagne terminée (CURDATE() > date_fin_campagne) + photo présente + validée (id_chef_validation > 0) → nettoyage',
+          'Campagne terminée + photo présente + validée (id_chef_validation > 0) → nettoyage',
         protection:
           'Les statuts ne sont PLUS pris en compte : uniquement dates + validations',
       },
     });
-  } catch (error) {
-    console.error('❌ Erreur simulation:', error);
+  } catch (error: any) {
+    console.error('❌ Erreur simulation:', error.message || error);
     return NextResponse.json(
       {
         error: 'Erreur simulation',
-        details: error instanceof Error ? error.message : 'Erreur',
+        details: error.message || 'Erreur',
       },
       { status: 500 }
     );
