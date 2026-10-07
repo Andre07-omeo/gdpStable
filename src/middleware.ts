@@ -231,9 +231,20 @@ export function middleware(request: NextRequest) {
   response.headers.set('X-Middleware', 'pass');
   return response;
 }
-
 export const config = {
+  /*
+   * Matcher simplifié et robuste.
+   * Exclut :
+   *  - les fichiers statiques Next.js (_next/static, _next/image)
+   *  - le favicon
+   *  - les assets PWA (icons/, manifest.json, sw.js)
+   *  - les fichiers SEO (robots.txt, sitemap.xml)
+   *  - les fichiers statiques classiques (images, fonts, css, js)
+   *
+   * Inclut explicitement "/" et toutes les autres routes.
+   */
   matcher: [
-    '/((?!_next/static|_next/image|favicon\\.ico|manifest\\.json|sw\\.js|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf|eot|map)$).*)',
+    '/',
+    '/((?!_next/static|_next/image|favicon\\.ico|icons/|manifest\\.json|sw\\.js|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf|eot|map)$).*)',
   ],
 };
