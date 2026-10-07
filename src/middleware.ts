@@ -88,7 +88,7 @@ export function middleware(request: NextRequest) {
   // ============================================
   if (
     pathname === '/sw.js' ||
-    pathname === '/manifest.json' ||
+    pathname === '/manifest.webmanifest' ||
     pathname === '/favicon.ico' ||
     pathname === '/robots.txt' ||
     pathname === '/sitemap.xml' ||
@@ -245,6 +245,6 @@ export const config = {
    */
   matcher: [
     '/',
-    '/((?!_next/static|_next/image|favicon\\.ico|icons/|manifest\\.json|sw\\.js|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf|eot|map)$).*)',
+    '/((?!_next/static|_next/image|favicon\\.ico|icons/|manifest\\.json|manifest\\.webmanifest|sw\\.js|robots\\.txt|sitemap\\.xml|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf|eot|map)$).*)',
   ],
 };
