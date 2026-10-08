@@ -25,6 +25,8 @@ interface MapComponentProps {
   panneaux: any[];
   userLocation: { lat: number; lng: number } | null;
   onMarkerClick: (panneau: any) => void;
+  hideInfoWindow?: boolean; // ✅ nouvelle prop optionnelle
+
 }
 
 const DEFAULT_CENTER = { lat: -4.325, lng: 15.322 };
@@ -111,11 +113,10 @@ function MapModeSwitcher({
         <button
           key={opt.id}
           onClick={() => onChange(opt.id)}
-          className={`flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-full text-[10px] sm:text-xs font-bold transition-all active:scale-95 ${
-            mode === opt.id
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'text-gray-600 hover:bg-gray-100'
-          }`}
+          className={`flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-full text-[10px] sm:text-xs font-bold transition-all active:scale-95 ${mode === opt.id
+            ? 'bg-blue-600 text-white shadow-md'
+            : 'text-gray-600 hover:bg-gray-100'
+            }`}
           title={opt.label}
         >
           <span className="text-sm sm:text-base leading-none">{opt.icon}</span>
@@ -265,7 +266,11 @@ export default function MapComponent({
                 key={panneau.id_panneau}
                 position={{ lat: panneau.latitude, lng: panneau.longitude }}
                 zIndex={isPulsing ? 1500 : 1000}
-                onClick={() => setOpenId(panneau.id_panneau)}
+                onClick={() => {
+                  setOpenId(panneau.id_panneau);
+                  onMarkerClick(panneau);
+                }
+                }
               >
                 <div className="relative flex items-center justify-center">
                   {isPulsing && (
@@ -302,13 +307,12 @@ export default function MapComponent({
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1 text-[9px] sm:text-[10px]">
                   <span
-                    className={`px-1.5 py-0.5 rounded-full font-medium ${
-                      openPanneau.etat === 'Actif'
-                        ? 'bg-green-100 text-green-700'
-                        : openPanneau.etat === 'EnMaintenance'
+                    className={`px-1.5 py-0.5 rounded-full font-medium ${openPanneau.etat === 'Actif'
+                      ? 'bg-green-100 text-green-700'
+                      : openPanneau.etat === 'EnMaintenance'
                         ? 'bg-amber-100 text-amber-700'
                         : 'bg-red-100 text-red-700'
-                    }`}
+                      }`}
                   >
                     {openPanneau.etat || 'Actif'}
                   </span>

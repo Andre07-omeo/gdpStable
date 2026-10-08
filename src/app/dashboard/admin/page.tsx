@@ -9,7 +9,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import {
   MapPin, Calendar, Users, BarChart3,
   HelpCircle, Loader2, Server, Shield, UserCog, Building2,
-  Construction, ArrowLeft, Activity,
+  Construction, ArrowLeft, Activity, Map as MapIcon,
 } from 'lucide-react';
 import LayoutWrapper from '@/components/layout/LayoutWrapper';
 import { AdminHeader } from './components/AdminHeader';
@@ -19,6 +19,8 @@ import { AdminReservationsList } from './components/AdminReservationsList';
 import { AdminSupport } from './components/AdminSupport';
 import UsersManagementPage from './users/page';
 import AdminSystemPage from './system/page';
+
+import AdminCarteView from './components/AdminCarteView'; // ✅ AJOUT
 
 // ✅ MODALES
 import { ProfileModal } from './components/profile/ProfileModal';
@@ -49,6 +51,7 @@ const VALID_TABS = [
   'panneaux',
   'reservations',
   'users',
+  'carte',
   'superviseurs',
   'localisation',
   'admin-system',
@@ -208,6 +211,8 @@ function AdminDashboardContent() {
     { id: 'dashboard', label: 'Monitoring', icon: Activity },
     { id: 'statistiques', label: 'Statistiques', icon: BarChart3 },
     { id: 'panneaux', label: 'Panneaux', icon: MapPin },
+    { id: 'carte', label: 'Carte', icon: MapIcon }, // ✅ AJOUT
+
     { id: 'reservations', label: 'Réservations', icon: Calendar },
     { id: 'users', label: 'Utilisateurs', icon: Users },
     { id: 'support', label: 'Support', icon: HelpCircle },
@@ -227,6 +232,14 @@ function AdminDashboardContent() {
             panneaux={panneaux}
             onRefresh={handleRefresh}
             onEdit={(p) => setEditingPanneau(p as unknown as Panneau)}
+          />
+        );
+      case 'carte': // ✅ AJOUT
+        return (
+          <AdminCarteView
+            panneaux={panneaux}
+            loading={statsLoading}
+            onRefresh={handleRefresh}
           />
         );
       case 'reservations':
@@ -313,11 +326,10 @@ function AdminDashboardContent() {
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setActiveModule(item.id)}
-                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition whitespace-nowrap flex-shrink-0 ${
-                      isActive
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
-                        : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
-                    }`}
+                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-bold transition whitespace-nowrap flex-shrink-0 ${isActive
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
+                      : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+                      }`}
                   >
                     <Icon size={16} className="flex-shrink-0" />
                     <span>{item.label}</span>
