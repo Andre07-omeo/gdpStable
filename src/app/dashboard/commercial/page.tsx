@@ -136,6 +136,15 @@ type TabKey =
   | 'reservations';
 
 // ============================================
+// ✅ PROFILS AUTORISÉS À GÉRER LES RÉSERVATIONS
+// ============================================
+const RESERVATIONS_MANAGEMENT_ALLOWED_PROFILS = [
+  'CHEF_COMMERCIAL',
+  'DG',
+  'PDG',
+];
+
+// ============================================
 // 🆕 COMPOSANT INTERNE : ONGLET NOTIFICATIONS
 // ============================================
 function NotificationsTab({ user }: { user: any }) {
@@ -471,7 +480,7 @@ function CleanupBanner({
 
   return (
     <div
-      className={`mt-2 sm:mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 border rounded-lg px-3 sm:px-4 py-2 text-sm ${bg} ${text}`}
+      className={`mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 border rounded-lg px-3 sm:px-4 py-2 text-sm ${bg} ${text}`}
     >
       <div className="flex items-center gap-2 min-w-0">
         <span className="flex-shrink-0">{icon}</span>
@@ -520,14 +529,40 @@ function CommercialDashboardInner() {
 
   const features = user ? getFeaturesByProfil(user.profil) : null;
 
+  // ✅ Vérification du droit de gérer les réservations
+  const canManageReservations = useMemo(() => {
+    const profil: string | undefined = user?.profil;
+    if (!profil) return false;
+    return RESERVATIONS_MANAGEMENT_ALLOWED_PROFILS.includes(profil);
+  }, [user?.profil]);
+
   const initialTab = (searchParams.get('tab') as TabKey) || 'dashboard';
+
+  // ✅ TABS AUTORISÉS (réservations conditionnel)
+  const allowedTabs: TabKey[] = useMemo(() => {
+    const base: TabKey[] = [
+      'dashboard',
+      'catalogue',
+      'map',
+      'pending',
+      'notifications',
+    ];
+    if (canManageReservations) {
+      base.push('reservations');
+    }
+    return base;
+  }, [canManageReservations]);
+
   const [activeTab, setActiveTab] = useState<TabKey>(
-    ['dashboard', 'catalogue', 'map', 'pending', 'reservations', 'notifications'].includes(
-      initialTab
-    )
-      ? initialTab
-      : 'dashboard'
+    allowedTabs.includes(initialTab) ? initialTab : 'dashboard'
   );
+
+  // ✅ Si le rôle change (ou accès interdit), revenir au dashboard
+  useEffect(() => {
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab('dashboard');
+    }
+  }, [allowedTabs, activeTab]);
 
   const handleTabChange = useCallback((tab: TabKey) => {
     setActiveTab(tab);
@@ -544,6 +579,9 @@ function CommercialDashboardInner() {
   const [cleanupStatus, setCleanupStatus] = useState<CleanupStatus>({
     kind: 'idle',
   });
+
+  // ✅ Ref pour éviter les doublons DANS LE MÊME MONTAGE
+  const cleanupHasRunRef = useRef(false);
 
   const [selectedFaceId, setSelectedFaceId] = useState<number | null>(null);
   const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
@@ -571,6 +609,9 @@ function CommercialDashboardInner() {
   } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
+  // ============================================
+  // 📥 CHARGEMENT DES NOTIFICATIONS
+  // ============================================
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
@@ -589,6 +630,9 @@ function CommercialDashboardInner() {
     }
   }, [user]);
 
+  // ============================================
+  // 📥 CHARGEMENT DES RÉSERVATIONS
+  // ============================================
   const reloadReservationsMap = useCallback(async () => {
     try {
       const map = await loadReservationsByFace();
@@ -608,6 +652,9 @@ function CommercialDashboardInner() {
     };
   }, []);
 
+  // ============================================
+  // 🔔 POLLING DES NOTIFICATIONS
+  // ============================================
   useEffect(() => {
     if (!user) return;
 
@@ -629,11 +676,20 @@ function CommercialDashboardInner() {
     };
   }, [user, loadNotifications]);
 
+  // ============================================
+  // 🧹 FONCTION DE NETTOYAGE — VERSION CORRIGÉE
+  // ✅ PLUS de sessionStorage (bloquait tout)
+  // ✅ Anti-doublon uniquement dans le même montage
+  // ============================================
   const executerNettoyage = useCallback(
     async (force: boolean = false) => {
-      const dejaFait = sessionStorage.getItem('nettoyage_reservations_fait');
-      if (!force && dejaFait) return;
+      // ⏭️ Si déjà en cours, ne rien faire
+      if (cleanupStatus.kind === 'running') {
+        console.log('⏭️ [Nettoyage] Déjà en cours');
+        return;
+      }
 
+      console.log('🧹 [Nettoyage] Début...', { force });
       setCleanupStatus({ kind: 'running' });
 
       try {
@@ -647,6 +703,12 @@ function CommercialDashboardInner() {
           body: JSON.stringify({ batch: 50 }),
         });
 
+        console.log(
+          '📥 [Nettoyage] Réponse:',
+          response.status,
+          response.statusText
+        );
+
         if (!response.ok) {
           const txt = await response.text().catch(() => '');
           throw new Error(
@@ -655,38 +717,93 @@ function CommercialDashboardInner() {
         }
 
         const result = await response.json();
+        console.log('✅ [Nettoyage] Résultat:', result);
 
         const terminees = Number(result?.data?.terminees ?? 0);
         const expirees = Number(result?.data?.expirees ?? 0);
 
         if (terminees === 0 && expirees === 0) {
+          console.log('ℹ️ [Nettoyage] Rien à nettoyer');
           setCleanupStatus({ kind: 'empty' });
         } else {
+          console.log(
+            `🎉 [Nettoyage] ${terminees} terminée(s), ${expirees} expirée(s)`
+          );
           setCleanupStatus({ kind: 'success', terminees, expirees });
-          refresh();
-          reloadReservationsMap();
-        }
 
-        sessionStorage.setItem('nettoyage_reservations_fait', 'true');
+          // ✅ Attendre 800ms puis rafraîchir les données
+          setTimeout(async () => {
+            console.log('🔄 [Nettoyage] Rafraîchissement des données...');
+            try {
+              await Promise.all([
+                Promise.resolve(refresh()),
+                reloadReservationsMap(),
+              ]);
+              console.log('✅ [Nettoyage] Données rafraîchies');
+            } catch (err) {
+              console.error('❌ [Nettoyage] Erreur refresh:', err);
+            }
+          }, 800);
+        }
       } catch (err: any) {
-        console.error('❌ Nettoyage auto échoué:', err?.message || err);
+        console.error('❌ [Nettoyage] Erreur:', err?.message || err);
         setCleanupStatus({
           kind: 'error',
           message: err?.message || 'Erreur inconnue',
         });
       }
     },
-    [refresh, reloadReservationsMap]
+    [refresh, reloadReservationsMap, cleanupStatus.kind]
   );
 
+  // ============================================
+  // 🧹 DÉCLENCHEMENT AUTO DU NETTOYAGE
+  // ✅ Se lance à CHAQUE montage (rechargement, navigation)
+  // ✅ Anti-doublon via useRef dans le même montage
+  // ============================================
   useEffect(() => {
-    const t = setTimeout(() => {
-      executerNettoyage(false);
-    }, 2000);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    console.log('🔵 [Auto-Nettoyage] useEffect déclenché', {
+      loading,
+      hasRun: cleanupHasRunRef.current,
+      status: cleanupStatus.kind,
+    });
 
+    // ⏳ Attendre la fin du chargement
+    if (loading) {
+      console.log('⏳ [Auto-Nettoyage] En attente du chargement...');
+      return;
+    }
+
+    // ⏭️ Anti-doublon DANS LE MÊME MONTAGE
+    if (cleanupHasRunRef.current) {
+      console.log('⏭️ [Auto-Nettoyage] Déjà lancé dans ce montage');
+      return;
+    }
+
+    // ⏭️ Si déjà en cours
+    if (cleanupStatus.kind === 'running') {
+      console.log('⏭️ [Auto-Nettoyage] Déjà en cours');
+      return;
+    }
+
+    // ✅ Marquer comme lancé
+    cleanupHasRunRef.current = true;
+
+    // ⏱️ Attendre 1.5s avant de lancer
+    const t = setTimeout(() => {
+      console.log('🚀 [Auto-Nettoyage] Lancement...');
+      executerNettoyage(false);
+    }, 1500);
+
+    return () => {
+      console.log('🧹 [Auto-Nettoyage] Cleanup du timer');
+      clearTimeout(t);
+    };
+  }, [loading, cleanupStatus.kind, executerNettoyage]);
+
+  // ============================================
+  // 📍 GÉOLOCALISATION
+  // ============================================
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocationError('GPS non supporté');
@@ -703,6 +820,9 @@ function CommercialDashboardInner() {
     );
   }, []);
 
+  // ============================================
+  // 🎯 ACTIONS
+  // ============================================
   const openFaceDetails = (
     panneau: CommercialPanneau,
     face: CommercialFace
@@ -777,6 +897,9 @@ function CommercialDashboardInner() {
     handleTabChange('notifications');
   };
 
+  // ============================================
+  // 📊 STATS CARDS
+  // ============================================
   const statsCards = [
     {
       label: 'Panneaux',
@@ -808,12 +931,6 @@ function CommercialDashboardInner() {
       icon: <Calendar size={12} />,
       color: 'amber' as const,
     },
-    {
-      label: 'Rés. Futures',
-      value: stats.totalReservationsFutures || 0,
-      icon: <BarChart3 size={12} />,
-      color: 'purple' as const,
-    },
   ];
 
   const unreadCount = useMemo(
@@ -843,6 +960,57 @@ function CommercialDashboardInner() {
     return filterPanneaux(transformedPanneaux, filters, reservationsMap);
   }, [transformedPanneaux, filters, reservationsMap]);
 
+  // ✅ TABS dynamiques
+  const tabs = useMemo(() => {
+    const baseTabs = [
+      {
+        key: 'dashboard' as TabKey,
+        icon: <LayoutDashboard size={16} />,
+        label: 'Tableau de bord',
+        shortLabel: 'Tableau',
+      },
+      {
+        key: 'catalogue' as TabKey,
+        icon: <span>📸</span>,
+        label: 'Catalogue',
+        shortLabel: 'Catalogue',
+      },
+      {
+        key: 'map' as TabKey,
+        icon: <Map size={16} />,
+        label: 'Carte interactive',
+        shortLabel: 'Carte',
+      },
+      {
+        key: 'pending' as TabKey,
+        icon: <Clock size={16} />,
+        label: 'Réservations',
+        shortLabel: 'Réserv.',
+      },
+    ];
+
+    if (canManageReservations) {
+      baseTabs.push({
+        key: 'reservations' as TabKey,
+        icon: <ClipboardCheck size={16} />,
+        label: 'Gestion des réservations',
+        shortLabel: 'Gestion',
+      });
+    }
+
+    baseTabs.push({
+      key: 'notifications' as TabKey,
+      icon: <Bell size={16} />,
+      label: 'Notifications',
+      shortLabel: 'Notifs',
+    });
+
+    return baseTabs;
+  }, [canManageReservations]);
+
+  // ============================================
+  // ⚠️ EARLY RETURNS — APRÈS TOUS LES HOOKS
+  // ============================================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -876,50 +1044,9 @@ function CommercialDashboardInner() {
     );
   }
 
-  // ✅ TABS : libellés en toutes lettres + responsive
-  const tabs = [
-    {
-      key: 'dashboard' as TabKey,
-      icon: <LayoutDashboard size={16} />,
-      label: 'Tableau de bord',
-      shortLabel: 'Tableau',
-    },
-    {
-      key: 'catalogue' as TabKey,
-      icon: <span>📸</span>,
-      label: 'Catalogue',
-      shortLabel: 'Catalogue',
-    },
-    {
-      key: 'map' as TabKey,
-      icon: <Map size={16} />,
-      label: 'Carte interactive',
-      shortLabel: 'Carte',
-    },
-    {
-      key: 'pending' as TabKey,
-      icon: <Clock size={16} />,
-      label: 'Réservations',
-      shortLabel: 'Réserv.',
-    },
-    {
-      key: 'reservations' as TabKey,
-      icon: <ClipboardCheck size={16} />,
-      label: 'Gestion des réservations',
-      shortLabel: 'Gestion',
-    },
-    {
-      key: 'notifications' as TabKey,
-      icon: <Bell size={16} />,
-      label: 'Notifications',
-      shortLabel: 'Notifs',
-    },
-  ];
-
   return (
-    // ✅ STRUCTURE : flex-col + h-[100dvh] pour que la carte (onglet map) prenne toute la hauteur
     <div className="flex flex-col h-[100dvh] w-full bg-gray-50 overflow-hidden">
-      {/* HEADER (shrink-0) */}
+      {/* HEADER */}
       <div className="shrink-0">
         <CommercialHeader
           user={user}
@@ -966,7 +1093,7 @@ function CommercialDashboardInner() {
               : undefined
           }
           onReservationsManagementToggle={
-            features?.canModifyReservations
+            canManageReservations
               ? () => setIsReservationsManagementOpen(true)
               : undefined
           }
@@ -974,7 +1101,7 @@ function CommercialDashboardInner() {
         />
       </div>
 
-      {/* TABS (shrink-0) — scroll horizontal sur mobile */}
+      {/* TABS */}
       <div className="shrink-0 bg-gray-50 border-b border-gray-200 overflow-x-auto scrollbar-hide">
         <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
           <div className="flex gap-1 sm:gap-2 md:gap-4">
@@ -989,7 +1116,6 @@ function CommercialDashboardInner() {
                 }`}
               >
                 <span className="[&>svg]:w-4 [&>svg]:h-4">{tab.icon}</span>
-                {/* Libellé court sur mobile, libellé complet sur desktop */}
                 <span className="sm:hidden">{tab.shortLabel}</span>
                 <span className="hidden sm:inline">{tab.label}</span>
                 {tab.key === 'notifications' && unreadCount > 0 && (
@@ -1003,25 +1129,27 @@ function CommercialDashboardInner() {
         </div>
       </div>
 
-      {/* ✅ CONTENU PRINCIPAL — flex-1 min-h-0 (CRITIQUE pour que la carte prenne toute la hauteur) */}
+      {/* CONTENU PRINCIPAL */}
       <main className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden">
-        <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-6">
+        <div className="w-full max-w-[1920px] mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5">
           {/* 🧹 Bandeau de nettoyage */}
           <CleanupBanner
             status={cleanupStatus}
-            onRetry={() => executerNettoyage(true)}
+            onRetry={() => {
+              console.log('🔄 [Manuel] Relance du nettoyage...');
+              // ✅ Reset du ref pour permettre la relance
+              cleanupHasRunRef.current = false;
+              executerNettoyage(true);
+            }}
             onClose={() => setCleanupStatus({ kind: 'idle' })}
           />
 
-          {/* ============================================
-              ONGLET DASHBOARD
-              ============================================ */}
+          {/* ONGLET DASHBOARD */}
           {activeTab === 'dashboard' && (
             <>
-              {/* Toggle stats mobile */}
               <button
                 onClick={() => setIsStatsExpanded((v) => !v)}
-                className="lg:hidden w-full flex items-center justify-between px-4 py-3 mb-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm"
+                className="lg:hidden w-full flex items-center justify-between px-4 py-2.5 mb-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition shadow-sm"
                 aria-expanded={isStatsExpanded}
               >
                 <div className="flex items-center gap-2 text-sm font-bold text-gray-700">
@@ -1043,9 +1171,8 @@ function CommercialDashboardInner() {
                 </div>
               </button>
 
-              {/* Grille stats responsive */}
               <div
-                className={`stats-grid-6 mb-4 sm:mb-6 ${
+                className={`stats-grid-6 mb-3 sm:mb-4 ${
                   isStatsExpanded ? 'grid' : 'hidden lg:grid'
                 }`}
               >
@@ -1061,35 +1188,35 @@ function CommercialDashboardInner() {
                 ))}
               </div>
 
-              <PanneauFilters
-                filters={filters}
-                onFiltersChange={setFilters}
-                totalResults={panneauxFiltres.length}
-                totalPanneaux={transformedPanneaux.length}
-              />
+              <div className="compact-filters">
+                <PanneauFilters
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                  totalResults={panneauxFiltres.length}
+                  totalPanneaux={transformedPanneaux.length}
+                />
+              </div>
 
-              <PanneauxTable
-                panneaux={panneauxFiltres as any}
-                onFaceClick={openFaceDetails}
-                onReserveClick={handleReserveClick}
-                loading={loading}
-              />
+              <div className="mt-3">
+                <PanneauxTable
+                  panneaux={panneauxFiltres as any}
+                  onFaceClick={openFaceDetails}
+                  onReserveClick={handleReserveClick}
+                  loading={loading}
+                />
+              </div>
             </>
           )}
 
-          {/* ============================================
-              ONGLET CATALOGUE
-              ============================================ */}
+          {/* ONGLET CATALOGUE */}
           {activeTab === 'catalogue' && (
             <div className="w-full">
               <CatalogueContent user={user} />
             </div>
           )}
 
-          {/* ============================================
-              ONGLET GESTION RÉSERVATIONS
-              ============================================ */}
-          {activeTab === 'reservations' && (
+          {/* ONGLET GESTION RÉSERVATIONS */}
+          {activeTab === 'reservations' && canManageReservations && (
             <ReservationsManagementModal
               isOpen={true}
               onClose={() => handleTabChange('dashboard')}
@@ -1097,21 +1224,14 @@ function CommercialDashboardInner() {
             />
           )}
 
-          {/* ============================================
-              ONGLET RÉSERVATIONS EN ATTENTE
-              ============================================ */}
+          {/* ONGLET RÉSERVATIONS EN ATTENTE */}
           {activeTab === 'pending' && <PendingReservationsTab user={user} />}
 
-          {/* ============================================
-              ONGLET NOTIFICATIONS
-              ============================================ */}
+          {/* ONGLET NOTIFICATIONS */}
           {activeTab === 'notifications' && <NotificationsTab user={user} />}
         </div>
 
-        {/* ============================================
-            ONGLET CARTE — PLEIN ÉCRAN (hors du container de padding)
-            Prend toute la hauteur restante (flex-1 min-h-0 sur main)
-            ============================================ */}
+        {/* ONGLET CARTE */}
         {activeTab === 'map' && (
           <div className="w-full h-full">
             <MapComponent
@@ -1127,9 +1247,7 @@ function CommercialDashboardInner() {
         )}
       </main>
 
-      {/* ============================================
-          MODALES
-          ============================================ */}
+      {/* MODALES */}
       {isPanneauReservationsModalOpen && selectedPanneauForReservations && (
         <PanneauReservationsModal
           isOpen={isPanneauReservationsModalOpen}
@@ -1197,10 +1315,52 @@ function CommercialDashboardInner() {
         onClose={() => setIsTeamManagementOpen(false)}
       />
 
-      <ReservationsManagementModal
-        isOpen={isReservationsManagementOpen}
-        onClose={() => setIsReservationsManagementOpen(false)}
-      />
+      {canManageReservations && (
+        <ReservationsManagementModal
+          isOpen={isReservationsManagementOpen}
+          onClose={() => setIsReservationsManagementOpen(false)}
+        />
+      )}
+
+      {/* Styles globaux */}
+      <style jsx global>{`
+        .compact-filters > div {
+          padding-top: 0.5rem !important;
+          padding-bottom: 0.5rem !important;
+          margin-bottom: 0 !important;
+        }
+        .compact-filters input,
+        .compact-filters select {
+          padding-top: 0.375rem !important;
+          padding-bottom: 0.375rem !important;
+          font-size: 0.8125rem !important;
+          height: 2.25rem !important;
+        }
+        .compact-filters label {
+          font-size: 0.6875rem !important;
+          margin-bottom: 0.25rem !important;
+        }
+        .compact-filters .gap-4,
+        .compact-filters .gap-3 {
+          gap: 0.5rem !important;
+        }
+        .compact-filters .space-y-3 > * + * {
+          margin-top: 0.5rem !important;
+        }
+        .compact-filters .py-4,
+        .compact-filters .py-3 {
+          padding-top: 0.5rem !important;
+          padding-bottom: 0.5rem !important;
+        }
+
+        .scrollbar-hide::-webkit-scrollbar {
+          height: 4px;
+        }
+        .scrollbar-hide::-webkit-scrollbar-thumb {
+          background: rgba(0, 0, 0, 0.15);
+          border-radius: 2px;
+        }
+      `}</style>
     </div>
   );
 }

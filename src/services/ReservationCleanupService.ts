@@ -23,44 +23,24 @@ const pool = mysql.createPool({
 export interface CleanupResult {
   terminees: number;
   expirees: number;
-  en_attente_validation: number;
   erreurs: number;
   details: Array<{
     id: number;
     commande: string;
     motif: string;
-    raison?: string;
+    nouveau_statut: string;
   }>;
-}
-
-export type CleanupCase = 1 | 2 | 3 | null;
-
-interface CleanupCheck {
-  ok: boolean;
-  cas: CleanupCase;
-  motif: string;
-  raison: string;
 }
 
 // ============================================
 // ✅ HELPER : convertit n'importe quel format en YYYY-MM-DD[ HH:MM:SS]
 // ============================================
 const MOIS_FR: Record<string, string> = {
-  janvier: '01',
-  février: '02',
-  fevrier: '02',
-  mars: '03',
-  avril: '04',
-  mai: '05',
-  juin: '06',
-  juillet: '07',
-  août: '08',
-  aout: '08',
-  septembre: '09',
-  octobre: '10',
-  novembre: '11',
-  décembre: '12',
-  decembre: '12',
+  janvier: '01', février: '02', fevrier: '02',
+  mars: '03', avril: '04', mai: '05', juin: '06',
+  juillet: '07', août: '08', aout: '08',
+  septembre: '09', octobre: '10',
+  novembre: '11', décembre: '12', decembre: '12',
 };
 
 function safeDate(value: any): string | null {
@@ -73,61 +53,41 @@ function safeDate(value: any): string | null {
 
   const s = String(value).trim();
   if (!s) return null;
-
   if (s === 'null' || s === 'undefined') return null;
   if (s === '0000-00-00' || s === '0000-00-00 00:00:00') return null;
 
-  // Format ISO : 2026-09-30 ou 2026-09-30 22:32:22
   if (/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/.test(s)) return s;
-
-  // Format ISO avec T
   if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s)) {
     return s.slice(0, 19).replace('T', ' ');
   }
 
-  // Format FR slash : 27/09/2026 ou 27/09/2026 22:32:22
-  const frSlash = s.match(
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
-  );
+  const frSlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (frSlash) {
     const [, j, m, a, h, mn, sec] = frSlash;
     const date = `${a}-${m.padStart(2, '0')}-${j.padStart(2, '0')}`;
-    if (h !== undefined) {
-      return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
-    }
+    if (h !== undefined) return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
     return date;
   }
 
-  // Format FR mois en lettres : 13 novembre 2026
-  const frLettres = s.match(
-    /^(\d{1,2})\s+([a-zéûôA-ZÉÛÔ]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/i
-  );
+  const frLettres = s.match(/^(\d{1,2})\s+([a-zéûôA-ZÉÛÔ]+)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/i);
   if (frLettres) {
     const [, j, mois, a, h, mn, sec] = frLettres;
     const moisNum = MOIS_FR[mois.toLowerCase()];
     if (moisNum) {
       const date = `${a}-${moisNum}-${j.padStart(2, '0')}`;
-      if (h !== undefined) {
-        return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
-      }
+      if (h !== undefined) return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
       return date;
     }
   }
 
-  // Format FR tirets : 27-09-2026
-  const frDash = s.match(
-    /^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
-  );
+  const frDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
   if (frDash) {
     const [, j, m, a, h, mn, sec] = frDash;
     const date = `${a}-${m.padStart(2, '0')}-${j.padStart(2, '0')}`;
-    if (h !== undefined) {
-      return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
-    }
+    if (h !== undefined) return `${date} ${h.padStart(2, '0')}:${mn}:${sec ?? '00'}`;
     return date;
   }
 
-  // Date.parse en dernier recours
   const parsed = new Date(s);
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().slice(0, 19).replace('T', ' ');
@@ -141,137 +101,112 @@ function safeDate(value: any): string | null {
 // SERVICE
 // ============================================
 export class ReservationCleanupService {
+
   // ============================================
   // 🔍 HELPERS DE DATE
   // ============================================
-  isCampaignFinished(dateFinCampagne: Date | string | null): boolean {
-    const safe = safeDate(dateFinCampagne);
-    if (!safe) return false;
-    return new Date(safe) < new Date();
-  }
-
+  /** La date d'expiration est-elle dépassée ? */
   isExpirationPassed(dateExpiration: Date | string | null): boolean {
     const safe = safeDate(dateExpiration);
     if (!safe) return false;
-    return new Date(safe) < new Date();
+    // Comparaison sur la date seule (pas l'heure)
+    const exp = new Date(safe);
+    const today = new Date();
+    exp.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return exp < today;
+  }
+
+  /** La campagne est-elle terminée ? */
+  isCampaignFinished(dateFinCampagne: Date | string | null): boolean {
+    const safe = safeDate(dateFinCampagne);
+    if (!safe) return false;
+    const fin = new Date(safe);
+    const today = new Date();
+    fin.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    return fin < today;
+  }
+
+  /** La réservation est-elle validée par la comptabilité ? */
+  isValideeComptable(reservation: any): boolean {
+    return (
+      reservation.id_chef_validation !== null &&
+      reservation.id_chef_validation !== undefined &&
+      Number(reservation.id_chef_validation) > 0
+    );
   }
 
   // ============================================
-  // 🔒 RÈGLE MÉTIER : Peut-on nettoyer ?
+  // 🔒 RÈGLE MÉTIER : Peut-on nettoyer cette réservation ?
   // ============================================
   /**
-   * 📋 RÈGLE 1 : Jamais validée + échéance dépassée → Expirée
-   *    - id_chef_validation IS NULL/0
-   *    - date_expiration valide
-   *    - aujourd'hui > date_expiration
+   * 📋 RÈGLE 1 : Échéance dépassée + non validée par la compta
+   *    → motif "Expirée"
    *
-   * 📋 RÈGLE 2 : Campagne terminée + validations → Terminée
-   *    - date_fin_campagne valide
-   *    - aujourd'hui > date_fin_campagne
-   *    - Si photo → 2 validations (chef + superviseur)
-   *    - Si pas de photo → 1 validation (chef OU superviseur)
+   * 📋 RÈGLE 2 : Campagne terminée (date_fin < aujourd'hui)
+   *    → motif "Terminée"
+   *
+   * Retourne :
+   *   { ok: true, motif: 'Expirée' | 'Terminée', nouveauStatut: 'Expirée' | 'Terminée' }
+   *   OU
+   *   { ok: false, raison: '...' }
    */
-  canBeCleaned(reservation: any): CleanupCheck {
-    const statut = reservation.statut;
-    const aPhoto = !!reservation.photoCampagneUrl;
-    const chefOk = reservation.validation_chef_commercial === 1;
-    const supervOk = reservation.validation_superviseur === 1;
-
-    // ⚠️ Utilise id_chef_validation (colonne présente dans la BD)
-    const aValidationCompta =
-      reservation.id_chef_validation !== null &&
-      reservation.id_chef_validation !== undefined &&
-      Number(reservation.id_chef_validation) > 0;
-
+  canBeCleaned(reservation: any): {
+    ok: boolean;
+    motif?: string;
+    nouveauStatut?: string;
+    raison: string;
+  } {
     const expirationPassee = this.isExpirationPassed(reservation.date_expiration);
     const campagneFinie = this.isCampaignFinished(reservation.date_fin_campagne);
+    const valideeCompta = this.isValideeComptable(reservation);
 
     // ═══════════════════════════════════════════════════════
-    // 📋 RÈGLE 1 : Jamais validée + échéance dépassée
+    // ✅ RÈGLE 1 : Échéance dépassée + non validée
     // ═══════════════════════════════════════════════════════
-    if (!aValidationCompta && expirationPassee) {
+    if (!valideeCompta && expirationPassee) {
       return {
         ok: true,
-        cas: 1,
-        motif: 'expirée',
-        raison: 'Échéance dépassée — non validée par la comptabilité',
+        motif: 'Expirée',
+        nouveauStatut: 'Expirée',
+        raison: 'Échéance expirée et non validée par la comptabilité',
       };
     }
 
     // ═══════════════════════════════════════════════════════
-    // 📋 RÈGLE 2 : Campagne terminée + validation(s)
+    // ✅ RÈGLE 2 : Campagne terminée
     // ═══════════════════════════════════════════════════════
-    if (!campagneFinie) {
-      return {
-        ok: false,
-        cas: null,
-        motif: '',
-        raison: `Statut "${statut}" — campagne encore active`,
-      };
-    }
-
-    // Campagne finie : vérifie les validations
-
-    // CAS 2a : AVEC photo → 2 validations obligatoires
-    if (aPhoto) {
-      if (chefOk && supervOk) {
-        return {
-          ok: true,
-          cas: 2,
-          motif: 'terminée',
-          raison: 'Campagne terminée — double validation (avec photo)',
-        };
-      }
-      if (!chefOk && !supervOk) {
-        return {
-          ok: false,
-          cas: 2,
-          motif: '',
-          raison: 'En attente des 2 validations (chef + superviseur)',
-        };
-      }
-      if (chefOk && !supervOk) {
-        return {
-          ok: false,
-          cas: 2,
-          motif: '',
-          raison: 'En attente validation superviseur',
-        };
-      }
-      return {
-        ok: false,
-        cas: 2,
-        motif: '',
-        raison: 'En attente validation chef commercial',
-      };
-    }
-
-    // CAS 2b : SANS photo → 1 validation suffit
-    if (chefOk || supervOk) {
+    if (campagneFinie) {
       return {
         ok: true,
-        cas: 3,
-        motif: 'terminée',
-        raison: 'Campagne terminée — validation unique (sans photo)',
+        motif: 'Terminée',
+        nouveauStatut: 'Terminée',
+        raison: 'Campagne terminée',
       };
     }
+
+    // ═══════════════════════════════════════════════════════
+    // ❌ Rien à nettoyer
+    // ═══════════════════════════════════════════════════════
+    const raisons: string[] = [];
+    if (!expirationPassee) raisons.push('échéance non dépassée');
+    if (valideeCompta) raisons.push('déjà validée');
+    if (!campagneFinie) raisons.push('campagne encore active');
 
     return {
       ok: false,
-      cas: 3,
-      motif: '',
-      raison: "En attente d'au moins une validation",
+      raison: raisons.join(' · ') || 'Aucune règle applicable',
     };
   }
 
   // ============================================
-  // 🧹 NETTOYAGE
+  // 🧹 NETTOYAGE PAR LOT
   // ============================================
   async cleanReservationsByBatch(batchSize: number = 50): Promise<CleanupResult> {
     const resultats: CleanupResult = {
       terminees: 0,
       expirees: 0,
-      en_attente_validation: 0,
       erreurs: 0,
       details: [],
     };
@@ -293,31 +228,28 @@ export class ReservationCleanupService {
           const check = this.canBeCleaned(reservation);
 
           if (!check.ok) {
-            if (check.raison.toLowerCase().includes('attente')) {
-              resultats.en_attente_validation++;
-              resultats.details.push({
-                id: reservation.id_reservation,
-                commande: reservation.numero_commande || 'N/A',
-                motif: 'En attente validation',
-                raison: check.raison,
-              });
-            }
             console.log(
-              `⏳ Réservation ${reservation.id_reservation} — ${check.raison}`
+              `⏳ Réservation ${reservation.id_reservation} conservée — ${check.raison}`
             );
             continue;
           }
 
-          const nouveauStatut = check.motif === 'terminée' ? 'Terminée' : 'Expirée';
-
           await this.moveReservation(
             connection,
             reservation,
-            check.motif,
-            nouveauStatut,
-            resultats,
-            check.cas
+            check.motif!,
+            check.nouveauStatut!
           );
+
+          if (check.nouveauStatut === 'Terminée') resultats.terminees++;
+          else resultats.expirees++;
+
+          resultats.details.push({
+            id: reservation.id_reservation,
+            commande: reservation.numero_commande || 'N/A',
+            motif: check.raison,
+            nouveau_statut: check.nouveauStatut!,
+          });
         } catch (error: any) {
           console.error(
             `❌ Erreur réservation ${reservation.id_reservation}:`,
@@ -330,7 +262,6 @@ export class ReservationCleanupService {
       console.log('📊 Résumé du nettoyage:', {
         terminees: resultats.terminees,
         expirees: resultats.expirees,
-        en_attente_validation: resultats.en_attente_validation,
         erreurs: resultats.erreurs,
       });
 
@@ -341,28 +272,15 @@ export class ReservationCleanupService {
   }
 
   // ============================================
-  // 📦 DÉPLACE VERS L'HISTORIQUE + SUPPRIME
+  // 📦 DÉPLACE VERS HISTORIQUE + SUPPRIME
   // ============================================
   private async moveReservation(
     connection: any,
     reservation: any,
     motif: string,
-    nouveauStatut: string,
-    resultats: CleanupResult,
-    cas: CleanupCase
+    nouveauStatut: string
   ): Promise<void> {
-    const motifComplet =
-      cas === 1
-        ? 'Échéance expirée — aucune validation comptable'
-        : cas === 2
-          ? 'Campagne terminée — double validation (avec photo)'
-          : 'Campagne terminée — validation unique (sans photo)';
-
-    // ⚠️ IMPORTANT : `reservation` n'a PAS les colonnes
-    //    date_deplacement, motif_deplacement, ancien_statut, nouveau_statut.
-    //    Ces 4 colonnes n'existent QUE dans `historique_reservation` et
-    //    doivent être CALCULÉES au moment de l'insertion (pas copiées).
-
+    // ✅ 1. Insérer dans l'historique
     await connection.query(
       `INSERT INTO historique_reservation (
         id_reservation, id_client, id_commercial, id_chef_validation,
@@ -374,7 +292,7 @@ export class ReservationCleanupService {
         notes, photoCampagneUrl, photo_metadata,
         photo_latitude, photo_longitude, date_upload_photo,
         date_deplacement, motif_deplacement, ancien_statut, nouveau_statut
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)`,
       [
         reservation.id_reservation,
         reservation.id_client,
@@ -400,34 +318,26 @@ export class ReservationCleanupService {
         reservation.photo_latitude,
         reservation.photo_longitude,
         safeDate(reservation.date_upload_photo),
-        // ✅ Les 4 colonnes "calculées" (n'existent pas dans reservation)
-        new Date(),            // date_deplacement = maintenant
-        motifComplet,          // motif_deplacement = motif calculé
-        reservation.statut,    // ancien_statut = statut avant nettoyage
-        nouveauStatut,         // nouveau_statut = 'Terminée' ou 'Expirée'
+        motif,
+        reservation.statut,
+        nouveauStatut,
       ]
     );
 
+    // ✅ 2. Supprimer les lignes liées
     await connection.query(
       'DELETE FROM ligne_reservation WHERE id_reservation = ?',
       [reservation.id_reservation]
     );
 
-    await connection.query('DELETE FROM reservation WHERE id_reservation = ?', [
-      reservation.id_reservation,
-    ]);
-
-    if (motif === 'terminée') resultats.terminees++;
-    else resultats.expirees++;
-
-    resultats.details.push({
-      id: reservation.id_reservation,
-      commande: reservation.numero_commande || 'N/A',
-      motif: motifComplet,
-    });
+    // ✅ 3. Supprimer la réservation
+    await connection.query(
+      'DELETE FROM reservation WHERE id_reservation = ?',
+      [reservation.id_reservation]
+    );
 
     console.log(
-      `📦 Réservation ${reservation.id_reservation} nettoyée (${motifComplet})`
+      `📦 Réservation ${reservation.id_reservation} déplacée → ${nouveauStatut} (${motif})`
     );
   }
 }

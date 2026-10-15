@@ -1,6 +1,7 @@
 'use client';
 
-// src/app/dashboard/commercial/proformat/cart-preview/page.tsxexport const dynamic = 'force-dynamic';
+// src/app/dashboard/commercial/proformat/cart-preview/page.tsx
+export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -223,7 +224,7 @@ export default function CartProformatPreviewPage() {
         <div className="sheet">
           {/* En-tête Proformat */}
           <div className="header-section">
-            <h1 className="title">PROPOSITION DE RESERVENTION</h1>
+            <h1 className="title">PROPOSITION DE RESERVATION</h1>
           </div>
 
           {/* Référence */}

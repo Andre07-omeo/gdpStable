@@ -79,6 +79,9 @@ const VARIANTS = {
   },
 };
 
+// ✅ Profils autorisés à gérer les réservations
+const RESERVATIONS_ALLOWED_PROFILS = ['CHEF_COMMERCIAL', 'DG', 'PDG'];
+
 export function CommercialHeader({
   user,
   onLogout,
@@ -102,7 +105,6 @@ export function CommercialHeader({
   const [mounted, setMounted] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { getUserName, getUserEmail } = useAuth();
 
@@ -112,7 +114,6 @@ export function CommercialHeader({
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 640;
-      setIsMobile(mobile);
       if (!mobile) setIsMobileMenuOpen(false);
     };
     checkMobile();
@@ -138,10 +139,16 @@ export function CommercialHeader({
 
   const theme = VARIANTS[variant];
 
+  // ✅ Vérification du droit de gérer les réservations
+  const canManageReservations = useMemo(() => {
+    const profil = user?.profil;
+    return RESERVATIONS_ALLOWED_PROFILS.includes(profil);
+  }, [user?.profil]);
+
   // ✅ Bouton logo : va vers le dashboard correspondant au profil
   const handleLogoClick = () => {
     const profil = user?.profil;
-    if (profil === 'DG' || profil === 'SUPER_ADMIN') router.push('/dashboard/dg');
+    if (profil === 'DG' || profil === 'PDG' || profil === 'SUPER_ADMIN') router.push('/dashboard/dg');
     else if (profil === 'SUPERVISEUR') router.push('/dashboard/superviseur');
     else router.push('/dashboard/commercial');
   };
@@ -168,9 +175,11 @@ export function CommercialHeader({
   // ✅ Badge de rôle (visible selon profil)
   const roleBadge = useMemo(() => {
     const profil = user?.profil;
+    if (profil === 'PDG') return { label: 'PDG', color: 'bg-amber-400 text-emerald-950' };
     if (profil === 'DG') return { label: 'DG', color: 'bg-amber-500 text-emerald-950' };
     if (profil === 'SUPER_ADMIN') return { label: 'SUPER ADMIN', color: 'bg-red-500 text-white' };
     if (profil === 'ADMIN_SYSTEM') return { label: 'ADMIN', color: 'bg-fuchsia-500 text-white' };
+    if (profil === 'CHEF_COMMERCIAL') return { label: 'CHEF COM', color: 'bg-blue-500 text-white' };
     if (profil === 'SUPERVISEUR') return { label: 'SUP', color: 'bg-cyan-500 text-white' };
     return null;
   }, [user?.profil]);
@@ -211,7 +220,8 @@ export function CommercialHeader({
         label: 'Gestion des réservations',
         icon: <ClipboardCheck size={16} />,
         onClick: () => onReservationsManagementToggle?.(),
-        hidden: !features?.canModifyReservations || !onReservationsManagementToggle,
+        // ✅ Réservé au Chef Commercial, DG et PDG
+        hidden: !canManageReservations || !onReservationsManagementToggle,
       },
       {
         id: 'reports',
@@ -254,6 +264,7 @@ export function CommercialHeader({
       onTeamManagementToggle, onReservationsManagementToggle,
       onReportsToggle, onPredictionsToggle, onNotificationsToggle,
       onAdminToggle, isAdmin, features, notificationCount,
+      canManageReservations,
     ]
   );
 
@@ -299,7 +310,7 @@ export function CommercialHeader({
     );
   };
 
-  // ✅ Liste des actions pour le drawer mobile (design épuré)
+  // ✅ Liste des actions pour le drawer mobile (TOUS les onglets possibles)
   const mobileMenuActions = useMemo(() => {
     const actions: Array<{
       id: string;
@@ -341,7 +352,8 @@ export function CommercialHeader({
         onClick: onTeamManagementToggle,
       });
     }
-    if (features?.canModifyReservations && onReservationsManagementToggle) {
+    // ✅ Réservations : uniquement Chef Commercial, DG, PDG
+    if (canManageReservations && onReservationsManagementToggle) {
       actions.push({
         id: 'reservations',
         label: 'Gestion des réservations',
@@ -357,14 +369,7 @@ export function CommercialHeader({
         onClick: onReportsToggle,
       });
     }
-    if (features?.canViewPredictions && onPredictionsToggle) {
-      actions.push({
-        id: 'predictions',
-        label: 'Prédictions',
-        icon: <TrendingUp size={18} />,
-        onClick: onPredictionsToggle,
-      });
-    }
+    
     if (onNotificationsToggle) {
       actions.push({
         id: 'notifications',
@@ -397,6 +402,7 @@ export function CommercialHeader({
     onTeamManagementToggle, onReservationsManagementToggle,
     onReportsToggle, onPredictionsToggle, onNotificationsToggle,
     onAdminToggle, isAdmin, features, notificationCount,
+    canManageReservations,
   ]);
 
   // ✅ Handler d'action du drawer mobile
@@ -405,6 +411,12 @@ export function CommercialHeader({
       setIsMobileMenuOpen(false);
       action?.();
     };
+  };
+
+  // ✅ Navigation vers la page Paramètres (mobile)
+  const goToSettings = () => {
+    setIsMobileMenuOpen(false);
+    router.push('/dashboard/parametres');
   };
 
   return (
@@ -521,8 +533,9 @@ export function CommercialHeader({
                 hidden="hidden md:block"
               />
 
+              {/* ✅ Réservations : Chef Commercial, DG, PDG uniquement */}
               <ActionButton
-                onClick={features?.canModifyReservations ? onReservationsManagementToggle : undefined}
+                onClick={canManageReservations ? onReservationsManagementToggle : undefined}
                 icon={<ClipboardCheck className="w-4 h-4 text-white" />}
                 title="Gestion des réservations"
                 colorClass="bg-amber-600 hover:bg-amber-500"
@@ -530,23 +543,7 @@ export function CommercialHeader({
                 hidden="hidden lg:block"
               />
 
-              <ActionButton
-                onClick={features?.canViewReports ? onReportsToggle : undefined}
-                icon={<BarChart3 className="w-4 h-4 text-white" />}
-                title="Rapports"
-                colorClass="bg-cyan-600 hover:bg-cyan-500"
-                glowColor="bg-cyan-400"
-                hidden="hidden lg:block"
-              />
-
-              <ActionButton
-                onClick={features?.canViewPredictions ? onPredictionsToggle : undefined}
-                icon={<TrendingUp className="w-4 h-4 text-white" />}
-                title="Prédictions"
-                colorClass="bg-indigo-600 hover:bg-indigo-500"
-                glowColor="bg-indigo-400"
-                hidden="hidden xl:block"
-              />
+                         
 
               {onNotificationsToggle && (
                 <button
@@ -611,8 +608,8 @@ export function CommercialHeader({
                   onLogout={handleLogoutClick}
                   onProfileClick={onProfileClick}
                   onChangePasswordClick={onChangePasswordClick}
-                  onSettingsClick={onSettingsClick}
-                  onHelpClick={() => console.log('Aide')}
+                  onSettingsClick={() => router.push('/dashboard/parametres')}
+                  onHelpClick={() => router.push('/dashboard/parametres')}
                   extraActions={[]}
                 />
               </div>
@@ -757,24 +754,23 @@ export function CommercialHeader({
                   </button>
                 )}
 
-                {onSettingsClick && (
-                  <button
-                    onClick={handleMobileAction(onSettingsClick)}
-                    className="
-                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-                      text-white/90 hover:text-white hover:bg-white/5
-                      text-sm font-medium
-                      transition-colors duration-150
-                      active:bg-white/10
-                    "
-                  >
-                    <Settings size={18} className="flex-shrink-0 text-white/60" />
-                    <span>Paramètres</span>
-                  </button>
-                )}
+                {/* ✅ Paramètres : redirige vers la page dédiée */}
+                <button
+                  onClick={goToSettings}
+                  className="
+                    w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                    text-white/90 hover:text-white hover:bg-white/5
+                    text-sm font-medium
+                    transition-colors duration-150
+                    active:bg-white/10
+                  "
+                >
+                  <Settings size={18} className="flex-shrink-0 text-white/60" />
+                  <span>Paramètres</span>
+                </button>
 
                 <button
-                  onClick={() => console.log('Aide')}
+                  onClick={goToSettings}
                   className="
                     w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
                     text-white/90 hover:text-white hover:bg-white/5
@@ -784,7 +780,7 @@ export function CommercialHeader({
                   "
                 >
                   <HelpCircle size={18} className="flex-shrink-0 text-white/60" />
-                  <span>Aide</span>
+                  <span>Aide & Support</span>
                 </button>
               </div>
 

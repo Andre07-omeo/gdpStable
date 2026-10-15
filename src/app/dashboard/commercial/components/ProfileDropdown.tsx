@@ -2,7 +2,9 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/commercial/components/ProfileDropdown.tsximport { useState, useRef, useEffect } from 'react';
+// src/app/dashboard/commercial/components/ProfileDropdown.tsx
+import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   User, Lock, LogOut, Settings, ChevronDown,
   HelpCircle, BarChart3,
@@ -10,7 +12,6 @@ import {
 import { ProfileModal } from './profile/ProfileModal';
 import { ChangePasswordModal } from './profile/ChangePasswordModal';
 import { StatsModal } from './profile/StatsModal';
-import { InfoModal } from './profile/InfoModal';
 
 export interface DropdownExtraAction {
   id: string;
@@ -44,16 +45,13 @@ export function ProfileDropdown({
   onHelpClick,
   extraActions = [],
 }: ProfileDropdownProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const [showProfile, setShowProfile] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showStats, setShowStats] = useState(false);
-  const [infoModal, setInfoModal] = useState<{
-    title: string;
-    message: string;
-  } | null>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -89,6 +87,19 @@ export function ProfileDropdown({
   };
 
   const visibleExtras = extraActions.filter((a) => !a.hidden);
+
+  // ✅ Navigation vers la page Paramètres
+  const goToSettings = () => {
+    setOpen(false);
+    router.push('/dashboard/parametres');
+    onSettingsClick?.();
+  };
+
+  const goToHelp = () => {
+    setOpen(false);
+    router.push('/dashboard/parametres?tab=help');
+    onHelpClick?.();
+  };
 
   return (
     <>
@@ -129,7 +140,6 @@ export function ProfileDropdown({
               flex flex-col
             "
             style={{
-              // ✅ Limiter la hauteur totale pour laisser de la marge
               maxHeight: 'calc(100vh - 100px)',
             }}
           >
@@ -165,7 +175,6 @@ export function ProfileDropdown({
                 profile-dropdown-scroll
               "
               style={{
-                // ✅ Scroll fluide iOS
                 WebkitOverflowScrolling: 'touch',
               }}
             >
@@ -208,18 +217,11 @@ export function ProfileDropdown({
                   onChangePasswordClick?.();
                 }}
               />
+              {/* ✅ Paramètres → page dédiée */}
               <MenuItem
                 icon={<Settings size={16} />}
                 label="Paramètres"
-                onClick={() => {
-                  setOpen(false);
-                  setInfoModal({
-                    title: 'Paramètres',
-                    message:
-                      "Les paramètres avancés ne sont pas encore disponibles dans cette version. Ils arrivent très bientôt !",
-                  });
-                  onSettingsClick?.();
-                }}
+                onClick={goToSettings}
               />
               <MenuItem
                 icon={<BarChart3 size={16} />}
@@ -229,18 +231,11 @@ export function ProfileDropdown({
                   setShowStats(true);
                 }}
               />
+              {/* ✅ Aide → page dédiée (onglet help) */}
               <MenuItem
                 icon={<HelpCircle size={16} />}
                 label="Aide & Support"
-                onClick={() => {
-                  setOpen(false);
-                  setInfoModal({
-                    title: 'Aide & Support',
-                    message:
-                      "Le centre d'aide est en cours de préparation. Contactez votre administrateur pour toute assistance.",
-                  });
-                  onHelpClick?.();
-                }}
+                onClick={goToHelp}
               />
 
               <hr className="my-2 border-gray-200" />
@@ -272,12 +267,6 @@ export function ProfileDropdown({
       <StatsModal
         isOpen={showStats}
         onClose={() => setShowStats(false)}
-      />
-      <InfoModal
-        isOpen={!!infoModal}
-        onClose={() => setInfoModal(null)}
-        title={infoModal?.title || ''}
-        message={infoModal?.message || ''}
       />
     </>
   );

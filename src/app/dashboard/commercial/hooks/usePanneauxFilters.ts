@@ -15,7 +15,7 @@ interface UsePanneauxFiltersProps {
   reservationsMap?: ReservationsMap;
 }
 
-// ─── Utilitaire : parse une date (supporte ISO + MySQL datetime) ───
+// ─── Utilitaire : parse une date ───
 function parseDate(str: string | null | undefined): Date | null {
   if (!str) return null;
   const normalized = String(str).trim().replace(' ', 'T');
@@ -23,35 +23,15 @@ function parseDate(str: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// ─── Utilitaire : normalise une date à minuit (début de jour) ───
+// ─── Utilitaire : normalise une date à minuit ───
 function atStartOfDay(d: Date): Date {
   const c = new Date(d);
   c.setHours(0, 0, 0, 0);
   return c;
 }
 
-// ─── Utilitaire : normalise une date à 23:59:59 (fin de jour) ───
-function atEndOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(23, 59, 59, 999);
-  return c;
-}
-
-// ─── Utilitaire : la réservation est-elle active AUJOURD'HUI ? ───
-function isReservationActiveToday(resa: ReservationInfo, today: Date): boolean {
-  const debut = parseDate(resa.date_debut);
-  const fin = parseDate(resa.date_fin);
-
-  if (!debut || !fin) return false;
-
-  const debutDay = atStartOfDay(debut);
-  const finDay = atEndOfDay(fin);
-  const todayDay = atStartOfDay(today);
-
-  return debutDay <= todayDay && todayDay <= finDay;
-}
-
 // ─── Utilitaire : la réservation est-elle future ? ───
+// Utilisé UNIQUEMENT pour le compteur "Rés. Futures"
 function isReservationFuture(resa: ReservationInfo, today: Date): boolean {
   const debut = parseDate(resa.date_debut);
   if (!debut) return false;
@@ -60,17 +40,6 @@ function isReservationFuture(resa: ReservationInfo, today: Date): boolean {
   const todayDay = atStartOfDay(today);
 
   return debutDay > todayDay;
-}
-
-// ─── Utilitaire : la réservation a-t-elle une photo ? ───
-// Utilise directement le champ `hasPhoto` calculé dans le loader (plus fiable)
-function hasPhoto(resa: ReservationInfo): boolean {
-  if (typeof resa.hasPhoto === 'boolean') return resa.hasPhoto;
-  // Fallback : vérifie photoCampagneUrl
-  return !!(
-    resa.photoCampagneUrl &&
-    String(resa.photoCampagneUrl).trim() !== ''
-  );
 }
 
 export function usePanneauxFilters({
@@ -91,12 +60,12 @@ export function usePanneauxFilters({
   const [statusFilter, setStatusFilter] = useState<string>('Tous');
   const [typeFilter, setTypeFilter] = useState<string>('Tous');
 
-  // Fonction pour obtenir le statut d'une face (version CommercialFace)
+  // Fonction pour obtenir le statut d'une face
   const getFaceStatus = (face: CommercialFace): string => {
     return face.status || 'Libre';
   };
 
-  // Panneaux filtrés
+  // ─── Panneaux filtrés ───
   const filteredPanneaux = useMemo(() => {
     if (!panneaux) return [];
 
@@ -135,7 +104,7 @@ export function usePanneauxFilters({
         if (panneauType !== typeFilter.toLowerCase().trim()) return false;
       }
 
-      // Filtre statut (vérifier si au moins une face a ce statut)
+      // Filtre statut
       if (statusFilter !== 'Tous') {
         const hasMatchingFace = (panneau.faces || []).some((face) => {
           return getFaceStatus(face) === statusFilter;
@@ -147,7 +116,20 @@ export function usePanneauxFilters({
     });
   }, [panneaux, geoFilter, searchFilter, statusFilter, typeFilter]);
 
-  // ─── Statistiques (calculées à partir des réservations) ───
+  // ============================================
+  // ✅ STATISTIQUES — CORRIGÉES
+  // ============================================
+  // Nouvelle logique : on lit DIRECTEMENT le `status` de chaque face,
+  // calculé par l'API. Le hook ne fait que COMPTER.
+  //
+  //   - Libre    : face.status === 'Libre'
+  //   - Réservé  : face.status === 'Réservé'
+  //   - Occupé   : face.status === 'Occupé'
+  //   - Problème : face.status === 'Problème' (compté séparément, pas dans les cartes)
+  //
+  // Pour "Rés. Futures" : on utilise le reservationsMap
+  //   (le status de l'API ne le distingue pas)
+  // ============================================
   const stats = useMemo(() => {
     const today = new Date();
 
@@ -155,42 +137,34 @@ export function usePanneauxFilters({
     let totalLibres = 0;
     let totalOccupes = 0;
     let totalReserves = 0;
+    let totalProblemes = 0;
+    let totalEnAttente = 0;
     let totalReservationsFutures = 0;
 
-    // 1️⃣ Parcourir toutes les faces des panneaux filtrés
+    // 1️⃣ Compter les faces par `status` (calculé par l'API)
     filteredPanneaux.forEach((panneau) => {
       (panneau.faces || []).forEach((face) => {
         totalFaces++;
 
-        const faceId = Number(face.id_face);
+        const status = face.status || 'Libre';
 
-        // ✅ Utiliser Map.get() avec le type exact
-        const reservations: ReservationInfo[] =
-          reservationsMap instanceof Map
-            ? reservationsMap.get(faceId) || []
-            : [];
-
-        // Chercher une réservation active aujourd'hui
-        const reservationActive = reservations.find((r) =>
-          isReservationActiveToday(r, today)
-        );
-
-        if (reservationActive) {
-          // ✅ La face a une réservation en cours → RÉSERVÉE
+        if (status === 'Problème') {
+          totalProblemes++;
+        } else if (status === 'Occupé') {
+          totalOccupes++;
+        } else if (status === 'Réservé') {
           totalReserves++;
-
-          // ✅ OCCUPÉE si la réservation active a une photo
-          if (hasPhoto(reservationActive)) {
-            totalOccupes++;
-          }
+        } else if (status === 'En attente') {
+          totalEnAttente++;
         } else {
-          // ✅ LIBRE si aucune réservation active
+          // 'Libre' ou inconnu
           totalLibres++;
         }
       });
     });
 
-    // 2️⃣ Compter TOUTES les réservations futures
+    // 2️⃣ Compter les réservations futures (via reservationsMap)
+    //    ⚠️ Utilisé uniquement pour la carte "Rés. Futures"
     if (reservationsMap instanceof Map) {
       reservationsMap.forEach((reservations) => {
         (reservations || []).forEach((resa) => {
@@ -208,6 +182,8 @@ export function usePanneauxFilters({
       totalOccupes,
       totalReserves,
       totalReservationsFutures,
+      totalProblemes,
+      totalEnAttente,
       totalRevenue: 0,
     };
   }, [filteredPanneaux, reservationsMap]);

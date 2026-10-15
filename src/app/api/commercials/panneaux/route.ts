@@ -50,37 +50,39 @@ function toDateStr(d: any): string | null {
   return String(d).slice(0, 10);
 }
 
-function isDateInRange(r: any, todayStr: string): boolean {
-  const debut = toDateStr(r?.date_debut_campagne);
+// ✅ Réservation expirée : date_fin < aujourd'hui
+function isExpired(r: any, todayStr: string): boolean {
   const fin = toDateStr(r?.date_fin_campagne);
-  if (!debut || !fin) return false;
-  return debut <= todayStr && todayStr <= fin;
+  if (!fin) return false;
+  return fin < todayStr;
 }
 
+// ✅ Réservation future : date_debut > aujourd'hui
 function isFuture(r: any, todayStr: string): boolean {
   const debut = toDateStr(r?.date_debut_campagne);
   if (!debut) return false;
   return debut > todayStr;
 }
 
-function isPending(r: any): boolean {
-  const s = r?.statut;
-  return s === 'En attente' || s === 'En attente de validation';
+// ✅ Réservation active : aujourd'hui entre début et fin
+function isActive(r: any, todayStr: string): boolean {
+  const debut = toDateStr(r?.date_debut_campagne);
+  const fin = toDateStr(r?.date_fin_campagne);
+  if (!debut || !fin) return false;
+  return debut <= todayStr && todayStr <= fin;
 }
 
-function isRejected(r: any): boolean {
-  const s = r?.statut;
-  return s === 'Expirée' || s === 'Annulée' || s === 'Rejetée';
+// ✅ Réservation "à retenir" : ni expirée
+function isNotExpired(r: any, todayStr: string): boolean {
+  return !isExpired(r, todayStr);
 }
 
 // ============================================
 // ✅ PARSING DIMENSION "9 x 6" ou "9x6" ou "9 * 6"
-//    Retourne { hauteur_m, largeur_m } en mètres
 // ============================================
 function parseDimension(dim: any): { hauteur_m: number; largeur_m: number } {
   if (!dim) return { hauteur_m: 0, largeur_m: 0 };
   const str = String(dim).trim();
-  // Accepte : "9 x 6", "9x6", "9 X 6", "9*6", "9 * 6", "9.5x6.5", "9,5 x 6,5"
   const match = str.match(/(\d+(?:[.,]\d+)?)\s*[xX×*]\s*(\d+(?:[.,]\d+)?)/);
   if (!match) return { hauteur_m: 0, largeur_m: 0 };
 
@@ -94,27 +96,23 @@ function parseDimension(dim: any): { hauteur_m: number; largeur_m: number } {
 
 // ============================================
 // ✅ CALCUL DIMENSION FINALE d'une face
-//    Priorité : panneau.dimension > type_face (cm → m)
 // ============================================
 function computeFaceDimension(
   panneauDimension: any,
   typeFaceHauteurCm: any,
   typeFaceLargeurCm: any
 ): { hauteur_m: number; largeur_m: number; source: string } {
-  // 1️⃣ Priorité : dimension du PANNEAU
   const parsed = parseDimension(panneauDimension);
   if (parsed.hauteur_m > 0 && parsed.largeur_m > 0) {
     return { hauteur_m: parsed.hauteur_m, largeur_m: parsed.largeur_m, source: 'panneau' };
   }
 
-  // 2️⃣ Fallback : dimension du TYPE DE FACE (en cm → m)
   const hCm = parseFloat(String(typeFaceHauteurCm ?? 0).replace(',', '.'));
   const lCm = parseFloat(String(typeFaceLargeurCm ?? 0).replace(',', '.'));
   if (hCm > 0 && lCm > 0) {
     return { hauteur_m: hCm / 100, largeur_m: lCm / 100, source: 'type_face' };
   }
 
-  // 3️⃣ Rien trouvé
   return { hauteur_m: 0, largeur_m: 0, source: 'none' };
 }
 
@@ -134,7 +132,14 @@ export async function GET(request: NextRequest) {
     await connection.execute('SET SESSION group_concat_max_len = 1000000');
 
     // ============================================
+    // ✅ DATE DU JOUR (source unique de vérité)
+    // ============================================
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // ============================================
     // REQUÊTE PRINCIPALE
+    // ✅ Pas de filtre strict sur statut : on prend TOUT sauf ce qui est
+    //    réellement expiré (date_fin < aujourd'hui)
     // ============================================
     let sql = `
       SELECT 
@@ -191,12 +196,11 @@ export async function GET(request: NextRequest) {
                   FROM reservation r
                   LEFT JOIN client c ON r.id_client = c.id_client
                   LEFT JOIN \`user\` u ON r.id_commercial = u.id_user
-                  INNER JOIN ligne_reservation lr ON lr.id_reservation = r.id_reservation AND lr.id_face = f.id_face
-                  WHERE r.statut IN ('Confirmée', 'En attente', 'En cours')
-                    AND (
-                      r.date_fin_campagne >= CURDATE()
-                      OR r.statut = 'En attente'
-                    )
+                  INNER JOIN ligne_reservation lr 
+                    ON lr.id_reservation = r.id_reservation 
+                    AND lr.id_face = f.id_face
+                  WHERE r.date_fin_campagne >= CURDATE()
+                     OR r.statut = 'En attente'
                 )
               )
             ),
@@ -227,7 +231,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (statut) {
-      const validStatuses = ['Confirmée', 'En attente', 'En cours', 'Expirée', 'Annulée'];
+      const validStatuses = ['Confirmée', 'En attente', 'En cours', 'Expirée', 'Annulée', 'ACTIVE'];
       if (!validStatuses.includes(statut)) {
         return NextResponse.json({ error: 'Statut invalide' }, { status: 400 });
       }
@@ -250,8 +254,6 @@ export async function GET(request: NextRequest) {
 
     const [rows] = await connection.execute(sql, params);
     const panneaux = rows as any[];
-
-    const todayStr = new Date().toISOString().slice(0, 10);
 
     const formattedPanneaux = panneaux.map((panneau: any) => {
       const faces = safeJsonParse<any[]>(panneau.faces, [], `panneau ${panneau.id}`);
@@ -278,51 +280,57 @@ export async function GET(request: NextRequest) {
             `face ${face.id_face}`
           );
 
-          const validReservations = reservations.filter((r: any) => !isRejected(r));
+          // ✅ Garder UNIQUEMENT les réservations non expirées
+          const validReservations = reservations.filter(
+            (r: any) => !isExpired(r, todayStr)
+          );
 
           // ============================================
-          // ✅ CLASSIFICATION RÉSERVATIONS
+          // 🎯 LOGIQUE SIMPLIFIÉE (selon ta demande)
           // ============================================
+          // - Libre    : aucune réservation
+          // - Réservé  : au moins 1 réservation (sans photo)
+          // - Occupé   : au moins 1 réservation AVEC photo
+          // - Problème : a_probleme = 1
+
+          const hasProblem = face.a_probleme === 1;
+
+          // Prendre une réservation "prioritaire" :
+          //   1️⃣ Réservation active (aujourd'hui dans la plage)
+          //   2️⃣ Sinon la plus récente
           const activeReservation =
-            validReservations.find((r: any) => isDateInRange(r, todayStr)) || null;
-
-          const futureReservation = activeReservation
-            ? null
-            : validReservations.find((r: any) => isFuture(r, todayStr)) || null;
-
-          const pendingReservation =
-            !activeReservation && !futureReservation
-              ? validReservations.find((r: any) => isPending(r)) || null
-              : null;
+            validReservations.find((r: any) => isActive(r, todayStr)) || null;
 
           const selectedReservation =
-            activeReservation || futureReservation || pendingReservation || null;
+            activeReservation || validReservations[0] || null;
 
-          // ============================================
-          // 🎯 STATUT
-          // ============================================
-          let status:
-            | 'Libre'
-            | 'Occupé'
-            | 'Réservé'
-            | 'En attente'
-            | 'Problème' = 'Libre';
+          // ✅ Y a-t-il une photo ?
+          const selectedHasPhoto = selectedReservation
+            ? hasPhoto(selectedReservation.photoCampagneUrl)
+            : false;
 
-          if (face.a_probleme === 1) {
+          // ✅ Y a-t-il AU MOINS une réservation avec photo ?
+          const anyReservationHasPhoto = validReservations.some((r: any) =>
+            hasPhoto(r.photoCampagneUrl)
+          );
+
+          // 🎯 Calcul du statut
+          let status: 'Libre' | 'Occupé' | 'Réservé' | 'Problème' = 'Libre';
+
+          if (hasProblem) {
             status = 'Problème';
-          } else if (activeReservation) {
-            status = hasPhoto(activeReservation.photoCampagneUrl) ? 'Occupé' : 'Réservé';
-          } else if (futureReservation) {
-            status = 'Réservé';
-          } else if (pendingReservation) {
-            status = 'En attente';
-          } else {
+          } else if (validReservations.length === 0) {
             status = 'Libre';
+          } else if (anyReservationHasPhoto) {
+            // Au moins 1 réservation avec photo → OCCUPÉ
+            status = 'Occupé';
+          } else {
+            // Au moins 1 réservation sans photo → RÉSERVÉ
+            status = 'Réservé';
           }
 
           // ============================================
-          // ✅ DIMENSION CORRIGÉE
-          //    Priorité : panneau.dimension > type_face (cm→m)
+          // ✅ DIMENSIONS
           // ============================================
           const dim = computeFaceDimension(
             panneau.dimension,
@@ -333,53 +341,19 @@ export async function GET(request: NextRequest) {
           const hauteurM = dim.hauteur_m;
           const largeurM = dim.largeur_m;
 
-          // ✅ Surface en m² = hauteur_m × largeur_m (déjà en mètres)
           let dimensionM2 = 'N/A';
           if (hauteurM > 0 && largeurM > 0) {
             dimensionM2 = (hauteurM * largeurM).toFixed(2) + ' m²';
           }
 
-          // ✅ Label brut "9.00m × 6.00m" pour l'affichage
           const dimensionRaw =
             hauteurM > 0 && largeurM > 0
               ? `${hauteurM.toFixed(2)}m × ${largeurM.toFixed(2)}m`
               : '';
 
-          const hasProblem = face.a_probleme === 1;
-
           // ============================================
-          // TEMPS RESTANT (En attente)
+          // ✅ RETOUR DE LA FACE
           // ============================================
-          let remainingTime = null;
-          if (pendingReservation && pendingReservation.date_expiration) {
-            const now = new Date();
-            const expiration = new Date(pendingReservation.date_expiration);
-            const diffMs = expiration.getTime() - now.getTime();
-
-            if (diffMs <= 0) {
-              remainingTime = { expired: true, label: '⏰ Expirée', hours: 0, minutes: 0 };
-            } else {
-              const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-              const diffMin = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-              if (diffHrs > 24) {
-                const diffDays = Math.floor(diffHrs / 24);
-                remainingTime = {
-                  expired: false,
-                  label: `${diffDays}j ${diffHrs % 24}h restants`,
-                  hours: diffHrs,
-                  minutes: diffMin,
-                };
-              } else {
-                remainingTime = {
-                  expired: false,
-                  label: `${diffHrs}h ${diffMin}min restants`,
-                  hours: diffHrs,
-                  minutes: diffMin,
-                };
-              }
-            }
-          }
-
           return {
             id_face: face.id_face?.toString() || '',
             id_panneau: face.id_panneau?.toString() || '',
@@ -392,25 +366,28 @@ export async function GET(request: NextRequest) {
             type_face: face.type_face || 'Non défini',
             est_scroller: face.est_scroller || 0,
 
-            // ✅ Dimensions en mètres (source unique de vérité)
             hauteur_m: hauteurM,
             largeur_m: largeurM,
-            dimension_source: dim.source, // 'panneau' | 'type_face' | 'none'
-            dimension_raw: dimensionRaw, // "9.00m × 6.00m"
-            dimension_m2: dimensionM2,   // "54.00 m²"
+            dimension_source: dim.source,
+            dimension_raw: dimensionRaw,
+            dimension_m2: dimensionM2,
 
-            // ⚠️ Champs legacy conservés pour compatibilité front
             hauteur_cm: hauteurM * 100,
             largeur_cm: largeurM * 100,
 
+            // ✅ Statut simplifié
             status: status,
 
+            // ✅ Réservations exposées
             reservations: hasProblem ? [] : validReservations,
             reservation_active: hasProblem ? null : activeReservation,
-            reservation_future: hasProblem ? null : futureReservation,
-            reservation_attente: hasProblem ? null : pendingReservation,
             reservation: hasProblem ? null : selectedReservation,
 
+            // ✅ Un seul booléen simple pour le front
+            has_reservation: validReservations.length > 0,
+            has_photo: anyReservationHasPhoto,
+
+            // ✅ Champs d'affichage
             client_nom: hasProblem ? null : selectedReservation?.client_nom || null,
             client_prenom: hasProblem ? null : selectedReservation?.client_prenom || null,
             commercial_nom: hasProblem ? null : selectedReservation?.commercial_nom || null,
@@ -423,12 +400,9 @@ export async function GET(request: NextRequest) {
             date_fin: hasProblem
               ? null
               : selectedReservation?.date_fin_campagne || null,
-
             photoCampagneUrl: hasProblem
               ? null
               : selectedReservation?.photoCampagneUrl || null,
-
-            remaining_time: remainingTime,
           };
         }),
       };

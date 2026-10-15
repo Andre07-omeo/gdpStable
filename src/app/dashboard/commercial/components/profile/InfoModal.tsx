@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-// src/app/dashboard/commercial/components/profile/InfoModal.tsximport { X, Info } from 'lucide-react';
+// src/app/dashboard/commercial/components/profile/InfoModal.tsx
+import { X, Info } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
