@@ -15,14 +15,11 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-// ✅ Fonction pour extraire l'ID utilisateur du token
 function getUserIdFromToken(request: NextRequest): number | null {
   try {
     const token = request.cookies.get('auth_token')?.value || 
                   request.headers.get('Authorization')?.replace('Bearer ', '');
-    
     if (!token) return null;
-    
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'votre_secret') as any;
     return decoded.userId || decoded.id || null;
   } catch {
@@ -32,7 +29,6 @@ function getUserIdFromToken(request: NextRequest): number | null {
 
 export async function GET(request: NextRequest) {
   try {
-    // ✅ 1. Récupérer l'ID de l'utilisateur connecté
     const userId = getUserIdFromToken(request);
     
     if (!userId) {
@@ -44,7 +40,8 @@ export async function GET(request: NextRequest) {
 
     const connection = await pool.getConnection();
 
-    // ✅ 2. Récupérer UNIQUEMENT les réservations de l'utilisateur connecté
+    // ✅ Afficher UNIQUEMENT les réservations du commercial connecté
+    //    qui NE SONT PAS ENCORE dans une facture (facture_ligne)
     const [reservations] = await connection.query(`
       SELECT 
         r.id_reservation,
@@ -80,15 +77,21 @@ export async function GET(request: NextRequest) {
       LEFT JOIN face f ON lr.id_face = f.id_face
       LEFT JOIN panneau p ON f.id_panneau = p.id_panneau
       LEFT JOIN type_face tf ON f.id_type_face = tf.id_type_face
-      WHERE r.statut IN ('En attente', 'En attente de validation')
-        AND r.id_commercial = ?  -- ✅ FILTRE PAR L'UTILISATEUR CONNECTÉ
+      WHERE r.id_commercial = ?
+        -- ✅ FILTRE PRINCIPAL : exclure les réservations déjà facturées
+        AND NOT EXISTS (
+          SELECT 1 
+          FROM facture_ligne fl
+          WHERE fl.id_reservation = r.id_reservation
+        )
+        -- ✅ Garder le filtre d'expiration (facultatif, à adapter)
         AND (r.date_expiration IS NULL OR DATE(r.date_expiration) >= CURDATE())
       ORDER BY r.date_expiration ASC, r.created_at DESC
     `, [userId]);
 
     connection.release();
 
-    console.log(`📊 ${(reservations as any[]).length} réservations en attente pour l'utilisateur ${userId}`);
+    console.log(`📊 ${(reservations as any[]).length} réservations non facturées pour l'utilisateur ${userId}`);
 
     // ✅ Grouper par réservation
     const grouped: any = {};
@@ -139,6 +142,7 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    // ✅ COMMENTAIRE 1 : Commit de déploiement - version stable du 2026-10-19
     return NextResponse.json({
       success: true,
       data: Object.values(grouped),
@@ -146,6 +150,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
+    // ✅ COMMENTAIRE 2 : Gestion d'erreur centralisée pour le endpoint attente
     console.error('❌ Erreur:', error);
     return NextResponse.json(
       { success: false, error: 'Erreur lors du chargement des réservations en attente' },

@@ -64,21 +64,48 @@ const parseDimensionValue = (dim: string): number => {
   return parseFloat(m[1].replace(',', '.'));
 };
 
-// ✅ Extrait le tronçon / commune d'un panneau
+// ✅ Extrait la commune / tronçon d'un panneau
+// Priorité : commune (nom réel) > troncon > quartier > adresse parsée
 const getTroncon = (panneau: CommercialPanneau): string => {
   const p = panneau as any;
-  return (
-    p.troncon ||
-    p.commune ||
-    p.troncon_nom ||
-    p.commune_nom ||
-    p.quartier ||
-    'N/A'
-  );
+
+  // 1) Commune (table `commune.nom`)
+  if (p.commune && String(p.commune).trim() !== '') {
+    return String(p.commune).trim();
+  }
+
+  // 2) Champs alternatifs
+  const candidates = [
+    p.troncon,
+    p.commune_nom,
+    p.troncon_nom,
+    p.quartier,
+    p.nom_commune,
+    p.commune_libelle,
+  ];
+  for (const c of candidates) {
+    if (c && String(c).trim() !== '') return String(c).trim();
+  }
+
+  // 3) Parse depuis adresse (format "Ville / Commune / Quartier" ou "Ville - Commune")
+  if (p.adresse) {
+    const adresse = String(p.adresse);
+    // Essaie "Ville / Commune / ..."
+    if (adresse.includes('/')) {
+      const parts = adresse.split('/').map((s: string) => s.trim());
+      if (parts.length >= 2 && parts[1]) return parts[1];
+    }
+    // Essaie "Ville - Commune"
+    if (adresse.includes(' - ')) {
+      const parts = adresse.split(' - ').map((s: string) => s.trim());
+      if (parts.length >= 2 && parts[1]) return parts[1];
+    }
+  }
+
+  return 'N/A';
 };
 
 // ✅ Extrait hauteur et largeur en MÈTRES depuis une face
-//    Retourne { hauteur: number, largeur: number, source: string }
 const getDimensionsRaw = (face: CommercialFace): { hauteur: number; largeur: number; source: string } => {
   const f = face as any;
 
@@ -87,17 +114,17 @@ const getDimensionsRaw = (face: CommercialFace): { hauteur: number; largeur: num
   let l = parseFloat(String(f.largeur_m ?? 0).replace(',', '.'));
   if (h > 0 && l > 0) return { hauteur: h, largeur: l, source: 'hauteur_m/largeur_m' };
 
-  // 2) Champs hauteur / largeur (en mètres par convention)
+  // 2) Champs hauteur / largeur
   h = parseFloat(String(f.hauteur ?? 0).replace(',', '.'));
   l = parseFloat(String(f.largeur ?? 0).replace(',', '.'));
   if (h > 0 && l > 0) return { hauteur: h, largeur: l, source: 'hauteur/largeur' };
 
-  // 3) Champs height / width (anglais)
+  // 3) Champs height / width
   h = parseFloat(String(f.height ?? 0).replace(',', '.'));
   l = parseFloat(String(f.width ?? 0).replace(',', '.'));
   if (h > 0 && l > 0) return { hauteur: h, largeur: l, source: 'height/width' };
 
-  // 4) Champs hauteur_cm / largeur_cm → on convertit en m
+  // 4) Champs hauteur_cm / largeur_cm → conversion en m
   const hcm = parseFloat(String(f.hauteur_cm ?? 0).replace(',', '.'));
   const lcm = parseFloat(String(f.largeur_cm ?? 0).replace(',', '.'));
   if (hcm > 0 && lcm > 0) return { hauteur: hcm / 100, largeur: lcm / 100, source: 'hauteur_cm/largeur_cm' };
@@ -127,18 +154,16 @@ const getDimensionsRaw = (face: CommercialFace): { hauteur: number; largeur: num
   return { hauteur: 0, largeur: 0, source: '' };
 };
 
-// ✅ Calcule la surface en m² (hauteur × largeur)
+// ✅ Calcule la surface en m²
 const getDimensionM2 = (face: CommercialFace): string => {
   const f = face as any;
 
-  // 1) Si dimension_m2 est déjà fournie et valide → la prendre en priorité
   const rawDim = f.dimension_m2;
   if (rawDim !== undefined && rawDim !== null && rawDim !== '' && rawDim !== 'N/A') {
     const num = parseFloat(String(rawDim).replace(',', '.').replace(/[^\d.]/g, ''));
     if (!isNaN(num) && num > 0) return num.toFixed(2) + ' m²';
   }
 
-  // 2) Sinon, calculer hauteur × largeur (en mètres)
   const { hauteur, largeur } = getDimensionsRaw(face);
   if (hauteur > 0 && largeur > 0) {
     return (hauteur * largeur).toFixed(2) + ' m²';
@@ -147,7 +172,7 @@ const getDimensionM2 = (face: CommercialFace): string => {
   return 'N/A';
 };
 
-// ✅ Retourne la dimension brute formatée "4.00m × 3.00m" (ou vide si indisponible)
+// ✅ Retourne la dimension brute formatée "4.00m × 3.00m"
 const getDimensionRawLabel = (face: CommercialFace): string => {
   const { hauteur, largeur } = getDimensionsRaw(face);
   if (hauteur > 0 && largeur > 0) {
@@ -161,16 +186,11 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
   const [, setCurrentTime] = useState(new Date());
   const { addItem, removeItem, isInCart, items } = useCart();
 
-  // ✅ Filtres globaux
   const [searchQuery, setSearchQuery] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>(EMPTY_FILTERS);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
-
-  // ✅ Filtres rapides
   const [quickFilters, setQuickFilters] = useState<Set<string>>(new Set());
-
-  // ✅ Panneau de filtres ouvert (desktop uniquement)
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const filterPanelRef = useRef<HTMLDivElement>(null);
@@ -180,7 +200,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
     return () => clearInterval(interval);
   }, []);
 
-  // Fermer le panneau de filtres au clic extérieur
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
@@ -225,27 +244,16 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
     }
   };
 
-  const getStatusIcon = (statut: string): string => {
-    switch (statut) {
-      case 'Libre': return '🟢';
-      case 'Occupé': return '🔵';
-      case 'Réservé': return '🟣';
-      case 'En attente': return '🟡';
-      case 'Problème': return '🔴';
-      default: return '⚪';
-    }
-  };
-
   const getTypeFaceIcon = (type: string) => {
     const t = type?.toLowerCase() || '';
-    if (t.includes('classique') || t.includes('standard')) return <Layout size={14} className="text-gray-500" />;
-    if (t.includes('scroller') || t.includes('défileur')) return <LayoutGrid size={14} className="text-blue-500" />;
-    if (t.includes('digital') || t.includes('led') || t.includes('lcd')) return <Grid size={14} className="text-purple-500" />;
-    if (t.includes('panoramique')) return <Layers size={14} className="text-green-500" />;
-    if (t.includes('lumineux')) return <Grid size={14} className="text-orange-500" />;
-    if (t.includes('bâche') || t.includes('bache')) return <Layout size={14} className="text-teal-500" />;
-    if (t.includes('trivision')) return <Layers size={14} className="text-indigo-500" />;
-    return <Box size={14} className="text-gray-400" />;
+    if (t.includes('classique') || t.includes('standard')) return <Layout size={16} className="text-gray-500" />;
+    if (t.includes('scroller') || t.includes('défileur')) return <LayoutGrid size={16} className="text-blue-500" />;
+    if (t.includes('digital') || t.includes('led') || t.includes('lcd')) return <Grid size={16} className="text-purple-500" />;
+    if (t.includes('panoramique')) return <Layers size={16} className="text-green-500" />;
+    if (t.includes('lumineux')) return <Grid size={16} className="text-orange-500" />;
+    if (t.includes('bâche') || t.includes('bache')) return <Layout size={16} className="text-teal-500" />;
+    if (t.includes('trivision')) return <Layers size={16} className="text-indigo-500" />;
+    return <Box size={16} className="text-gray-400" />;
   };
 
   const isReservationValidated = (r: any): boolean => {
@@ -594,9 +602,9 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
   };
 
   const renderSortIcon = (key: SortKey) => {
-    if (sortKey !== key) return <ArrowUpDown size={12} className="text-gray-400 opacity-60" />;
-    if (sortDir === 'asc') return <ArrowUp size={12} className="text-blue-600" />;
-    return <ArrowDown size={12} className="text-blue-600" />;
+    if (sortKey !== key) return <ArrowUpDown size={14} className="text-gray-400 opacity-60" />;
+    if (sortDir === 'asc') return <ArrowUp size={14} className="text-blue-600" />;
+    return <ArrowDown size={14} className="text-blue-600" />;
   };
 
   const isColumnFiltered = (field: 'troncon' | 'type_face' | 'orientation' | 'statut' | 'dimension' | 'client' | 'commercial'): boolean => {
@@ -677,19 +685,19 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
 
-      {/* ============================================
-          ✅ BARRE DE FILTRES GLOBALE
-          ============================================ */}
+      {/* ============================================ */}
+      {/* BARRE DE FILTRES                              */}
+      {/* ============================================ */}
       <div className="border-b border-gray-200 bg-gradient-to-b from-white to-gray-50 p-3 sm:p-4">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher panneau, client, commercial, tronçon, statut..."
-              className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition"
+              placeholder="Rechercher panneau, client, commercial, commune, statut..."
+              className="w-full pl-10 pr-9 py-2.5 text-sm sm:text-base bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition"
             />
             {searchQuery && (
               <button
@@ -697,19 +705,19 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 rounded"
                 title="Effacer"
               >
-                <X size={12} />
+                <X size={14} />
               </button>
             )}
           </div>
 
           <button
             onClick={() => setShowMobileFilters((v) => !v)}
-            className="lg:hidden flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition relative"
+            className="lg:hidden flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition relative"
           >
-            <SlidersHorizontal size={14} />
+            <SlidersHorizontal size={16} />
             <span>Filtres</span>
             {activeFilterCount > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-full">
+              <span className="ml-0.5 px-1.5 py-0.5 text-xs font-bold bg-blue-600 text-white rounded-full">
                 {activeFilterCount}
               </span>
             )}
@@ -718,24 +726,24 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           {activeFilterCount > 0 && (
             <button
               onClick={resetAllFilters}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition"
+              className="flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition"
             >
-              <RotateCcw size={14} />
+              <RotateCcw size={16} />
               <span className="hidden sm:inline">Réinitialiser</span>
-              <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-600 text-white rounded-full">
+              <span className="px-1.5 py-0.5 text-xs font-bold bg-red-600 text-white rounded-full">
                 {activeFilterCount}
               </span>
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-          <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold mr-1">
+        <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+          <span className="text-xs uppercase tracking-wider text-gray-400 font-bold mr-1">
             Rapide:
           </span>
           <button
             onClick={() => toggleQuickFilter('problem')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border transition ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-full border transition ${
               quickFilters.has('problem')
                 ? 'bg-red-600 text-white border-red-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -745,7 +753,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           </button>
           <button
             onClick={() => toggleQuickFilter('pending')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border transition ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-full border transition ${
               quickFilters.has('pending')
                 ? 'bg-amber-600 text-white border-amber-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -755,7 +763,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           </button>
           <button
             onClick={() => toggleQuickFilter('free')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border transition ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-full border transition ${
               quickFilters.has('free')
                 ? 'bg-emerald-600 text-white border-emerald-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -765,7 +773,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           </button>
           <button
             onClick={() => toggleQuickFilter('reserved')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border transition ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-full border transition ${
               quickFilters.has('reserved')
                 ? 'bg-purple-600 text-white border-purple-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -775,7 +783,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
           </button>
           <button
             onClick={() => toggleQuickFilter('cart')}
-            className={`px-2.5 py-1 text-[11px] font-semibold rounded-full border transition ${
+            className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-full border transition ${
               quickFilters.has('cart')
                 ? 'bg-green-600 text-white border-green-600'
                 : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -786,15 +794,15 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
         </div>
 
         {showMobileFilters && (
-          <div className="lg:hidden mt-3 pt-3 border-t border-gray-200 space-y-3">
+          <div className="lg:hidden mt-3 pt-3 border-t border-gray-200 space-y-4">
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Tronçon (Commune)</div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Commune / Tronçon</div>
+              <div className="flex flex-wrap gap-2">
                 {uniqueValues.troncons.map((t) => (
                   <button
                     key={t}
                     onClick={() => toggleMultiFilter('troncon', t)}
-                    className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition ${
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md border transition ${
                       columnFilters.troncon.includes(t)
                         ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-white text-gray-700 border-gray-300'
@@ -804,19 +812,19 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   </button>
                 ))}
                 {uniqueValues.troncons.length === 0 && (
-                  <span className="text-[11px] text-gray-400 italic">Aucun tronçon</span>
+                  <span className="text-xs text-gray-400 italic">Aucune commune</span>
                 )}
               </div>
             </div>
 
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Type de face</div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Type de face</div>
+              <div className="flex flex-wrap gap-2">
                 {uniqueValues.types.map((t) => (
                   <button
                     key={t}
                     onClick={() => toggleMultiFilter('type_face', t)}
-                    className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition ${
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md border transition ${
                       columnFilters.type_face.includes(t)
                         ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-white text-gray-700 border-gray-300'
@@ -826,19 +834,19 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   </button>
                 ))}
                 {uniqueValues.types.length === 0 && (
-                  <span className="text-[11px] text-gray-400 italic">Aucun type</span>
+                  <span className="text-xs text-gray-400 italic">Aucun type</span>
                 )}
               </div>
             </div>
 
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Orientation</div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Orientation</div>
+              <div className="flex flex-wrap gap-2">
                 {uniqueValues.orientations.map((o) => (
                   <button
                     key={o}
                     onClick={() => toggleMultiFilter('orientation', o)}
-                    className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition ${
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md border transition ${
                       columnFilters.orientation.includes(o)
                         ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-white text-gray-700 border-gray-300'
@@ -848,19 +856,19 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   </button>
                 ))}
                 {uniqueValues.orientations.length === 0 && (
-                  <span className="text-[11px] text-gray-400 italic">Aucune orientation</span>
+                  <span className="text-xs text-gray-400 italic">Aucune orientation</span>
                 )}
               </div>
             </div>
 
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Statut</div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Statut</div>
+              <div className="flex flex-wrap gap-2">
                 {uniqueValues.statuts.map((s) => (
                   <button
                     key={s}
                     onClick={() => toggleMultiFilter('statut', s)}
-                    className={`px-2 py-1 text-[11px] font-semibold rounded-md border transition ${
+                    className={`px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-md border transition ${
                       columnFilters.statut.includes(s)
                         ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-white text-gray-700 border-gray-300'
@@ -870,13 +878,13 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   </button>
                 ))}
                 {uniqueValues.statuts.length === 0 && (
-                  <span className="text-[11px] text-gray-400 italic">Aucun statut</span>
+                  <span className="text-xs text-gray-400 italic">Aucun statut</span>
                 )}
               </div>
             </div>
 
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Dimension (m²)</div>
+              <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Dimension (m²)</div>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
@@ -884,44 +892,44 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   value={columnFilters.dimensionMin}
                   onChange={(e) => setColumnFilters((p) => ({ ...p, dimensionMin: e.target.value }))}
                   placeholder="Min"
-                  className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 />
-                <span className="text-gray-400 text-xs">→</span>
+                <span className="text-gray-400 text-sm">→</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={columnFilters.dimensionMax}
                   onChange={(e) => setColumnFilters((p) => ({ ...p, dimensionMax: e.target.value }))}
                   placeholder="Max"
-                  className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                 />
               </div>
             </div>
 
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Client</div>
+              <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Client</div>
               <input
                 type="text"
                 value={columnFilters.client}
                 onChange={(e) => setColumnFilters((p) => ({ ...p, client: e.target.value }))}
                 placeholder="Nom du client..."
-                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5">Commercial</div>
+              <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Commercial</div>
               <input
                 type="text"
                 value={columnFilters.commercial}
                 onChange={(e) => setColumnFilters((p) => ({ ...p, commercial: e.target.value }))}
                 placeholder="Nom du commercial..."
-                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
           </div>
         )}
 
-        <div className="mt-2.5 text-[11px] text-gray-500 flex items-center gap-2 flex-wrap">
+        <div className="mt-3 text-xs sm:text-sm text-gray-500 flex items-center gap-2 flex-wrap">
           <span>
             <strong className="text-gray-700">{filteredPanneaux.length}</strong> panneau(x) ·{' '}
             <strong className="text-gray-700">
@@ -938,9 +946,9 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
         </div>
       </div>
 
-      {/* ============================================
-          ✅ VUE MOBILE
-          ============================================ */}
+      {/* ============================================ */}
+      {/* VUE MOBILE                                    */}
+      {/* ============================================ */}
       <div className="lg:hidden">
         {filteredPanneaux.length === 0 ? (
           <div className="p-10 text-center">
@@ -973,37 +981,37 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-gray-900 truncate">
+                        <span className="text-base sm:text-lg font-bold text-gray-900 truncate">
                           {panneau.nom || 'Sans nom'}
                         </span>
                         {hasAnyProblem && (
-                          <span className="px-2 py-0.5 bg-red-600 text-white text-[10px] font-bold rounded-full flex items-center gap-1">
-                            <AlertTriangle size={10} /> PROBLÈME
+                          <span className="px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full flex items-center gap-1">
+                            <AlertTriangle size={12} /> PROBLÈME
                           </span>
                         )}
                       </div>
                       {tronconValue && tronconValue !== 'N/A' && (
-                        <div className="text-[11px] text-blue-600 font-semibold mt-0.5 flex items-center gap-1">
-                          <MapPin size={11} className="flex-shrink-0" />
-                          <span className="truncate">Tronçon : {tronconValue}</span>
+                        <div className="text-sm text-blue-600 font-semibold mt-1 flex items-center gap-1">
+                          <MapPin size={14} className="flex-shrink-0" />
+                          <span className="truncate">Commune : {tronconValue}</span>
                         </div>
                       )}
-                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                        <MapPin size={12} className="flex-shrink-0" />
+                      <div className="text-sm text-gray-500 mt-1 flex items-center gap-1">
+                        <MapPin size={14} className="flex-shrink-0" />
                         <span className="truncate">{panneau.adresse || 'Adresse non définie'}</span>
                       </div>
-                      <div className="text-xs text-gray-400 mt-0.5">
+                      <div className="text-sm text-gray-400 mt-0.5">
                         {faces.length} face{faces.length > 1 ? 's' : ''}
                       </div>
                     </div>
                     <ChevronDown
-                      size={18}
+                      size={20}
                       className={`text-gray-400 flex-shrink-0 mt-1 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                     />
                   </button>
 
                   {isExpanded && (
-                    <div className="bg-gray-50 px-2.5 sm:px-3 pb-2.5 sm:pb-3 space-y-2">
+                    <div className="bg-gray-50 px-3 sm:px-4 pb-3 sm:pb-4 space-y-3">
                       {faces.map((face, idx) => {
                         const faceHasProblem = hasProblem(face);
                         const isPending = isReservationPending(face.reservation);
@@ -1021,7 +1029,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                         return (
                           <div
                             key={panneauKey + '-face-' + idx}
-                            className={`bg-white rounded-xl border p-3 shadow-sm ${
+                            className={`bg-white rounded-xl border p-3 sm:p-4 shadow-sm ${
                               faceHasProblem
                                 ? 'border-red-200'
                                 : isPending
@@ -1029,81 +1037,81 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                                   : 'border-gray-200'
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-2 mb-2.5">
-                              <div className="flex items-center gap-1.5 text-xs text-gray-600 min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <div className="flex items-center gap-2 text-sm text-gray-600 min-w-0 flex-1">
                                 {getTypeFaceIcon(face.type_face)}
-                                <span className="font-semibold truncate">{face.type_face || 'N/A'}</span>
+                                <span className="font-semibold truncate text-sm">{face.type_face || 'N/A'}</span>
                                 <span className="text-gray-300">•</span>
                                 <span className="font-semibold text-gray-500">F{idx + 1}</span>
                               </div>
                               {faceHasProblem ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-red-200 bg-red-50 text-red-700 flex items-center gap-1 flex-shrink-0">
-                                  <XCircle size={10} /> Problème
+                                <span className="px-2 py-1 rounded-full text-xs font-bold border border-red-200 bg-red-50 text-red-700 flex items-center gap-1 flex-shrink-0">
+                                  <XCircle size={12} /> Problème
                                 </span>
                               ) : hasReservation ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${isPending ? 'border-amber-200 bg-amber-50 text-amber-700' : getStatusColor(face.status)} flex items-center gap-1 flex-shrink-0`}>
+                                <span className={`px-2 py-1 rounded-full text-xs font-bold border ${isPending ? 'border-amber-200 bg-amber-50 text-amber-700' : getStatusColor(face.status)} flex items-center gap-1 flex-shrink-0`}>
                                   <span className={`w-1.5 h-1.5 rounded-full ${isPending ? 'bg-amber-500' : getStatusDot(face.status)}`} />
-                                  <span className="truncate max-w-[80px]">{face.status}</span>
+                                  <span className="truncate max-w-[90px]">{face.status}</span>
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 flex-shrink-0">
+                                <span className="px-2 py-1 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 flex-shrink-0">
                                   🟢 Libre
                                 </span>
                               )}
                             </div>
 
                             <div
-                              className="grid gap-x-4 gap-y-2 mb-2.5 text-xs"
-                              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))' }}
+                              className="grid gap-x-4 gap-y-3 mb-3 text-sm"
+                              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))' }}
                             >
                               <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Orient.</div>
-                                <div className="font-semibold text-gray-800 uppercase truncate">{face.orientation || 'N/A'}</div>
+                                <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Orient.</div>
+                                <div className="font-semibold text-gray-800 uppercase truncate text-sm">{face.orientation || 'N/A'}</div>
                               </div>
                               <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Dim. (m)</div>
-                                <div className="font-semibold text-gray-800 truncate">{dimRaw || 'N/A'}</div>
+                                <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Dim. (m)</div>
+                                <div className="font-semibold text-gray-800 truncate text-sm">{dimRaw || 'N/A'}</div>
                               </div>
                               <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Surface</div>
-                                <div className="font-semibold text-blue-700 truncate">{getDimensionM2(face)}</div>
+                                <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Surface</div>
+                                <div className="font-semibold text-blue-700 truncate text-sm">{getDimensionM2(face)}</div>
                               </div>
                               <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Type</div>
-                                <div className="font-semibold text-gray-800 truncate">{face.type_face || 'N/A'}</div>
+                                <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Type</div>
+                                <div className="font-semibold text-gray-800 truncate text-sm">{face.type_face || 'N/A'}</div>
                               </div>
                             </div>
 
                             {hasReservation && !faceHasProblem && (
-                              <div className="border-t border-gray-100 pt-2.5">
+                              <div className="border-t border-gray-100 pt-3">
                                 <div
-                                  className="grid gap-x-4 gap-y-2 text-xs"
-                                  style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}
+                                  className="grid gap-x-4 gap-y-2 text-sm"
+                                  style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}
                                 >
                                   <div className="flex items-center gap-1.5 text-gray-700 min-w-0">
-                                    <Building2 size={13} className="text-gray-400 flex-shrink-0" />
+                                    <Building2 size={14} className="text-gray-400 flex-shrink-0" />
                                     <span className="font-semibold truncate">{clientName}</span>
                                   </div>
                                   <div className="flex items-center gap-1.5 text-gray-600 min-w-0">
-                                    <User size={13} className="text-gray-400 flex-shrink-0" />
+                                    <User size={14} className="text-gray-400 flex-shrink-0" />
                                     <span className="truncate">{commercialName}</span>
                                   </div>
                                   {face.date_debut && face.date_fin && (
                                     <div className="text-gray-600 flex items-center gap-1.5 min-w-0">
-                                      <span className="hidden xs:inline truncate">📅 {formatDate(face.date_debut)} → {formatDate(face.date_fin)}</span>
-                                      <span className="xs:hidden truncate">📅 {formatDateShort(face.date_debut)} → {formatDateShort(face.date_fin)}</span>
-                                      {duration && <span className="text-gray-400 flex-shrink-0">({duration}j)</span>}
+                                      <span className="hidden xs:inline truncate text-sm">📅 {formatDate(face.date_debut)} → {formatDate(face.date_fin)}</span>
+                                      <span className="xs:hidden truncate text-sm">📅 {formatDateShort(face.date_debut)} → {formatDateShort(face.date_fin)}</span>
+                                      {duration && <span className="text-gray-400 flex-shrink-0 text-sm">({duration}j)</span>}
                                     </div>
                                   )}
                                   {showTimer && (
-                                    <div className={`font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-1.5 min-w-0`}>
-                                      <Timer size={13} className="flex-shrink-0" />
+                                    <div className={`font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-1.5 min-w-0 text-sm`}>
+                                      <Timer size={14} className="flex-shrink-0" />
                                       <span className="truncate">{remainingTime.expired ? '⏰ Expirée' : remainingTime.label}</span>
                                     </div>
                                   )}
                                   {isPending && !isValidated && (
-                                    <div className="text-amber-600 font-bold flex items-center gap-1.5 min-w-0">
-                                      <AlertCircle size={13} className="flex-shrink-0" /> <span className="truncate">En attente</span>
+                                    <div className="text-amber-600 font-bold flex items-center gap-1.5 min-w-0 text-sm">
+                                      <AlertCircle size={14} className="flex-shrink-0" /> <span className="truncate">En attente</span>
                                     </div>
                                   )}
                                 </div>
@@ -1111,12 +1119,12 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                             )}
 
                             {faceHasProblem && (
-                              <div className="border-t border-red-100 pt-2.5 text-xs text-red-600 font-bold flex items-center gap-1.5">
-                                <XCircle size={13} /> Réservation indisponible
+                              <div className="border-t border-red-100 pt-3 text-sm text-red-600 font-bold flex items-center gap-1.5">
+                                <XCircle size={14} /> Réservation indisponible
                               </div>
                             )}
 
-                            <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+                            <div className="mt-3 pt-3 border-t border-gray-100">
                               {renderFaceActions(panneau, face, faceHasProblem, inCart, true)}
                             </div>
                           </div>
@@ -1131,9 +1139,9 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
         )}
       </div>
 
-      {/* ============================================
-          ✅ VUE DESKTOP — Tableau scrollable horizontalement
-          ============================================ */}
+      {/* ============================================ */}
+      {/* VUE DESKTOP — Tableau scrollable             */}
+      {/* ============================================ */}
       <div className="hidden lg:block" ref={filterPanelRef}>
         <div className="overflow-auto max-h-[calc(100vh-380px)] min-h-[400px]">
           <table className="w-full min-w-[1500px] border-collapse table-auto">
@@ -1144,7 +1152,6 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
               <col className="w-[130px]" />
               <col className="w-[120px]" />
               <col className="w-[100px]" />
-              {/* Dimension : plus large pour afficher 2 lignes */}
               <col className="w-[140px]" />
               <col className="w-[160px]" />
               <col className="w-[150px]" />
@@ -1153,7 +1160,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
             </colgroup>
             <thead className="sticky top-0 z-30">
               <tr className="bg-gray-100 border-b border-gray-200">
-                <th className="px-3 xl:px-4 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 sticky left-0 z-40 bg-gray-100">
+                <th className="px-3 xl:px-4 py-3 xl:py-4 text-left text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 sticky left-0 z-40 bg-gray-100">
                   <button
                     onClick={() => toggleSort('panneau_nom')}
                     className="flex items-center gap-1 hover:text-blue-600 transition w-full"
@@ -1162,51 +1169,51 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   </button>
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-center text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
                   Faces
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-center text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
                   Actions
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-left text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
                       onClick={() => toggleSort('troncon')}
                       className="flex items-center gap-1 hover:text-blue-600 transition"
                     >
-                      Tronçon {renderSortIcon('troncon')}
+                      Commune {renderSortIcon('troncon')}
                     </button>
                     <button
                       onClick={() => setOpenFilter(openFilter === 'troncon' ? null : 'troncon')}
                       className={`p-0.5 rounded hover:bg-gray-200 transition ${isColumnFiltered('troncon') ? 'text-blue-600' : 'text-gray-400'}`}
                     >
-                      <Filter size={11} fill={isColumnFiltered('troncon') ? 'currentColor' : 'none'} />
+                      <Filter size={13} fill={isColumnFiltered('troncon') ? 'currentColor' : 'none'} />
                     </button>
                   </div>
                   {openFilter === 'troncon' && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[200px] max-h-[260px] overflow-auto">
-                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 px-1">Filtrer par tronçon</div>
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[220px] max-h-[300px] overflow-auto">
+                      <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2 px-1">Filtrer par commune</div>
                       {uniqueValues.troncons.map((t) => (
-                        <label key={t} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded cursor-pointer text-xs normal-case">
+                        <label key={t} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm normal-case">
                           <input
                             type="checkbox"
                             checked={columnFilters.troncon.includes(t)}
                             onChange={() => toggleMultiFilter('troncon', t)}
-                            className="w-3.5 h-3.5 accent-blue-600"
+                            className="w-4 h-4 accent-blue-600"
                           />
                           <span className="text-gray-700 truncate">{t}</span>
                         </label>
                       ))}
                       {uniqueValues.troncons.length === 0 && (
-                        <div className="text-[11px] text-gray-400 italic px-1.5 py-1">Aucune valeur</div>
+                        <div className="text-xs text-gray-400 italic px-2 py-1">Aucune valeur</div>
                       )}
                     </div>
                   )}
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-left text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
                       onClick={() => toggleSort('type_face')}
@@ -1218,31 +1225,31 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                       onClick={() => setOpenFilter(openFilter === 'type_face' ? null : 'type_face')}
                       className={`p-0.5 rounded hover:bg-gray-200 transition ${isColumnFiltered('type_face') ? 'text-blue-600' : 'text-gray-400'}`}
                     >
-                      <Filter size={11} fill={isColumnFiltered('type_face') ? 'currentColor' : 'none'} />
+                      <Filter size={13} fill={isColumnFiltered('type_face') ? 'currentColor' : 'none'} />
                     </button>
                   </div>
                   {openFilter === 'type_face' && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[180px] max-h-[260px] overflow-auto">
-                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 px-1">Filtrer par type</div>
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[200px] max-h-[300px] overflow-auto">
+                      <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2 px-1">Filtrer par type</div>
                       {uniqueValues.types.map((t) => (
-                        <label key={t} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded cursor-pointer text-xs normal-case">
+                        <label key={t} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm normal-case">
                           <input
                             type="checkbox"
                             checked={columnFilters.type_face.includes(t)}
                             onChange={() => toggleMultiFilter('type_face', t)}
-                            className="w-3.5 h-3.5 accent-blue-600"
+                            className="w-4 h-4 accent-blue-600"
                           />
                           <span className="text-gray-700 truncate">{t}</span>
                         </label>
                       ))}
                       {uniqueValues.types.length === 0 && (
-                        <div className="text-[11px] text-gray-400 italic px-1.5 py-1">Aucune valeur</div>
+                        <div className="text-xs text-gray-400 italic px-2 py-1">Aucune valeur</div>
                       )}
                     </div>
                   )}
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-left text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
                       onClick={() => toggleSort('orientation')}
@@ -1254,32 +1261,31 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                       onClick={() => setOpenFilter(openFilter === 'orientation' ? null : 'orientation')}
                       className={`p-0.5 rounded hover:bg-gray-200 transition ${isColumnFiltered('orientation') ? 'text-blue-600' : 'text-gray-400'}`}
                     >
-                      <Filter size={11} fill={isColumnFiltered('orientation') ? 'currentColor' : 'none'} />
+                      <Filter size={13} fill={isColumnFiltered('orientation') ? 'currentColor' : 'none'} />
                     </button>
                   </div>
                   {openFilter === 'orientation' && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[160px] max-h-[260px] overflow-auto">
-                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 px-1">Filtrer par orientation</div>
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[180px] max-h-[300px] overflow-auto">
+                      <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2 px-1">Filtrer par orientation</div>
                       {uniqueValues.orientations.map((o) => (
-                        <label key={o} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded cursor-pointer text-xs normal-case">
+                        <label key={o} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm normal-case">
                           <input
                             type="checkbox"
                             checked={columnFilters.orientation.includes(o)}
                             onChange={() => toggleMultiFilter('orientation', o)}
-                            className="w-3.5 h-3.5 accent-blue-600"
+                            className="w-4 h-4 accent-blue-600"
                           />
                           <span className="text-gray-700 truncate">{o}</span>
                         </label>
                       ))}
                       {uniqueValues.orientations.length === 0 && (
-                        <div className="text-[11px] text-gray-400 italic px-1.5 py-1">Aucune valeur</div>
+                        <div className="text-xs text-gray-400 italic px-2 py-1">Aucune valeur</div>
                       )}
                     </div>
                   )}
                 </th>
 
-                {/* ✅ DIMENSION — En-tête avec filtre */}
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-left text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
                       onClick={() => toggleSort('dimension')}
@@ -1292,12 +1298,12 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                       onClick={() => setOpenFilter(openFilter === 'dimension' ? null : 'dimension')}
                       className={`p-0.5 rounded hover:bg-gray-200 transition ${isColumnFiltered('dimension') ? 'text-blue-600' : 'text-gray-400'}`}
                     >
-                      <Filter size={11} fill={isColumnFiltered('dimension') ? 'currentColor' : 'none'} />
+                      <Filter size={13} fill={isColumnFiltered('dimension') ? 'currentColor' : 'none'} />
                     </button>
                   </div>
                   {openFilter === 'dimension' && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[240px]">
-                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-2">Filtrer par surface (m²)</div>
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[260px]">
+                      <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2">Filtrer par surface (m²)</div>
                       <div className="flex items-center gap-2">
                         <input
                           type="text"
@@ -1305,24 +1311,24 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                           value={columnFilters.dimensionMin}
                           onChange={(e) => setColumnFilters((p) => ({ ...p, dimensionMin: e.target.value }))}
                           placeholder="Min"
-                          className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                          className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                         />
-                        <span className="text-gray-400 text-xs">→</span>
+                        <span className="text-gray-400 text-sm">→</span>
                         <input
                           type="text"
                           inputMode="decimal"
                           value={columnFilters.dimensionMax}
                           onChange={(e) => setColumnFilters((p) => ({ ...p, dimensionMax: e.target.value }))}
                           placeholder="Max"
-                          className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                          className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                         />
                       </div>
-                      <div className="text-[10px] text-gray-400 mt-1.5 italic">Ex: 10 → 50 (m²)</div>
+                      <div className="text-xs text-gray-400 mt-2 italic">Ex: 10 → 50 (m²)</div>
                     </div>
                   )}
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-left text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
                       onClick={() => toggleSort('client')}
@@ -1334,25 +1340,25 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                       onClick={() => setOpenFilter(openFilter === 'client' ? null : 'client')}
                       className={`p-0.5 rounded hover:bg-gray-200 transition ${isColumnFiltered('client') ? 'text-blue-600' : 'text-gray-400'}`}
                     >
-                      <Filter size={11} fill={isColumnFiltered('client') ? 'currentColor' : 'none'} />
+                      <Filter size={13} fill={isColumnFiltered('client') ? 'currentColor' : 'none'} />
                     </button>
                   </div>
                   {openFilter === 'client' && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[200px]">
-                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 px-1">Rechercher un client</div>
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[220px]">
+                      <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2 px-1">Rechercher un client</div>
                       <input
                         type="text"
                         autoFocus
                         value={columnFilters.client}
                         onChange={(e) => setColumnFilters((p) => ({ ...p, client: e.target.value }))}
                         placeholder="Nom du client..."
-                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       />
                     </div>
                   )}
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-left text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200 relative">
                   <div className="flex items-center justify-between gap-1">
                     <button
                       onClick={() => toggleSort('commercial')}
@@ -1364,25 +1370,25 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                       onClick={() => setOpenFilter(openFilter === 'commercial' ? null : 'commercial')}
                       className={`p-0.5 rounded hover:bg-gray-200 transition ${isColumnFiltered('commercial') ? 'text-blue-600' : 'text-gray-400'}`}
                     >
-                      <Filter size={11} fill={isColumnFiltered('commercial') ? 'currentColor' : 'none'} />
+                      <Filter size={13} fill={isColumnFiltered('commercial') ? 'currentColor' : 'none'} />
                     </button>
                   </div>
                   {openFilter === 'commercial' && (
-                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[200px]">
-                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 px-1">Rechercher un commercial</div>
+                    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[220px]">
+                      <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2 px-1">Rechercher un commercial</div>
                       <input
                         type="text"
                         autoFocus
                         value={columnFilters.commercial}
                         onChange={(e) => setColumnFilters((p) => ({ ...p, commercial: e.target.value }))}
                         placeholder="Nom du commercial..."
-                        className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                       />
                     </div>
                   )}
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-left text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-left text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider border-r border-gray-200">
                   <button
                     onClick={() => toggleSort('date_debut')}
                     className="flex items-center gap-1 hover:text-blue-600 transition w-full"
@@ -1391,7 +1397,7 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                   </button>
                 </th>
 
-                <th className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-[10px] xl:text-[11px] 2xl:text-xs font-bold text-gray-600 uppercase tracking-wider relative">
+                <th className="px-2 xl:px-3 py-3 xl:py-4 text-center text-xs xl:text-[13px] 2xl:text-sm font-bold text-gray-600 uppercase tracking-wider relative">
                   <div className="flex items-center justify-center gap-1">
                     <button
                       onClick={() => toggleSort('statut')}
@@ -1403,25 +1409,25 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                       onClick={() => setOpenFilter(openFilter === 'statut' ? null : 'statut')}
                       className={`p-0.5 rounded hover:bg-gray-200 transition ${isColumnFiltered('statut') ? 'text-blue-600' : 'text-gray-400'}`}
                     >
-                      <Filter size={11} fill={isColumnFiltered('statut') ? 'currentColor' : 'none'} />
+                      <Filter size={13} fill={isColumnFiltered('statut') ? 'currentColor' : 'none'} />
                     </button>
                   </div>
                   {openFilter === 'statut' && (
-                    <div className="absolute top-full right-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-2 min-w-[180px] max-h-[260px] overflow-auto">
-                      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-bold mb-1.5 px-1">Filtrer par statut</div>
+                    <div className="absolute top-full right-0 mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 min-w-[200px] max-h-[300px] overflow-auto">
+                      <div className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2 px-1">Filtrer par statut</div>
                       {uniqueValues.statuts.map((s) => (
-                        <label key={s} className="flex items-center gap-2 px-1.5 py-1 hover:bg-gray-50 rounded cursor-pointer text-xs normal-case">
+                        <label key={s} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer text-sm normal-case">
                           <input
                             type="checkbox"
                             checked={columnFilters.statut.includes(s)}
                             onChange={() => toggleMultiFilter('statut', s)}
-                            className="w-3.5 h-3.5 accent-blue-600"
+                            className="w-4 h-4 accent-blue-600"
                           />
                           <span className="text-gray-700 truncate">{s}</span>
                         </label>
                       ))}
                       {uniqueValues.statuts.length === 0 && (
-                        <div className="text-[11px] text-gray-400 italic px-1.5 py-1">Aucune valeur</div>
+                        <div className="text-xs text-gray-400 italic px-2 py-1">Aucune valeur</div>
                       )}
                     </div>
                   )}
@@ -1459,22 +1465,22 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                         className={'hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-100 ' + (panneau.etatPanneau === 'En panne' ? 'bg-red-50/20' : '')}
                         onClick={() => togglePanneau(panneauKey)}
                       >
-                        <td className="px-3 xl:px-4 py-3 xl:py-3.5 sticky left-0 z-20 bg-white border-r border-gray-100">
-                          <div className="flex items-center gap-1.5 xl:gap-2">
-                            <span className="text-xs xl:text-sm font-bold text-gray-900 truncate">{panneau.nom || 'Sans nom'}</span>
-                            <span className="text-gray-400 text-[10px] xl:text-xs flex-shrink-0">{isExpanded ? '▼' : '▶'}</span>
+                        <td className="px-3 xl:px-4 py-3 xl:py-4 sticky left-0 z-20 bg-white border-r border-gray-100">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm xl:text-base font-bold text-gray-900 truncate">{panneau.nom || 'Sans nom'}</span>
+                            <span className="text-gray-400 text-xs flex-shrink-0">{isExpanded ? '▼' : '▶'}</span>
                             {hasAnyProblem && (
-                              <span className="ml-1 px-1.5 xl:px-2 py-0.5 bg-red-600 text-white text-[9px] xl:text-[10px] font-bold rounded-full flex items-center gap-0.5 xl:gap-1 flex-shrink-0">
-                                <AlertTriangle size={9} /> <span className="hidden xl:inline">PROBLÈME</span>
+                              <span className="ml-1 px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full flex items-center gap-1 flex-shrink-0">
+                                <AlertTriangle size={11} /> <span className="hidden xl:inline">PROBLÈME</span>
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] xl:text-xs text-gray-500 mt-0.5 truncate">
+                          <div className="text-xs xl:text-sm text-gray-500 mt-0.5 truncate">
                             📍 {panneau.adresse || 'Adresse non définie'}
                           </div>
                         </td>
-                        <td className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-xs xl:text-sm font-bold text-gray-700 border-r border-gray-100">{faces.length}</td>
-                        <td className="px-2 xl:px-3 py-3 xl:py-3.5 text-center text-gray-400 text-[10px] xl:text-xs border-r border-gray-100" colSpan={9}>
+                        <td className="px-2 xl:px-3 py-3 xl:py-4 text-center text-sm xl:text-base font-bold text-gray-700 border-r border-gray-100">{faces.length}</td>
+                        <td className="px-2 xl:px-3 py-3 xl:py-4 text-center text-gray-400 text-xs xl:text-sm border-r border-gray-100" colSpan={9}>
                           <span className="text-gray-500 font-medium">
                             {panneau.etatPanneau === 'En panne' ? '⛔ Panneau en panne' : 'Cliquez pour voir les faces'}
                           </span>
@@ -1502,50 +1508,49 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                         return (
                           <tr key={panneauKey + '-face-' + idx} className={rowClasses + ' border-b border-gray-100'}>
                             <td className="px-3 xl:px-4 py-3 sticky left-0 z-20 bg-inherit border-r border-gray-100">
-                              <div className="flex items-center gap-1.5 xl:gap-2 ml-2 xl:ml-4">
-                                <span className="text-[10px] xl:text-xs text-gray-400">└── F{idx + 1}</span>
+                              <div className="flex items-center gap-2 ml-2 xl:ml-4">
+                                <span className="text-xs xl:text-sm text-gray-400">└── F{idx + 1}</span>
                                 {faceHasProblem && (
-                                  <span className="flex items-center gap-0.5 xl:gap-1 px-1.5 xl:px-2 py-0.5 bg-red-600 text-white text-[9px] xl:text-[10px] font-bold rounded-full">
-                                    <XCircle size={9} /> <span className="hidden xl:inline">PROBLÈME</span>
+                                  <span className="flex items-center gap-1 px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full">
+                                    <XCircle size={11} /> <span className="hidden xl:inline">PROBLÈME</span>
                                   </span>
                                 )}
                               </div>
                             </td>
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100"></td>
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
-                              <div className="flex items-center justify-center gap-1 xl:gap-1.5">
+                              <div className="flex items-center justify-center gap-1.5">
                                 {renderFaceActions(panneau, face, faceHasProblem, inCart, false)}
                               </div>
                               {faceHasProblem && (
-                                <div className="text-[9px] xl:text-[10px] text-red-600 font-bold mt-1 flex items-center justify-center gap-1">
-                                  <XCircle size={9} /> <span className="hidden xl:inline">Réservation bloquée</span>
+                                <div className="text-xs xl:text-sm text-red-600 font-bold mt-1 flex items-center justify-center gap-1">
+                                  <XCircle size={11} /> <span className="hidden xl:inline">Réservation bloquée</span>
                                 </div>
                               )}
                             </td>
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
-                              <span className="text-[10px] xl:text-xs font-semibold text-gray-700 truncate block">
+                              <span className="text-xs xl:text-sm font-semibold text-gray-700 truncate block">
                                 {tronconValue && tronconValue !== 'N/A' ? tronconValue : '-'}
                               </span>
                             </td>
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
-                              <div className="flex items-center gap-1 xl:gap-1.5">
+                              <div className="flex items-center gap-1.5">
                                 {getTypeFaceIcon(face.type_face)}
-                                <span className="text-[10px] xl:text-xs font-semibold text-gray-700 truncate">{face.type_face || 'Non défini'}</span>
+                                <span className="text-xs xl:text-sm font-semibold text-gray-700 truncate">{face.type_face || 'Non défini'}</span>
                               </div>
                             </td>
-                            <td className="px-2 xl:px-3 py-3 text-[10px] xl:text-xs font-semibold text-gray-700 uppercase border-r border-gray-100 truncate">{face.orientation || 'N/A'}</td>
+                            <td className="px-2 xl:px-3 py-3 text-xs xl:text-sm font-semibold text-gray-700 uppercase border-r border-gray-100 truncate">{face.orientation || 'N/A'}</td>
 
-                            {/* ✅ DIMENSION — Affiche les 2 lignes : brut (m) + surface (m²) */}
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
                               <div className="flex flex-col gap-0.5">
                                 {dimRaw ? (
-                                  <span className="text-[10px] xl:text-[11px] text-gray-500 font-medium truncate">
+                                  <span className="text-xs xl:text-[13px] text-gray-500 font-medium truncate">
                                     {dimRaw}
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] text-gray-300">-</span>
+                                  <span className="text-xs text-gray-300">-</span>
                                 )}
-                                <span className="text-[11px] xl:text-xs font-bold text-blue-700 truncate">
+                                <span className="text-xs xl:text-sm font-bold text-blue-700 truncate">
                                   {getDimensionM2(face)}
                                 </span>
                               </div>
@@ -1554,82 +1559,82 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
                               {hasReservation && !faceHasProblem ? (
                                 <div className="flex flex-col min-w-0">
-                                  <span className="text-[10px] xl:text-xs font-semibold text-gray-800 truncate">
-                                    <Building2 size={11} className="inline text-gray-400 mr-1" />
+                                  <span className="text-xs xl:text-sm font-semibold text-gray-800 truncate">
+                                    <Building2 size={13} className="inline text-gray-400 mr-1" />
                                     {clientName}
                                   </span>
                                   {face.reservation?.client_email && (
-                                    <span className="text-[9px] xl:text-[10px] text-gray-400 truncate">
+                                    <span className="text-xs xl:text-[13px] text-gray-400 truncate">
                                       {face.reservation.client_email}
                                     </span>
                                   )}
                                 </div>
                               ) : faceHasProblem ? (
-                                <span className="text-red-500 text-[10px] xl:text-xs flex items-center gap-1 font-bold truncate">
-                                  <XCircle size={11} /> <span className="hidden xl:inline">Face problématique</span>
+                                <span className="text-red-500 text-xs xl:text-sm flex items-center gap-1 font-bold truncate">
+                                  <XCircle size={13} /> <span className="hidden xl:inline">Face problématique</span>
                                 </span>
                               ) : (
-                                <span className="text-gray-300 text-[10px] xl:text-xs">-</span>
+                                <span className="text-gray-300 text-xs xl:text-sm">-</span>
                               )}
                             </td>
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
                               {hasReservation && !faceHasProblem ? (
                                 <div className="flex flex-col min-w-0">
-                                  <span className="text-[10px] xl:text-xs font-semibold text-gray-700 truncate">
-                                    <User size={11} className="inline text-gray-400 mr-1" />
+                                  <span className="text-xs xl:text-sm font-semibold text-gray-700 truncate">
+                                    <User size={13} className="inline text-gray-400 mr-1" />
                                     {commercialName}
                                   </span>
                                   {face.reservation?.commercial_email && (
-                                    <span className="text-[9px] xl:text-[10px] text-gray-400 truncate">
+                                    <span className="text-xs xl:text-[13px] text-gray-400 truncate">
                                       {face.reservation.commercial_email}
                                     </span>
                                   )}
                                 </div>
                               ) : (
-                                <span className="text-gray-300 text-[10px] xl:text-xs">-</span>
+                                <span className="text-gray-300 text-xs xl:text-sm">-</span>
                               )}
                             </td>
                             <td className="px-2 xl:px-3 py-3 border-r border-gray-100">
                               {hasReservation && face.date_debut && face.date_fin && !faceHasProblem ? (
                                 <div className="flex flex-col">
-                                  <span className={`text-[10px] xl:text-xs font-medium ${isPending ? 'text-amber-600' : 'text-gray-700'}`}>
+                                  <span className={`text-xs xl:text-sm font-medium ${isPending ? 'text-amber-600' : 'text-gray-700'}`}>
                                     📅 {formatDate(face.date_debut)} → {formatDate(face.date_fin)}
                                   </span>
                                   {duration && (
-                                    <span className="text-[9px] xl:text-[10px] text-gray-400">Durée: {duration} j</span>
+                                    <span className="text-xs xl:text-[13px] text-gray-400">Durée: {duration} j</span>
                                   )}
                                   {showTimer && (
-                                    <span className={`text-[9px] xl:text-[10px] font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-1 mt-0.5`}>
-                                      <Timer size={9} />
+                                    <span className={`text-xs xl:text-[13px] font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-1 mt-0.5`}>
+                                      <Timer size={11} />
                                       {remainingTime.expired ? '⏰ Expirée' : remainingTime.label}
                                     </span>
                                   )}
                                 </div>
                               ) : (
-                                <span className="text-gray-300 text-[10px] xl:text-xs">-</span>
+                                <span className="text-gray-300 text-xs xl:text-sm">-</span>
                               )}
                             </td>
                             <td className="px-2 xl:px-3 py-3 text-center">
                               {faceHasProblem ? (
-                                <span className="px-1.5 xl:px-2.5 py-1 rounded-full text-[9px] xl:text-[11px] font-bold border border-red-200 bg-red-50 text-red-700 flex items-center gap-1 justify-center">
-                                  <XCircle size={10} /> <span className="hidden xl:inline">Problème</span>
+                                <span className="px-2 xl:px-3 py-1 rounded-full text-xs xl:text-sm font-bold border border-red-200 bg-red-50 text-red-700 flex items-center gap-1 justify-center">
+                                  <XCircle size={12} /> <span className="hidden xl:inline">Problème</span>
                                 </span>
                               ) : hasReservation ? (
                                 <div className="flex flex-col items-center gap-0.5">
-                                  <span className={`px-1.5 xl:px-2.5 py-1 rounded-full text-[9px] xl:text-[11px] font-bold border ${isPending ? 'border-amber-200 bg-amber-50 text-amber-700' : getStatusColor(face.status)
-                                    } flex items-center gap-0.5 xl:gap-1`}>
-                                    <span className={`w-1 h-1 xl:w-1.5 xl:h-1.5 rounded-full ${isPending ? 'bg-amber-500' : getStatusDot(face.status)}`} />
-                                    <span className="truncate max-w-[70px] xl:max-w-none">{face.status}</span>
+                                  <span className={`px-2 xl:px-3 py-1 rounded-full text-xs xl:text-sm font-bold border ${isPending ? 'border-amber-200 bg-amber-50 text-amber-700' : getStatusColor(face.status)
+                                    } flex items-center gap-1`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${isPending ? 'bg-amber-500' : getStatusDot(face.status)}`} />
+                                    <span className="truncate max-w-[80px] xl:max-w-none">{face.status}</span>
                                   </span>
                                   {showTimer && (
-                                    <span className={`text-[9px] xl:text-[10px] font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-0.5`}>
-                                      <Timer size={9} />
+                                    <span className={`text-xs xl:text-[13px] font-bold ${getTimerColor(remainingTime.hours)} flex items-center gap-0.5`}>
+                                      <Timer size={11} />
                                       {remainingTime.expired ? 'Expirée' : remainingTime.label}
                                     </span>
                                   )}
                                 </div>
                               ) : (
-                                <span className="px-1.5 xl:px-2.5 py-1 rounded-full text-[9px] xl:text-[11px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 justify-center">
+                                <span className="px-2 xl:px-3 py-1 rounded-full text-xs xl:text-sm font-bold border bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 justify-center">
                                   🟢 <span className="hidden xl:inline">Libre</span>
                                 </span>
                               )}
@@ -1646,10 +1651,8 @@ export function PanneauxTable({ panneaux, onFaceClick, onReserveClick, loading =
         </div>
       </div>
 
-      {/* ============================================
-          Footer stats
-          ============================================ */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 sm:py-3.5 bg-gray-50 border-t border-gray-200 text-[10px] sm:text-xs xl:text-sm text-gray-500">
+      {/* Footer stats */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 sm:py-4 bg-gray-50 border-t border-gray-200 text-xs sm:text-sm xl:text-base text-gray-500">
         <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1">
           <span className="font-semibold text-gray-600">📊 {filteredPanneaux.length} / {panneaux.length} panneau(x)</span>
           <span className="text-gray-300 hidden sm:inline">•</span>
