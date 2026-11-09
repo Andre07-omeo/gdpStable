@@ -949,7 +949,7 @@ export default function ProformatPreviewPage() {
                               color: '#666',
                             }}
                           >
-                            Type: {ligne.type_face || 'Vinyle'} |{' '}
+                            type Media: {ligne.type_face || ''} |{' '}
                             {formatDate(ligne.date_debut)} →{' '}
                             {formatDate(ligne.date_fin)}
                           </div>
@@ -1029,9 +1029,7 @@ export default function ProformatPreviewPage() {
             {afficherTotalCDF && (
               <div>Total CDF : {formatNumber(totalCDF)} FC</div>
             )}
-            {afficherTotalUSD && (
-              <div>Total USD : {formatNumber(totalUSD)} $</div>
-            )}
+            
             {!afficherTotalCDF && !afficherTotalUSD && (
               <div>0 {getDeviseSymbole(deviseProformat)}</div>
             )}
