@@ -41,9 +41,21 @@ interface PendingReservation {
 
 interface PendingReservationsTabProps { user: any; }
 
+// ============================================
+// HELPERS SSR-SAFE
+// ============================================
 const safeGetItem = (key: string): string => {
   if (typeof window === 'undefined') return '';
-  return localStorage.getItem(key) || '';
+  try { return localStorage.getItem(key) || ''; } catch { return ''; }
+};
+
+const safeSetItem = (key: string, value: string): boolean => {
+  if (typeof window === 'undefined') return false;
+  try { localStorage.setItem(key, value); return true; } catch { return false; }
+};
+
+const safeSetJSON = (key: string, value: any): boolean => {
+  try { return safeSetItem(key, JSON.stringify(value)); } catch { return false; }
 };
 
 export function PendingReservationsTab({ user: userProp }: PendingReservationsTabProps) {
@@ -132,15 +144,25 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
   useEffect(() => { fetchPendingReservations(); }, []);
 
   // ============================================
-  // SÉLECTION
+  // SÉLECTION (synchronisation selectAll)
   // ============================================
   const toggleSelection = (id: number) => {
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    setSelectedIds(prev => {
+      const next = prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id];
+      // Sync selectAll
+      setSelectAll(next.length === reservations.length && reservations.length > 0);
+      return next;
+    });
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(selectAll ? [] : reservations.map(r => r.id_reservation));
-    setSelectAll(!selectAll);
+    if (selectAll) {
+      setSelectedIds([]);
+      setSelectAll(false);
+    } else {
+      setSelectedIds(reservations.map(r => r.id_reservation));
+      setSelectAll(true);
+    }
   };
 
   // ============================================
@@ -191,6 +213,43 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
   };
 
   // ============================================
+  // ✅ RÉPARTITION DES PRIX SUR LES LIGNES
+  // (le prix global de la réservation est réparti équitablement
+  //  sur chaque ligne afin que la page d'impression puisse afficher
+  //  un détail cohérent par panneau/face)
+  // ============================================
+  const repartirPrixSurLignes = (
+    lignes: PendingReservation['lignes'],
+    prixLocTotal: number,
+    prixImpTotal: number
+  ) => {
+    const nbLignes = lignes.length || 1;
+    const locParLigne = prixLocTotal / nbLignes;
+    const impParLigne = prixImpTotal / nbLignes;
+
+    return lignes.map(l => ({
+      id_ligne: l.id_ligne,
+      id_face: l.id_face,
+      id_panneau: l.id_panneau,
+      orientation: l.orientation || 'N/A',
+      type_face: l.type_face || 'N/A',
+      statut_diffusion: l.statut_diffusion || 'N/A',
+      date_debut: l.date_debut,
+      date_fin: l.date_fin,
+      prix_vente_net: Number(l.prix_vente_net) || 0,
+      // ✅ Prix répartis pour la preview
+      prix_location_ligne: Number(locParLigne.toFixed(2)),
+      prix_impression_ligne: Number(impParLigne.toFixed(2)),
+      total_ligne: Number((locParLigne + impParLigne).toFixed(2)),
+      panneau: {
+        id: l.panneau?.id ?? null,
+        nom: l.panneau?.nom || 'Panneau',
+        adresse: l.panneau?.adresse || '',
+      },
+    }));
+  };
+
+  // ============================================
   // CRÉER PROFORMAT
   // ============================================
   const creerFacture = async () => {
@@ -214,10 +273,10 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
     }
 
     const selectedReservations = reservations.filter(r => selectedIds.includes(r.id_reservation));
-    const clientIds = [...new Set(selectedReservations.map(r => r.client?.nom))];
+    const clientNoms = [...new Set(selectedReservations.map(r => r.client?.nom || 'Client inconnu'))];
 
-    if (clientIds.length > 1) {
-      alert('⚠️ Un seul client par facture !\n' + clientIds.join(', '));
+    if (clientNoms.length > 1) {
+      alert('⚠️ Un seul client par facture !\n' + clientNoms.join(', '));
       return;
     }
 
@@ -233,78 +292,107 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
 
     const totaux = totauxGlobaux();
     const nomCompletFinal = `${prenom} ${nom}`.trim();
+    const dateGeneration = new Date().toISOString();
 
     try {
+      // ✅ Construction des données destinées à la page d'impression
       const factureData = selectedReservations.map(r => {
         const loc = parseFloat(prixLocation[r.id_reservation] || '0') || 0;
         const imp = parseFloat(prixImpression[r.id_reservation] || '0') || 0;
 
+        // ✅ On enrichit chaque ligne avec les prix répartis
+        const lignesEnrichies = repartirPrixSurLignes(r.lignes || [], loc, imp);
+
         return {
+          // Identifiants
           id_reservation: r.id_reservation,
-          numero_commande: r.numero_commande,
-          client_nom: r.client?.nom,
-          client_email: r.client?.email,
-          client_telephone: r.client?.telephone,
+          numero_commande: r.numero_commande || '',
+          // Client
+          client_nom: r.client?.nom || 'Client',
+          client_email: r.client?.email || '',
+          client_telephone: r.client?.telephone || '',
+          // Commercial
           commercial_nom: nom,
           commercial_prenom: prenom,
           commercial_email: email,
           commercial_nom_complet: nomCompletFinal,
+          // Campagne
           date_debut_campagne: r.date_debut_campagne,
           date_fin_campagne: r.date_fin_campagne,
           statut: r.statut,
-          notes: r.notes,
-          date_expiration: r.date_expiration,
+          notes: r.notes || '',
+          // ✅ Normalisation date_expiration
+          date_expiration: r.date_expiration || null,
+          photoCampagneUrl: r.photoCampagneUrl || null,
+          created_at: r.created_at || null,
 
-          // ✅ Prix location (USD)
-          prix_location: loc,
-          // ✅ Prix impression (USD) — constituera une colonne du tableau
-          prix_impression: imp,
-          // ✅ Total = loc + imp
-          total_reservation: loc + imp,
-
+          // ✅ Prix (USD)
+          prix_location: Number(loc.toFixed(2)),
+          prix_impression: Number(imp.toFixed(2)),
+          total_reservation: Number((loc + imp).toFixed(2)),
           devise: 'USD',
 
-          lignes: r.lignes.map(l => ({
-            id_ligne: l.id_ligne,
-            id_face: l.id_face,
-            id_panneau: l.id_panneau,
-            orientation: l.orientation,
-            type_face: l.type_face,
-            statut_diffusion: l.statut_diffusion,
-            date_debut: l.date_debut,
-            date_fin: l.date_fin,
-            panneau: {
-              id: l.panneau?.id,
-              nom: l.panneau?.nom,
-              adresse: l.panneau?.adresse,
-            },
-          })),
+          // ✅ Lignes enrichies (avec prix_vente_net + prix répartis)
+          lignes: lignesEnrichies,
         };
       });
 
-      localStorage.setItem('proformat_selected_reservations', JSON.stringify(factureData));
-      localStorage.setItem('proformat_client_nom', clientIds[0] || '');
-      localStorage.setItem('proformat_devise', 'USD');
-      localStorage.setItem('proformat_devises_utilisees', 'USD');
+      // ============================================
+      // ✅ SAUVEGARDE PRINCIPALE (nouvelle clé recommandée)
+      // ============================================
+      const proformatPayload = {
+        generated_at: dateGeneration,
+        devise: 'USD',
+        devise_principale: 'USD',
+        devises_utilisees: ['USD'],
+        client_nom: clientNoms[0] || '',
+        commercial_nom_complet: nomCompletFinal,
+        commercial_email: email,
+        reservations: factureData,
+        totaux: {
+          total_location_usd: Number(totaux.totalLoc.toFixed(2)),
+          total_impression_usd: Number(totaux.totalImp.toFixed(2)),
+          total_general_usd: Number(totaux.totalGeneral.toFixed(2)),
+          // Compat
+          total_usd: Number(totaux.totalGeneral.toFixed(2)),
+          total_cdf: 0,
+        },
+      };
 
-      // Totaux (tout en USD)
-      localStorage.setItem('proformat_total_location_usd', String(totaux.totalLoc));
-      localStorage.setItem('proformat_total_impression_usd', String(totaux.totalImp));
-      localStorage.setItem('proformat_total_general_usd', String(totaux.totalGeneral));
+      const okMain = safeSetJSON('proformat_data', proformatPayload);
+      if (!okMain) {
+        alert('⚠️ Impossible de sauvegarder les données du proformat (localStorage plein ou bloqué).');
+        return;
+      }
 
-      // Compatibilité avec l'ancien code (au cas où)
-      localStorage.setItem('proformat_total_usd', String(totaux.totalGeneral));
-      localStorage.setItem('proformat_total_cdf', '0');
+      // ============================================
+      // ✅ SAUVEGARDE LEGACY (compatibilité avec l'ancienne preview)
+      // ============================================
+      safeSetJSON('proformat_selected_reservations', factureData);
+      safeSetItem('proformat_client_nom', clientNoms[0] || '');
+      safeSetItem('proformat_devise', 'USD');
+      safeSetItem('proformat_devises_utilisees', 'USD');
+      safeSetItem('proformat_total_location_usd', String(totaux.totalLoc));
+      safeSetItem('proformat_total_impression_usd', String(totaux.totalImp));
+      safeSetItem('proformat_total_general_usd', String(totaux.totalGeneral));
+      safeSetItem('proformat_total_usd', String(totaux.totalGeneral));
+      safeSetItem('proformat_total_cdf', '0');
+      // ✅ Métadonnées utiles à la preview
+      safeSetItem('proformat_generated_at', dateGeneration);
+      safeSetItem('proformat_nb_reservations', String(selectedReservations.length));
 
+      // ============================================
+      // ✅ NAVIGATION VERS LA PAGE D'IMPRESSION
+      // ============================================
       router.push('/dashboard/commercial/proformat/preview');
     } catch (err) {
-      console.error('Erreur:', err);
+      console.error('Erreur lors de la préparation du proformat:', err);
       alert('Erreur lors de la préparation du proformat');
     }
   };
 
   // ============================================
-  // HELPERS
+  // HELPERS D'AFFICHAGE
   // ============================================
   const formatDate = (d: string | null) => {
     if (!d) return 'N/A';
@@ -327,9 +415,9 @@ export function PendingReservationsTab({ user: userProp }: PendingReservationsTa
   const getClientInfo = () => {
     const selected = reservations.filter(r => selectedIds.includes(r.id_reservation));
     if (selected.length === 0) return null;
-    const clients = [...new Set(selected.map(r => r.client?.nom))];
-    if (clients.length > 1) return { type: 'multiple', count: clients.length };
-    return { type: 'unique', client: clients[0] };
+    const clients = [...new Set(selected.map(r => r.client?.nom || 'Client inconnu'))];
+    if (clients.length > 1) return { type: 'multiple' as const, count: clients.length };
+    return { type: 'unique' as const, client: clients[0] };
   };
 
   const clientInfo = getClientInfo();
